@@ -31,8 +31,15 @@ struct AppCommand {
     shortcut: Option<&'static str>,
 }
 
-const APP_COMMANDS: [AppCommand; 7] = [
+const APP_COMMANDS: [AppCommand; 9] = [
     AppCommand { id: "app.title_page", label: "Title Page…", menu: "File/Title Page…", shortcut: Some("Cmd+Shift+T") },
+    AppCommand { id: "prefs.new_fountain", label: "Save New Scripts as Fountain", menu: "File/Save New Scripts as Fountain", shortcut: None },
+    AppCommand {
+        id: "prefs.new_osf",
+        label: "Save New Scripts as Open Screenplay Format",
+        menu: "File/Save New Scripts as Open Screenplay Format",
+        shortcut: None,
+    },
     AppCommand { id: "app.quit", label: "Quit", menu: "File/Quit", shortcut: Some("Cmd+Q") },
     AppCommand { id: "view.navigator", label: "Scene Navigator", menu: "View/Scene Navigator", shortcut: Some("Cmd+Shift+N") },
     AppCommand { id: "view.page_view", label: "Page View", menu: "View/Page View", shortcut: Some("Cmd+Shift+P") },
@@ -188,6 +195,7 @@ impl StorytellerApp {
             "file.export_pdf" => self.export(FileFormat::Pdf),
             "file.export_fdx" => self.export(FileFormat::Fdx),
             "file.export_fountain" => self.export(FileFormat::Fountain),
+            "file.export_osf" => self.export(FileFormat::Osf),
             "app.title_page" => {
                 let page = &self.session.script.title_page;
                 let fields =
@@ -200,6 +208,14 @@ impl StorytellerApp {
             }
             "view.page_view" => {
                 self.prefs.update(|p| p.view.page_view = !p.view.page_view);
+            }
+            "prefs.new_fountain" => {
+                self.prefs.update(|p| p.general.new_script_format = "fountain".into());
+                self.status = "New scripts will be saved as Fountain (.fountain).".into();
+            }
+            "prefs.new_osf" => {
+                self.prefs.update(|p| p.general.new_script_format = "osf".into());
+                self.status = "New scripts will be saved as Open Screenplay Format (.osf).".into();
             }
             "view.zoom_in" => {
                 self.prefs.update(|p| p.view.zoom = (zoom + 0.1).min(3.0));
@@ -246,7 +262,8 @@ impl StorytellerApp {
                 self.after_open();
             }
             Pending::Open(path) => {
-                let path = path.or_else(|| rfd::FileDialog::new().add_filter("Screenplay", &["fountain", "spmd", "txt", "fdx"]).pick_file());
+                let path = path
+                    .or_else(|| rfd::FileDialog::new().add_filter("Screenplay", &["fountain", "spmd", "txt", "osf", "fadein", "fdx"]).pick_file());
                 if let Some(path) = path {
                     self.open_path(&path);
                 }
@@ -278,19 +295,30 @@ impl StorytellerApp {
         let path = match (&self.session.path, as_new) {
             (Some(path), false) => Some(path.clone()),
             _ => {
+                let preferred = self.preferred_extension();
                 let name = self
                     .session
                     .path
                     .as_ref()
                     .and_then(|p| p.file_name())
                     .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| "Untitled.fountain".into());
-                rfd::FileDialog::new().add_filter("Fountain", &["fountain"]).add_filter("Final Draft", &["fdx"]).set_file_name(name).save_file()
+                    .unwrap_or_else(|| format!("Untitled.{preferred}"));
+                // The working format the writer chose comes first; the others stay one click away.
+                let fountain = ("Fountain", "fountain");
+                let osf = ("Open Screenplay Format", "osf");
+                let (first, second) = if preferred == "osf" { (osf, fountain) } else { (fountain, osf) };
+                rfd::FileDialog::new()
+                    .add_filter(first.0, &[first.1])
+                    .add_filter(second.0, &[second.1])
+                    .add_filter("Open Screenplay Format in a .fadein archive", &["fadein"])
+                    .add_filter("FDX", &["fdx"])
+                    .set_file_name(name)
+                    .save_file()
             }
         };
         let Some(mut path) = path else { return false };
         if path.extension().is_none() {
-            path.set_extension("fountain");
+            path.set_extension(self.preferred_extension());
         }
         let mut params = Map::new();
         params.insert("path".into(), json!(path.display().to_string()));
@@ -301,6 +329,11 @@ impl StorytellerApp {
             self.prefs.update(|p| p.push_recent(&shown));
         }
         saved
+    }
+
+    /// The extension new scripts are saved with: the writer's choice of working format.
+    fn preferred_extension(&self) -> &'static str {
+        if self.prefs.get().general.new_script_format == "osf" { "osf" } else { "fountain" }
     }
 
     fn export(&mut self, format: FileFormat) {
@@ -315,6 +348,7 @@ impl StorytellerApp {
                 FileFormat::Pdf => "file.export_pdf",
                 FileFormat::Fdx => "file.export_fdx",
                 FileFormat::Fountain => "file.export_fountain",
+                FileFormat::Osf | FileFormat::FadeIn => "file.export_osf",
             };
             let mut params = Map::new();
             params.insert("path".into(), json!(path.display().to_string()));
@@ -473,6 +507,8 @@ impl StorytellerApp {
             "view.navigator" => Some(self.prefs.get().view.navigator),
             "view.page_view" => Some(self.prefs.get().view.page_view),
             "view.scene_numbers" => Some(self.session.layout.show_scene_numbers),
+            "prefs.new_fountain" => Some(self.prefs.get().general.new_script_format != "osf"),
+            "prefs.new_osf" => Some(self.prefs.get().general.new_script_format == "osf"),
             _ => None,
         }
     }

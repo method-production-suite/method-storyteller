@@ -23,10 +23,18 @@ pub struct Prefs {
     pub view: View,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct General {
     pub recent: Vec<String>,
+    /// The format new scripts are saved in: `fountain` or `osf`.
+    pub new_script_format: String,
+}
+
+impl Default for General {
+    fn default() -> Self {
+        General { recent: Vec::new(), new_script_format: "fountain".into() }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

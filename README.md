@@ -8,8 +8,9 @@ now; installers are coming), and your script is a plain Fountain file you own.
   Character, location and time-of-day autocomplete.
 - **Industry pagination.** Courier Prime 12 pt, standard margins, 54 lines a page, `(MORE)` and
   `(CONT'D)` at page breaks, scene headings that never strand at the bottom of a page.
-- **Open formats.** Fountain is the native format (plain text, diff-friendly). `.fdx` import and
-  export. PDF export with embedded fonts and scene bookmarks.
+- **Open formats, your choice.** Work in Fountain (plain text, diff-friendly) or Open Screenplay
+  Format (`.osf`, structured XML that keeps more production detail); File > Save New Scripts as…
+  picks the default. `.fadein`, `.fdx` and PDF import or export as well.
 - **Title page, scene navigator and scene numbers.**
 - **Scriptable.** Every action is a named command, every widget has an automation id, and a
   JSON-lines control channel drives the app or a headless engine.

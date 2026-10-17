@@ -127,6 +127,46 @@ pub struct Element {
     /// Final Draft data this paragraph carried that the model does not use (see [`FdxParagraph`]).
     #[serde(skip)]
     pub fdx: Option<Box<FdxParagraph>>,
+    /// Open Screenplay Format data this paragraph carried that the model does not use.
+    #[serde(skip)]
+    pub osf: Option<Box<OsfParagraph>>,
+}
+
+/// What an imported Open Screenplay Format paragraph carried beyond the model, kept so the file
+/// round-trips: its style name, its other attributes and style overrides, and other children.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OsfParagraph {
+    /// The paragraph's style name, such as `Normal Text` or a custom `Act Heading`.
+    pub style: String,
+    /// The kind it was imported as. The style name is written back only while the kind is unchanged.
+    pub kind: ElementKind,
+    /// `<para>` attributes the model does not hold (`page_number`, `edited_by`, `synopsis_color` …).
+    pub attributes: Vec<(String, String)>,
+    /// Overrides on the paragraph's own `<style>` the model does not hold (indents, fonts …).
+    pub style_attributes: Vec<(String, String)>,
+    /// Raw XML of children other than `<style>` and `<text>`: revision marks, vendor data.
+    pub children: String,
+}
+
+/// What an imported Open Screenplay Format document carried outside its paragraphs.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct OsfDocument {
+    /// The `version` attribute (`30`, `40` …); spellings follow it when writing back.
+    pub version: String,
+    /// Top-level sections in file order.
+    pub sections: Vec<OsfSection>,
+}
+
+/// One top-level section of an imported Open Screenplay Format document.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum OsfSection {
+    /// Where `<paragraphs>` was.
+    Paragraphs,
+    /// Where the title page was, with its raw XML and what it parsed to; the raw XML is written
+    /// back while the title page is unchanged.
+    TitlePage { raw: String, parsed: TitlePage },
+    /// A section the model does not use (`settings`, `styles`, `lists` …), verbatim.
+    Raw(String),
 }
 
 /// What an imported Final Draft paragraph carried beyond the model, kept so the file
@@ -168,7 +208,7 @@ fn is_zero(value: &u8) -> bool {
 
 impl Element {
     pub fn new(kind: ElementKind, text: impl Into<String>) -> Self {
-        let mut element = Element { kind, text: text.into(), scene_number: None, dual: false, level: 0, fdx: None };
+        let mut element = Element { kind, text: text.into(), scene_number: None, dual: false, level: 0, fdx: None, osf: None };
         if kind == ElementKind::Section {
             element.level = 1;
         }
@@ -292,12 +332,15 @@ pub struct Script {
     /// Final Draft data from an imported `.fdx` that the model does not use; written back on FDX export.
     #[serde(skip)]
     pub fdx: Option<Box<FdxDocument>>,
+    /// Open Screenplay Format data from an imported `.osf` or `.fadein`; written back on OSF export.
+    #[serde(skip)]
+    pub osf: Option<Box<OsfDocument>>,
 }
 
 impl Script {
     /// A new, empty script with one scene heading to start typing in.
     pub fn blank() -> Self {
-        Script { title_page: TitlePage::default(), elements: vec![Element::new(ElementKind::SceneHeading, "")], fdx: None }
+        Script { title_page: TitlePage::default(), elements: vec![Element::new(ElementKind::SceneHeading, "")], fdx: None, osf: None }
     }
 
     /// Normalize every element (see [`Element::normalize`]).

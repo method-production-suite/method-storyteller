@@ -108,6 +108,7 @@ fn forced_elements_round_trip() {
             Element::new(K::SceneHeading, ""),
         ],
         fdx: None,
+        osf: None,
     });
     round_trip(Script {
         title_page: title,
@@ -125,6 +126,7 @@ fn forced_elements_round_trip() {
             Element::new(K::PageBreak, ""),
         ],
         fdx: None,
+        osf: None,
     });
 }
 

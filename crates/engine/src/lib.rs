@@ -3,6 +3,7 @@
 //! [`control`] protocol shared by the desktop app, the CLI and headless automation.
 
 pub mod commands;
+pub mod container;
 pub mod control;
 pub mod files;
 pub mod flow;

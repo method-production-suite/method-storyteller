@@ -2935,6 +2935,8 @@ name = "storyteller-engine"
 version = "0.1.0"
 dependencies = [
  "craft-atomic",
+ "crc32fast",
+ "flate2",
  "serde",
  "serde_json",
  "storyteller-core",

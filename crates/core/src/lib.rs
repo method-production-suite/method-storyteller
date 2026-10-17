@@ -11,10 +11,11 @@ pub mod fountain;
 pub mod inline;
 pub mod layout;
 pub mod model;
+pub mod osf;
 pub mod paginate;
 pub mod wrap;
 
-pub use model::{Element, ElementKind, FdxDocument, FdxParagraph, FdxSection, Script, TitlePage};
+pub use model::{Element, ElementKind, FdxDocument, FdxParagraph, FdxSection, OsfDocument, OsfParagraph, OsfSection, Script, TitlePage};
 
 /// Largest script file accepted by any parser (32 MiB).
 pub const MAX_INPUT_BYTES: usize = 32 * 1024 * 1024;
@@ -32,7 +33,9 @@ pub enum CoreError {
     NotUtf8,
     #[error("the file is not a Final Draft script: {0}")]
     NotFdx(String),
-    #[error("the Final Draft XML is damaged: {0}")]
+    #[error("the file is not an Open Screenplay Format document: {0}")]
+    NotOsf(String),
+    #[error("the XML is damaged: {0}")]
     Xml(String),
 }
 
