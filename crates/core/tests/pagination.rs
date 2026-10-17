@@ -163,6 +163,18 @@ fn forced_page_break() {
 }
 
 #[test]
+fn blank_lines_never_carry_over_to_the_top_of_a_page() {
+    // Page 1 ends on its last body line and the scene heading behind it has blank lines before
+    // it: the page must open on the heading, on the first body row, never on empty rows.
+    let paginated = check_golden("blank_lines_not_carried");
+    let layout = Layout::default();
+    let second = &paginated.pages[1];
+    let first_body = second.lines.iter().find(|line| !matches!(line.role, LineRole::PageNumber | LineRole::SceneNumber)).unwrap();
+    assert_eq!(first_body.text(), "INT. HALLWAY - NIGHT");
+    assert_eq!(first_body.row, layout.body_top);
+}
+
+#[test]
 fn dual_dialogue_side_by_side() {
     let paginated = check_golden("dual_dialogue");
     let page = &paginated.pages[0];
