@@ -15,7 +15,9 @@ pub mod osf;
 pub mod paginate;
 pub mod wrap;
 
-pub use model::{Element, ElementKind, FdxDocument, FdxParagraph, FdxSection, OsfDocument, OsfParagraph, OsfSection, Script, TitlePage};
+pub use model::{
+    ArchiveEntry, Element, ElementKind, FdxDocument, FdxParagraph, FdxSection, OsfDocument, OsfParagraph, OsfSection, Script, TitlePage,
+};
 
 /// Largest script file accepted by any parser (32 MiB).
 pub const MAX_INPUT_BYTES: usize = 32 * 1024 * 1024;

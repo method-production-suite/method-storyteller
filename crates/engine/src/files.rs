@@ -70,8 +70,12 @@ pub fn open(path: &Path) -> Result<(Script, FileFormat), FileError> {
     // Read one byte past the limit so oversize files are refused rather than truncated.
     file.take(MAX_INPUT_BYTES as u64 + 1).read_to_end(&mut bytes).map_err(read_error)?;
     if container::is_zip(&bytes) {
-        let document = container::read_document(&bytes).map_err(FileError::Archive)?;
-        return Ok((osf::parse(decode_text(&document)?)?, FileFormat::FadeIn));
+        let (document, others) = container::read_document(&bytes).map_err(FileError::Archive)?;
+        let mut script = osf::parse(decode_text(&document)?)?;
+        if let Some(osf) = script.osf.as_mut() {
+            osf.archive_entries = others;
+        }
+        return Ok((script, FileFormat::FadeIn));
     }
     let text = decode_text(&bytes)?;
     let format = sniff(text).unwrap_or_else(|| FileFormat::from_path(path));
@@ -110,7 +114,9 @@ pub fn encode(script: &Script, format: FileFormat, layout: &Layout) -> Result<Ve
         FileFormat::Fdx => fdx::write_with_layout(script, layout).into_bytes(),
         FileFormat::Osf => osf::write(script).into_bytes(),
         FileFormat::FadeIn => {
-            container::write_document(osf::write(script).as_bytes()).map_err(|source| FileError::Write { path: "archive".into(), source })?
+            // Other members of the archive the script came in go back unchanged.
+            let others = script.osf.as_ref().map(|d| d.archive_entries.as_slice()).unwrap_or_default();
+            container::write_document(osf::write(script).as_bytes(), others).map_err(|source| FileError::Write { path: "archive".into(), source })?
         }
         FileFormat::Pdf => storyteller_pdf::export(script, layout, &storyteller_pdf::PdfOptions { creator: crate::app_version() })?,
     })

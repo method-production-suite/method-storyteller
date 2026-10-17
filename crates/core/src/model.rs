@@ -155,6 +155,21 @@ pub struct OsfDocument {
     pub version: String,
     /// Top-level sections in file order.
     pub sections: Vec<OsfSection>,
+    /// Other members of the `.fadein` archive it came in, kept as they were.
+    pub archive_entries: Vec<ArchiveEntry>,
+}
+
+/// A member of a ZIP archive, kept compressed exactly as read so it can be written back.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ArchiveEntry {
+    pub name: String,
+    /// ZIP compression method (0 stored, 8 deflated).
+    pub method: u16,
+    pub crc32: u32,
+    /// Size once decompressed.
+    pub size: u32,
+    /// The member's data as stored in the archive.
+    pub data: Vec<u8>,
 }
 
 /// One top-level section of an imported Open Screenplay Format document.

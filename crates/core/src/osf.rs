@@ -275,6 +275,9 @@ fn paras(xml: &str) -> Result<Vec<Para>, CoreError> {
                     ("para", false) => {
                         current = Some(Para { attributes: all_attrs(start), ..Para::default() });
                         if empty && let Some(para) = current.take() {
+                            if out.len() >= MAX_ELEMENTS {
+                                return Err(CoreError::TooManyElements);
+                            }
                             out.push(para);
                         }
                     }
@@ -377,7 +380,7 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
     let (root, top) = split(source)?;
     let version = get(&root, "version").unwrap_or("30").to_string();
     let styles = Styles::read(&top);
-    let mut document = OsfDocument { version, sections: Vec::new() };
+    let mut document = OsfDocument { version, sections: Vec::new(), archive_entries: Vec::new() };
     let mut elements: Vec<Element> = Vec::new();
     let mut title_page = TitlePage::default();
     let mut dual_next = false;
@@ -616,7 +619,16 @@ fn write_attr(name: &str, value: &str, out: &mut String) {
     out.push(' ');
     out.push_str(name);
     out.push_str("=\"");
-    escape(value, out);
+    // Line breaks and tabs are written as character references: in an attribute, XML turns the
+    // literal characters into spaces, so a note would lose its lines.
+    for c in value.chars() {
+        match c {
+            '\n' => out.push_str("&#10;"),
+            '\t' => out.push_str("&#9;"),
+            '\r' => out.push_str("&#13;"),
+            c => escape(c.encode_utf8(&mut [0; 4]), out),
+        }
+    }
     out.push('"');
 }
 
@@ -693,7 +705,8 @@ fn write_para(element: &Element, extras: &ParaExtras, spelling: Spelling, styles
     if element.kind == ElementKind::Centered {
         out.push_str(" align=\"center\"");
     }
-    if let Some(osf) = element.osf.as_deref() {
+    // Style overrides belong to the paragraph's old type; a changed type starts clean.
+    if let Some(osf) = kept {
         for (name, value) in &osf.style_attributes {
             write_attr(name, value, out);
         }
@@ -750,7 +763,7 @@ fn write_paragraphs(script: &Script, spelling: Spelling, styles_known: bool, out
     out.push_str("  </paragraphs>\n");
 }
 
-fn write_title_page(title: &TitlePage, out: &mut String) {
+fn write_title_page(title: &TitlePage, spelling: Spelling, out: &mut String) {
     if title.is_empty() {
         return;
     }
@@ -774,11 +787,11 @@ fn write_title_page(title: &TitlePage, out: &mut String) {
             {
                 write_attr("bookmark", bookmark, out);
             }
-            out.push_str(&format!(">\n      <style basestylename=\"Normal Text\" align=\"{align}\"/>\n"));
+            out.push_str(&format!(">\n      <style {}=\"Normal Text\" align=\"{align}\"/>\n", spelling.base_style()));
             write_runs(&inline::parse(line), out);
             out.push_str("    </para>\n");
         }
-        out.push_str("    <para>\n      <style basestylename=\"Normal Text\"/>\n      <text></text>\n    </para>\n");
+        out.push_str(&format!("    <para>\n      <style {}=\"Normal Text\"/>\n      <text></text>\n    </para>\n", spelling.base_style()));
     }
     out.push_str("  </titlepage>\n");
 }
@@ -808,7 +821,7 @@ pub fn write(script: &Script) -> String {
                             out.push_str(raw.trim());
                             out.push('\n');
                         } else {
-                            write_title_page(&script.title_page, &mut out);
+                            write_title_page(&script.title_page, spelling, &mut out);
                         }
                         title_written = true;
                     }
@@ -824,7 +837,7 @@ pub fn write(script: &Script) -> String {
                 write_paragraphs(script, spelling, styles_known, &mut out);
             }
             if !title_written {
-                write_title_page(&script.title_page, &mut out);
+                write_title_page(&script.title_page, spelling, &mut out);
             }
         }
         None => {
@@ -834,7 +847,7 @@ pub fn write(script: &Script) -> String {
             out.push_str(DEFAULT_STYLES);
             out.push('\n');
             write_paragraphs(script, Spelling::Snake, true, &mut out);
-            write_title_page(&script.title_page, &mut out);
+            write_title_page(&script.title_page, Spelling::Snake, &mut out);
         }
     }
     out.push_str("</document>\n");

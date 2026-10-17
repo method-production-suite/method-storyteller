@@ -157,3 +157,38 @@ fn rejects_foreign_or_hostile_xml() {
     let deep = format!("<document>{}{}</document>", "<a>".repeat(1000), "</a>".repeat(1000));
     assert!(osf::parse(&deep).is_err());
 }
+
+#[test]
+fn notes_keep_their_line_breaks_and_tabs() {
+    let mut script = fixture();
+    script.elements[1].text.push_str("[[first line\nsecond\tline]]");
+    let xml = osf::write(&script);
+    assert!(xml.contains(r#"note="first line&#10;second&#9;line""#), "{xml}");
+    let back = osf::parse(&xml).unwrap();
+    assert_eq!(back.elements[1].text, script.elements[1].text);
+}
+
+#[test]
+fn a_changed_type_drops_the_old_style_overrides() {
+    let mut script = osf::parse(V30).unwrap();
+    script.elements[1].kind = K::Transition;
+    let xml = osf::write(&script);
+    assert!(xml.contains(r#"<style basestylename="Transition"/>"#), "{xml}");
+    assert!(!xml.contains(r#"leftindent="10""#), "{xml}");
+}
+
+#[test]
+fn a_rewritten_title_page_uses_the_document_spelling() {
+    let v40 = V30.replace(r#"version="30""#, r#"version="40""#).replace("basestylename", "basestyle").replace("scene_number=", "number=");
+    let mut script = osf::parse(&v40).unwrap();
+    script.title_page.set("Title", "THE CABIN");
+    let xml = osf::write(&script);
+    assert!(xml.contains(r#"<style basestyle="Normal Text" align="center"/>"#) && !xml.contains("basestylename"), "{xml}");
+}
+
+#[test]
+fn self_closing_paragraphs_count_towards_the_limit() {
+    let many = "<para/>".repeat(storyteller_core::MAX_ELEMENTS + 1);
+    let doc = format!("<document version=\"30\"><paragraphs>{many}</paragraphs></document>");
+    assert!(osf::parse(&doc).is_err());
+}

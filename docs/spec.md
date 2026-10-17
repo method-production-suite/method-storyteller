@@ -1,6 +1,6 @@
-# Method Storyteller — product spec
+# Method Storyteller: product spec
 
-Method Storyteller is an open-source screenwriting app: a pure-Rust alternative to Final Draft.
+Method Storyteller is an open-source screenwriting app, written in pure Rust. Its layout and `.fdx` support aim for parity with the files and pages the industry exchanges.
 It runs natively on macOS, Windows and Linux. Licence: MIT OR Apache-2.0.
 
 This spec covers the MVP and names later phases so the model doesn't paint itself into a corner.
