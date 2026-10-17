@@ -173,6 +173,23 @@ fn dual_dialogue_side_by_side() {
 }
 
 #[test]
+fn dual_dialogue_moves_whole_to_next_page() {
+    let paginated = check_golden("dual_dialogue_moves");
+    assert_eq!(paginated.pages.len(), 2);
+
+    let first = body_lines(&paginated, 0);
+    assert!(first.len() > 50, "the action should fill the first page");
+    assert!(first.iter().all(|(role, _)| *role == LineRole::Element(K::Action)));
+
+    let second = &paginated.pages[1];
+    let cues: Vec<_> = second.lines.iter().filter(|line| line.role == LineRole::Element(K::Character)).collect();
+    assert_eq!(cues.len(), 2, "both dual-dialogue cues should start on page two");
+    assert_eq!(cues[0].text(), "MARA");
+    assert_eq!(cues[1].text(), "OWEN");
+    assert_eq!(cues[0].row, cues[1].row, "dual-dialogue cues should start on the same row");
+}
+
+#[test]
 fn scene_numbers_and_title_page() {
     let paginated = check_golden("scene_numbers");
     assert!(paginated.title_page.is_some());
