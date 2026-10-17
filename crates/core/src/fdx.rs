@@ -72,7 +72,7 @@ fn kind_from_fdx(name: &str) -> (ElementKind, Option<u8>) {
 // ---------------------------------------------------------------------------------------------
 // Export
 
-fn escape(text: &str, out: &mut String) {
+pub(crate) fn escape(text: &str, out: &mut String) {
     for c in text.chars() {
         match c {
             '&' => out.push_str("&amp;"),
@@ -382,7 +382,7 @@ fn attr(element: &BytesStart<'_>, name: &str) -> Option<String> {
         .map(|v| v.into_owned())
 }
 
-fn all_attrs(element: &BytesStart<'_>) -> Vec<(String, String)> {
+pub(crate) fn all_attrs(element: &BytesStart<'_>) -> Vec<(String, String)> {
     element
         .attributes()
         .flatten()
@@ -625,7 +625,7 @@ impl Importer {
                 FdxSection::Raw(_) => None,
             })
             .unwrap_or_default();
-        Script { title_page, elements: self.elements, fdx: Some(Box::new(self.document)) }
+        Script { title_page, elements: self.elements, fdx: Some(Box::new(self.document)), osf: None }
     }
 }
 

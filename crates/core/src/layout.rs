@@ -143,6 +143,9 @@ impl Layout {
         if let Some(document) = &script.fdx {
             crate::fdx::apply_layout(document, &mut layout);
         }
+        if let Some(document) = &script.osf {
+            crate::osf::apply_layout(document, &mut layout);
+        }
         layout
     }
 

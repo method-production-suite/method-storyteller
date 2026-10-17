@@ -437,7 +437,7 @@ fn all_commands() -> Vec<Command> {
             label: "Save As…",
             menu: "File/Save As…",
             shortcut: Some("Cmd+Shift+S"),
-            params: const { &[param("path", Path, true, "Destination; .fdx saves Final Draft XML, anything else Fountain")] },
+            params: const { &[param("path", Path, true, "Destination; .fdx saves FDX, .osf or .fadein Open Screenplay Format, anything else Fountain")] },
             enabled: always,
             run: |s, p| {
                 let path = path(p, "path")?;
@@ -464,12 +464,26 @@ fn all_commands() -> Vec<Command> {
         },
         Command {
             id: "file.export_fdx",
-            label: "Export Final Draft…",
-            menu: "File/Export Final Draft (.fdx)…",
+            label: "Export FDX…",
+            menu: "File/Export FDX (.fdx)…",
             shortcut: None,
             params: const { &[param("path", Path, true, "Destination .fdx")] },
             enabled: always,
             run: |s, p| export(s, p, FileFormat::Fdx),
+        },
+        Command {
+            id: "file.export_osf",
+            label: "Export Open Screenplay Format…",
+            menu: "File/Export Open Screenplay Format (.osf)…",
+            shortcut: None,
+            params: const { &[param("path", Path, true, "Destination .osf, or .fadein for the ZIP container")] },
+            enabled: always,
+            run: |s, p| {
+                let path = path(p, "path")?;
+                let format = if FileFormat::from_path(&path) == FileFormat::FadeIn { FileFormat::FadeIn } else { FileFormat::Osf };
+                files::save(&s.script, &path, format, &s.layout).map_err(|e| CommandError::Failed(e.to_string()))?;
+                Ok(Outcome::message(format!("Exported {}", path.display())))
+            },
         },
         Command {
             id: "file.export_fountain",

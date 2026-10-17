@@ -96,7 +96,7 @@ fn save_open_export_round_trip() {
     run(&registry, &mut s, "element.set_text", json!({ "text": "INT. ATTIC - NIGHT" }));
     run(&registry, &mut s, "element.insert", json!({ "kind": "action", "text": "Dust everywhere." }));
     run(&registry, &mut s, "title_page.set", json!({ "key": "Title", "value": "Attic" }));
-    for name in ["attic.fountain", "attic.fdx"] {
+    for name in ["attic.fountain", "attic.fdx", "attic.osf", "attic.fadein"] {
         let path = dir.path().join(name);
         run(&registry, &mut s, "file.save_as", json!({ "path": path }));
         assert!(!s.dirty);

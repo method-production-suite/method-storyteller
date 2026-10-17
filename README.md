@@ -1,15 +1,17 @@
 # Method Storyteller
 
 An open-source screenwriting app: free, native on macOS, Windows and Linux (built from source for
-now; installers are coming), and your script is a plain Fountain file you own.
+now; installers are coming), and your script is an open file you own (plain-text Fountain by
+default).
 
 - **Write without thinking about formatting.** Tab and Enter move between scene heading, action,
   character, parenthetical, dialogue and transition the way screenwriting apps have always worked.
   Character, location and time-of-day autocomplete.
 - **Industry pagination.** Courier Prime 12 pt, standard margins, 54 lines a page, `(MORE)` and
   `(CONT'D)` at page breaks, scene headings that never strand at the bottom of a page.
-- **Open formats.** Fountain is the native format (plain text, diff-friendly). `.fdx` import and
-  export. PDF export with embedded fonts and scene bookmarks.
+- **Open formats, your choice.** Write in Fountain (plain text, diff-friendly) or Open Screenplay
+  Format (structured XML that keeps more production detail). File > Save New Scripts as… sets the
+  default. Opens and saves `.fdx` and `.fadein`; exports PDF.
 - **Title page, scene navigator and scene numbers.**
 - **Scriptable.** Every action is a named command, every widget has an automation id, and a
   JSON-lines control channel drives the app or a headless engine.
@@ -95,5 +97,6 @@ Courier Prime is under the SIL Open Font License 1.1; see [ATTRIBUTION.md](ATTRI
 
 Part of the [Method Production Suite](https://methodproduction.com).
 
-Final Draft is a trademark of its owner. Method Storyteller is not affiliated with or endorsed by
-it; FDX support is built from the publicly known file structure.
+Final Draft and Fade In are trademarks of their owners. Method Storyteller is not affiliated with
+or endorsed by either; `.fdx` and `.fadein` support is built from publicly known file structures
+and published example documents.
