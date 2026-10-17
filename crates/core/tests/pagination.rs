@@ -173,6 +173,20 @@ fn dual_dialogue_side_by_side() {
 }
 
 #[test]
+fn dual_dialogue_moves_whole_to_the_next_page() {
+    // A dual block never splits across pages (docs/spec.md §5.1, rule 6): when it does not fit at
+    // the bottom of the page, both cues move together to the next one.
+    let paginated = check_golden("dual_dialogue_moves");
+    let first = &paginated.pages[0];
+    assert!(first.lines.iter().all(|l| l.text() != "MARA" && l.text() != "OWEN"), "half of the dual block stayed on page 1");
+    let second = &paginated.pages[1];
+    let mara = second.lines.iter().find(|l| l.text() == "MARA").unwrap();
+    let owen = second.lines.iter().find(|l| l.text() == "OWEN").unwrap();
+    assert_eq!(mara.row, owen.row);
+    assert!(owen.col > mara.col + 20);
+}
+
+#[test]
 fn scene_numbers_and_title_page() {
     let paginated = check_golden("scene_numbers");
     assert!(paginated.title_page.is_some());
