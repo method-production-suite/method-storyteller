@@ -78,7 +78,8 @@ PNGs. Commit them together.
 From an up-to-date `main` with a clean tree (`0.2.0` stands for the new version):
 
 1. Work through "Before the tag" in the shared checklist: version, green checks, pictures,
-   notes, helpers, README.
+   notes, helpers, README. Retake the pictures with `cargo xtask screens` (offscreen; the
+   terminal picture needs Chrome) and compare them with the committed ones before committing.
 2. Bump `version` in the root `Cargo.toml`, run `cargo check --workspace` so `Cargo.lock`
    follows, and write `docs/releases/0.2.0.md` from the skeleton.
 3. `cargo xtask ci`, then open a pull request with those changes (MReview reviews it).

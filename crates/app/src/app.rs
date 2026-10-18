@@ -32,7 +32,14 @@ struct AppCommand {
     shortcut: Option<&'static str>,
 }
 
-const APP_COMMANDS: [AppCommand; 19] = [
+/// ⌘⌥G on macOS; Ctrl+Shift+G elsewhere, where Ctrl+Alt is AltGr.
+const GO_TO_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Alt+G" } else { "Cmd+Shift+G" };
+
+/// Find Next and Previous: ⌘G and ⇧⌘G on macOS; F3 and Shift+F3 elsewhere.
+const FIND_NEXT_KEY: &str = if cfg!(target_os = "macos") { "Cmd+G" } else { "F3" };
+const FIND_PREVIOUS_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Shift+G" } else { "Shift+F3" };
+
+const APP_COMMANDS: [AppCommand; 24] = [
     AppCommand { id: "app.title_page", label: "Title Page…", menu: "File/Title Page…", shortcut: Some("Cmd+Shift+T") },
     AppCommand { id: "prefs.new_fountain", label: "Save New Scripts as Fountain", menu: "File/Save New Scripts as Fountain", shortcut: None },
     AppCommand {
@@ -42,6 +49,11 @@ const APP_COMMANDS: [AppCommand; 19] = [
         shortcut: None,
     },
     AppCommand { id: "app.quit", label: "Quit", menu: "File/Quit", shortcut: Some("Cmd+Q") },
+    AppCommand { id: "app.find", label: "Find…", menu: "Edit/Find…", shortcut: Some("Cmd+F") },
+    AppCommand { id: "app.find_next", label: "Find Next", menu: "Edit/Find Next", shortcut: Some(FIND_NEXT_KEY) },
+    AppCommand { id: "app.find_previous", label: "Find Previous", menu: "Edit/Find Previous", shortcut: Some(FIND_PREVIOUS_KEY) },
+    AppCommand { id: "app.rename_character", label: "Rename Character…", menu: "Production/Rename Character…", shortcut: None },
+    AppCommand { id: "app.go_to", label: "Go To…", menu: "Edit/Go To…", shortcut: Some(GO_TO_KEY) },
     AppCommand { id: "prefs.smart_quotes", label: "Smart Quotes", menu: "Format/Smart Quotes", shortcut: None },
     AppCommand { id: "view.navigator", label: "Scene Navigator", menu: "View/Scene Navigator", shortcut: Some("Cmd+Shift+N") },
     AppCommand { id: "view.page_view", label: "Page View", menu: "View/Page View", shortcut: Some("Cmd+Shift+P") },
@@ -94,6 +106,28 @@ struct TitleDraft {
     fields: Vec<(String, String)>,
 }
 
+/// The Rename Character dialog.
+#[derive(Default)]
+struct RenameDraft {
+    names: Vec<String>,
+    from: String,
+    to: String,
+    everywhere: bool,
+    error: Option<String>,
+    /// The new name belongs to another character and the writer has been asked about merging.
+    merge: bool,
+    focused: bool,
+}
+
+/// The Go To dialog: a scene number or a page.
+#[derive(Default)]
+struct GoToDraft {
+    text: String,
+    page: bool,
+    error: Option<String>,
+    focused: bool,
+}
+
 pub struct StorytellerApp {
     session: Session,
     registry: Registry,
@@ -106,6 +140,9 @@ pub struct StorytellerApp {
     prompt: Option<Pending>,
     discard_confirmed: bool,
     title_dialog: Option<TitleDraft>,
+    go_to: Option<GoToDraft>,
+    rename: Option<RenameDraft>,
+    find: Option<find_bar::FindBar>,
     help: HelpWindows,
     status: String,
     error: Option<String>,
@@ -115,6 +152,9 @@ pub struct StorytellerApp {
     /// The macOS menu bar; `None` elsewhere, or if it could not be installed (the window menu shows).
     #[cfg(target_os = "macos")]
     native: Option<crate::native_menu::NativeMenu>,
+    /// Drawn for the offscreen pictures: the window as a Mac shows it, menus in the menu bar.
+    #[cfg(test)]
+    pictures: bool,
 }
 
 /// One menu entry: command id, label, shortcut text and whether it can run now.
@@ -127,9 +167,17 @@ struct MenuEntry {
 
 impl StorytellerApp {
     pub fn new(cc: &eframe::CreationContext<'_>, file: Option<PathBuf>, control_port: Option<u16>) -> Self {
+        let mut app = Self::without_menu(cc, file, control_port, Location::Auto);
+        app.install_menu(&cc.egui_ctx);
+        app
+    }
+
+    /// The app without the macOS menu bar, which offscreen tests and pictures leave out.
+    /// Tests pass [`Location::Memory`] so they never touch real settings.
+    fn without_menu(cc: &eframe::CreationContext<'_>, file: Option<PathBuf>, control_port: Option<u16>, settings: Location) -> Self {
         editor::install_fonts(&cc.egui_ctx);
         theme::apply(&cc.egui_ctx);
-        let (prefs, report) = SettingsStore::<Prefs>::open(Location::Auto);
+        let (prefs, report) = SettingsStore::<Prefs>::open(settings);
         let registry = Registry::new();
         let mut shortcuts = Vec::new();
         for command in registry.iter() {
@@ -159,6 +207,9 @@ impl StorytellerApp {
             prompt: None,
             discard_confirmed: false,
             title_dialog: None,
+            go_to: None,
+            rename: None,
+            find: None,
             help: HelpWindows::default(),
             status: String::new(),
             error: report.has_problems().then(|| "Settings could not be fully loaded; defaults are in use.".to_string()),
@@ -167,8 +218,9 @@ impl StorytellerApp {
             shortcuts,
             #[cfg(target_os = "macos")]
             native: None,
+            #[cfg(test)]
+            pictures: false,
         };
-        app.install_menu(&cc.egui_ctx);
         let last_seen = app.prefs.get().general.last_seen_version.clone();
         app.help.whats_new = help::whats_new_due(&last_seen, help::VERSION);
         if help::record_version(&last_seen, help::VERSION) {
@@ -227,6 +279,28 @@ impl StorytellerApp {
                 let fields =
                     storyteller_core::TitlePage::STANDARD_KEYS.iter().map(|k| (k.to_string(), page.get(k).unwrap_or("").to_string())).collect();
                 self.title_dialog = Some(TitleDraft { fields });
+            }
+            "app.go_to" => self.go_to = Some(GoToDraft::default()),
+            "app.rename_character" => {
+                let names: Vec<String> = storyteller_engine::commands::character_names(&self.session.script).into_iter().map(|(n, _)| n).collect();
+                // The cue the caret is in, if any, else the character with the most speeches.
+                let here = self.session.current().filter(|e| e.kind == ElementKind::Character).map(|e| e.character_name().to_uppercase());
+                let from = here.filter(|n| names.contains(n)).or_else(|| names.first().cloned()).unwrap_or_default();
+                if names.is_empty() {
+                    self.status = "There are no characters to rename yet.".into();
+                } else {
+                    self.rename = Some(RenameDraft { names, from, ..RenameDraft::default() });
+                }
+            }
+            "app.find" => match &mut self.find {
+                Some(bar) => bar.focus(),
+                None => self.find = Some(find_bar::FindBar::open()),
+            },
+            "app.find_next" | "app.find_previous" => {
+                if self.find.is_none() {
+                    self.find = Some(find_bar::FindBar::open());
+                }
+                self.find_step(if id == "app.find_next" { find_bar::Step::Next } else { find_bar::Step::Previous });
             }
             "app.quit" => ctx.send_viewport_cmd(ViewportCommand::Close),
             "view.navigator" => {
@@ -653,6 +727,10 @@ impl StorytellerApp {
 
     /// Whether menus are drawn inside the window (not on macOS with the menu bar installed).
     fn window_menu(&self) -> bool {
+        #[cfg(test)]
+        if self.pictures {
+            return false;
+        }
         #[cfg(target_os = "macos")]
         {
             self.native.is_none()
@@ -810,6 +888,7 @@ impl StorytellerApp {
 
     fn navigator(&mut self, ui: &mut egui::Ui) {
         let scenes = self.session.paginated().scenes.clone();
+        let lengths: std::collections::HashMap<usize, u32> = self.session.scene_lengths().iter().map(|l| (l.element, l.eighths)).collect();
         let current =
             self.session.script.elements.iter().take(self.session.caret.element + 1).filter(|e| e.kind == ElementKind::SceneHeading).count();
         ui.add_space(8.0);
@@ -834,14 +913,23 @@ impl StorytellerApp {
                 let painter = ui.painter().with_clip_rect(rect);
                 let small = egui::FontId::proportional(11.5);
                 painter.text(rect.left_center() + egui::vec2(30.0, 0.0), egui::Align2::RIGHT_CENTER, number, small.clone(), weak);
-                painter.text(rect.right_center() - egui::vec2(8.0, 0.0), egui::Align2::RIGHT_CENTER, scene.page.to_string(), small, weak);
+                painter.text(rect.right_center() - egui::vec2(8.0, 0.0), egui::Align2::RIGHT_CENTER, scene.page.to_string(), small.clone(), weak);
+                // Length in eighths of a page, as a schedule counts it.
+                let length = lengths.get(&scene.element).map(|&e| storyteller_core::paginate::format_eighths(e));
+                if let Some(length) = &length {
+                    painter.text(rect.right_center() - egui::vec2(34.0, 0.0), egui::Align2::RIGHT_CENTER, length, small, weak);
+                }
                 let galley = ui.fonts_mut(|f| {
                     let mut job = egui::text::LayoutJob::simple_singleline(heading.to_string(), egui::FontId::proportional(13.0), text);
-                    job.wrap = egui::text::TextWrapping::truncate_at_width(rect.width() - 76.0);
+                    job.wrap = egui::text::TextWrapping::truncate_at_width(rect.width() - 118.0);
                     f.layout_job(job)
                 });
                 painter.galley(rect.left_center() + egui::vec2(38.0, -galley.size().y / 2.0), galley, text);
-                let response = response.on_hover_text(format!("{heading}\nPage {}", scene.page));
+                let detail = match &length {
+                    Some(length) => format!("{heading}\nPage {}, length {length}", scene.page),
+                    None => format!("{heading}\nPage {}", scene.page),
+                };
+                let response = response.on_hover_text(detail);
                 self.automation.add(format!("navigator.scene.{n}"), "listitem", heading.to_string(), &response);
                 if response.clicked() {
                     self.editor.pending_focus = Some((scene.element, 0));
@@ -939,6 +1027,154 @@ impl StorytellerApp {
         }
     }
 
+    fn rename_dialog(&mut self, ctx: &egui::Context) {
+        let Some(draft) = &mut self.rename else { return };
+        let mut go = false;
+        let mut close = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+        egui::Window::new("Rename Character").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_TOP, [0.0, 120.0]).show(ctx, |ui| {
+            egui::Grid::new("storyteller.rename_grid").num_columns(2).spacing([12.0, 8.0]).show(ui, |ui| {
+                ui.label("Character");
+                let combo =
+                    egui::ComboBox::from_id_salt("storyteller.rename_from").selected_text(draft.from.as_str()).width(240.0).show_ui(ui, |ui| {
+                        for name in &draft.names {
+                            ui.selectable_value(&mut draft.from, name.clone(), name.as_str());
+                        }
+                    });
+                self.automation.add("dialog.rename.from", "combobox", "Character", &combo.response);
+                ui.end_row();
+                ui.label("New name");
+                let to = ui.add(egui::TextEdit::singleline(&mut draft.to).desired_width(240.0));
+                self.automation.add("dialog.rename.to", "textbox", "New name", &to);
+                if !draft.focused {
+                    to.request_focus();
+                    draft.focused = true;
+                }
+                if to.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    go = true;
+                }
+                ui.end_row();
+            });
+            let everywhere = ui.checkbox(&mut draft.everywhere, "Also where the name is capitalised in action, dialogue and other text");
+            self.automation.add("dialog.rename.everywhere", "checkbox", "Also in other text", &everywhere);
+            if let Some(error) = &draft.error {
+                ui.colored_label(ui.visuals().error_fg_color, error);
+            }
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                let label = if draft.merge { "Merge" } else { "Rename" };
+                let ok = ui.button(label);
+                self.automation.add("dialog.rename.ok", "button", label, &ok);
+                let cancel = ui.button("Cancel");
+                self.automation.add("dialog.rename.cancel", "button", "Cancel", &cancel);
+                go |= ok.clicked();
+                close |= cancel.clicked();
+            });
+        });
+        if close {
+            self.rename = None;
+            self.refocus();
+            return;
+        }
+        if !go {
+            return;
+        }
+        // Renaming onto another character merges the two: ask once, then the button says Merge.
+        let new_name = draft.to.trim().to_uppercase();
+        if !draft.merge && new_name != draft.from && draft.names.contains(&new_name) {
+            draft.merge = true;
+            draft.error = Some(format!("{new_name} is already a character. Merge {} into {new_name}?", draft.from));
+            return;
+        }
+        let merge = draft.merge && draft.names.contains(&new_name);
+        let request =
+            params(&[("from", json!(draft.from)), ("to", json!(draft.to)), ("everywhere", json!(draft.everywhere)), ("merge", json!(merge))]);
+        match self.registry.run("character.rename", &mut self.session, &request) {
+            Ok(outcome) => {
+                self.rename = None;
+                self.status = outcome.message.unwrap_or_default();
+                self.refocus();
+            }
+            Err(error) => {
+                if let Some(draft) = &mut self.rename {
+                    draft.error = Some(match error {
+                        storyteller_engine::CommandError::Invalid { reason, .. } => capitalise(&reason),
+                        other => other.to_string(),
+                    });
+                }
+            }
+        }
+    }
+
+    fn go_to_dialog(&mut self, ctx: &egui::Context) {
+        let Some(draft) = &mut self.go_to else { return };
+        let mut go = false;
+        let mut close = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+        egui::Window::new("Go To").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_TOP, [0.0, 120.0]).show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                let scene = ui.selectable_value(&mut draft.page, false, "Scene");
+                self.automation.add("dialog.go_to.scene", "radio", "Scene", &scene);
+                let page = ui.selectable_value(&mut draft.page, true, "Page");
+                self.automation.add("dialog.go_to.page", "radio", "Page", &page);
+            });
+            let hint = if draft.page { "Page number" } else { "Scene number, such as 12 or 12A" };
+            let response = ui.add(egui::TextEdit::singleline(&mut draft.text).hint_text(hint).desired_width(240.0));
+            self.automation.add("dialog.go_to.text", "textbox", "Go to", &response);
+            if !draft.focused {
+                response.request_focus();
+                draft.focused = true;
+            }
+            if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                go = true;
+            }
+            if let Some(error) = &draft.error {
+                ui.colored_label(ui.visuals().error_fg_color, error);
+            }
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                let ok = ui.button("Go");
+                self.automation.add("dialog.go_to.ok", "button", "Go", &ok);
+                let cancel = ui.button("Cancel");
+                self.automation.add("dialog.go_to.cancel", "button", "Cancel", &cancel);
+                go |= ok.clicked();
+                close |= cancel.clicked();
+            });
+        });
+        if close {
+            self.go_to = None;
+            self.refocus();
+            return;
+        }
+        if !go {
+            return;
+        }
+        let text = draft.text.trim().to_string();
+        let target = if draft.page {
+            match text.parse::<u64>() {
+                Ok(page) => params(&[("page", json!(page))]),
+                Err(_) => {
+                    draft.error = Some("Type a page number.".into());
+                    return;
+                }
+            }
+        } else {
+            params(&[("scene", json!(text))])
+        };
+        match self.registry.run("nav.go_to", &mut self.session, &target) {
+            Ok(_) => {
+                self.go_to = None;
+                self.editor.pending_focus = Some((self.session.caret.element, 0));
+            }
+            Err(error) => {
+                if let Some(draft) = &mut self.go_to {
+                    draft.error = Some(match error {
+                        storyteller_engine::CommandError::Invalid { reason, .. } => capitalise(&reason),
+                        other => other.to_string(),
+                    });
+                }
+            }
+        }
+    }
+
     fn help_windows(&mut self, ctx: &egui::Context) {
         let rows = if self.help.shortcuts { self.shortcut_rows(ctx) } else { Vec::new() };
         match self.help.show(ctx, &mut self.automation, &rows) {
@@ -992,6 +1228,9 @@ impl StorytellerApp {
             egui::Panel::top("storyteller.menu").show(ui, |ui| self.menu_bar(ui));
         }
         egui::Panel::top("storyteller.top_bar").exact_size(theme::TOP_BAR_HEIGHT).show(ui, |ui| self.top_bar(ui));
+        if self.find.is_some() {
+            egui::Panel::top("storyteller.find").show(ui, |ui| self.find_bar(ui));
+        }
         egui::Panel::bottom("storyteller.status").show(ui, |ui| self.status_bar(ui));
         if self.prefs.get().view.navigator {
             egui::Panel::left("storyteller.navigator").resizable(true).default_size(250.0).show(ui, |ui| self.navigator(ui));
@@ -1004,6 +1243,8 @@ impl StorytellerApp {
             .inner;
         self.apply(actions);
         self.title_page_dialog(&ctx);
+        self.go_to_dialog(&ctx);
+        self.rename_dialog(&ctx);
         self.help_windows(&ctx);
         self.unsaved_prompt(&ctx);
         for id in std::mem::take(&mut self.queued) {
@@ -1109,7 +1350,7 @@ impl eframe::App for StorytellerApp {
         self.handle_screenshot(ctx);
         self.handle_control(ctx);
         self.sync_native_menu();
-        if self.prompt.is_none() && self.title_dialog.is_none() {
+        if self.prompt.is_none() && self.title_dialog.is_none() && self.go_to.is_none() && self.rename.is_none() {
             for (shortcut, id) in self.shortcuts.clone() {
                 if self.menu_owns_shortcut(id) {
                     continue;
@@ -1149,3 +1390,21 @@ impl eframe::App for StorytellerApp {
         let _ = self.prefs.flush();
     }
 }
+
+/// `there is no page 9` → `There is no page 9.`
+fn capitalise(text: &str) -> String {
+    let mut chars = text.chars();
+    let first = chars.next().map(|c| c.to_uppercase().collect::<String>()).unwrap_or_default();
+    format!("{first}{}.", chars.as_str())
+}
+
+#[path = "find_bar.rs"]
+mod find_bar;
+
+#[cfg(test)]
+#[path = "screens.rs"]
+mod screens;
+
+#[cfg(test)]
+#[path = "ui_tests.rs"]
+mod ui_tests;

@@ -8,6 +8,7 @@ use serde_json::{Map, Value, json};
 use storyteller_core::{Element, ElementKind, Script, autocomplete};
 
 use crate::files::{self, FileFormat};
+use crate::find;
 use crate::flow;
 use crate::session::{Caret, EditKind, Session, floor_char_boundary};
 
@@ -150,6 +151,84 @@ impl Registry {
         session.clamp_caret();
         Ok(outcome)
     }
+}
+
+/// The new name in the case of the mention it replaces: `NORA` → `EMMA`, `Nora` → `Emma`.
+/// A mixed-case new name such as `McCLANE` is kept as typed for a capitalised mention.
+fn name_like(found: &str, to: &str) -> std::string::String {
+    let all_caps = |t: &str| t.chars().any(char::is_alphabetic) && t.chars().all(|c| !c.is_lowercase());
+    if all_caps(found) && found.chars().filter(|c| c.is_alphabetic()).count() > 1 {
+        return to.to_uppercase();
+    }
+    if !all_caps(to) && to.chars().any(char::is_uppercase) {
+        return to.to_string();
+    }
+    let mut chars = to.chars();
+    chars.next().map(|c| c.to_uppercase().chain(chars.flat_map(char::to_lowercase)).collect()).unwrap_or_default()
+}
+
+fn plural(count: usize, one: &'static str, many: &'static str) -> &'static str {
+    if count == 1 { one } else { many }
+}
+
+/// Every character name in the script, by number of speeches, most first, then by name.
+pub fn character_names(script: &Script) -> Vec<(String, usize)> {
+    let mut counts: Vec<(String, usize)> = Vec::new();
+    for element in script.elements.iter().filter(|e| e.kind == ElementKind::Character) {
+        let name = element.character_name().to_uppercase();
+        if name.is_empty() {
+            continue;
+        }
+        match counts.iter_mut().find(|(n, _)| *n == name) {
+            Some((_, count)) => *count += 1,
+            None => counts.push((name, 1)),
+        }
+    }
+    counts.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    counts
+}
+
+/// The find parameters shared by `find.*`.
+fn find_query(params: &Params) -> Result<find::Query, CommandError> {
+    let text = string(params, "text")?;
+    if text.is_empty() {
+        return Err(CommandError::Invalid { name: "text", reason: "nothing to find".into() });
+    }
+    let kind = match opt_string(params, "kind")? {
+        Some(_) => Some(kind(params, "kind")?),
+        None => None,
+    };
+    Ok(find::Query { text, case: opt_bool(params, "case")?.unwrap_or(false), whole_word: opt_bool(params, "whole_word")?.unwrap_or(false), kind })
+}
+
+/// The element `nav.go_to` lands on: a scene heading, or the first element on a page.
+fn go_to(session: &mut Session, scene: Option<String>, page: Option<usize>) -> Result<usize, CommandError> {
+    let paginated = session.paginated();
+    if let Some(scene) = scene {
+        let wanted = scene.trim();
+        // The printed scene number (12, 12A). Only a script with no scene numbers at all goes by
+        // position, so a missing number is never mistaken for another scene.
+        let numbered = paginated.scenes.iter().any(|s| s.number.is_some());
+        let found = if numbered {
+            paginated.scenes.iter().find(|s| s.number.as_deref().is_some_and(|n| n.eq_ignore_ascii_case(wanted)))
+        } else {
+            wanted.parse::<usize>().ok().and_then(|n| n.checked_sub(1)).and_then(|n| paginated.scenes.get(n))
+        };
+        return found.map(|s| s.element).ok_or_else(|| CommandError::Invalid { name: "scene", reason: format!("there is no scene {wanted}") });
+    }
+    let page = page.ok_or(CommandError::Missing("scene"))?;
+    let count = paginated.page_count();
+    let wanted = u32::try_from(page).unwrap_or(u32::MAX);
+    if page == 0 || page > count {
+        return Err(CommandError::Invalid { name: "page", reason: format!("there is no page {page} (the script has {count})") });
+    }
+    // The first element that starts on the page, or the one running onto it from the page before.
+    let pages = &paginated.element_pages;
+    pages
+        .iter()
+        .position(|&p| p == wanted)
+        .or_else(|| pages.iter().rposition(|&p| p > 0 && p < wanted))
+        .ok_or_else(|| CommandError::Invalid { name: "page", reason: format!("page {page} has no script text") })
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -468,6 +547,11 @@ fn all_commands() -> Vec<Command> {
     use ParamType::*;
     const INDEX: ParamSpec = param("index", Integer, false, "Element index (default: the caret's element)");
     const OFFSET: ParamSpec = param("offset", Integer, false, "Byte offset in the element text (default: the caret)");
+    const FIND_TEXT: ParamSpec = param("text", String, true, "Text to find");
+    const FIND_CASE: ParamSpec = param("case", Bool, false, "Match case exactly");
+    const FIND_WORD: ParamSpec = param("whole_word", Bool, false, "Whole words only");
+    const FIND_KIND: ParamSpec = param("kind", Kind, false, "Only in elements of this type");
+    const FIND_REPLACEMENT: ParamSpec = param("replacement", String, true, "Replacement text");
     vec![
         Command {
             id: "file.new",
@@ -614,6 +698,222 @@ fn all_commands() -> Vec<Command> {
                 s.break_typing();
                 Ok(Outcome::done())
             },
+        },
+        Command {
+            id: "nav.go_to",
+            label: "Go To",
+            menu: "",
+            shortcut: None,
+            params: const {
+                &[
+                    param("scene", String, false, "Scene number as printed (12, 12A), or its position when scenes are unnumbered"),
+                    param("page", Integer, false, "Page number"),
+                ]
+            },
+            enabled: always,
+            run: |s, p| {
+                let index = go_to(s, opt_string(p, "scene")?, opt_index(p, "page")?)?;
+                s.caret = Caret { element: index, offset: 0 };
+                s.break_typing();
+                Ok(Outcome::value(json!({ "element": index })))
+            },
+        },
+        Command {
+            id: "find.next",
+            label: "Find Next",
+            menu: "",
+            shortcut: None,
+            params: const {
+                &[FIND_TEXT, FIND_CASE, FIND_WORD, FIND_KIND, param("backwards", Bool, false, "Find the previous match instead"), INDEX, OFFSET]
+            },
+            enabled: always,
+            run: |s, p| {
+                let query = find_query(p)?;
+                let hits = find::find_all(&s.script, &query);
+                let element = opt_index(p, "index")?.unwrap_or(s.caret.element);
+                let offset = opt_index(p, "offset")?.unwrap_or(s.caret.offset);
+                let backwards = opt_bool(p, "backwards")?.unwrap_or(false);
+                let Some((number, hit)) = find::find_next(&hits, element, offset, backwards) else {
+                    return Ok(Outcome { message: Some(format!("“{}” is not in the script", query.text)), value: json!({ "total": 0 }) });
+                };
+                // Forward, the caret goes after the match; backwards, before it, so repeating moves on.
+                s.caret = Caret { element: hit.element, offset: if backwards { hit.start } else { hit.end } };
+                s.break_typing();
+                Ok(Outcome::value(json!({ "element": hit.element, "start": hit.start, "end": hit.end, "number": number + 1, "total": hits.len() })))
+            },
+        },
+        Command {
+            id: "find.replace",
+            label: "Replace",
+            menu: "",
+            shortcut: None,
+            params: const {
+                &[
+                    FIND_TEXT,
+                    FIND_CASE,
+                    FIND_WORD,
+                    FIND_KIND,
+                    FIND_REPLACEMENT,
+                    INDEX,
+                    param("start", Integer, true, "Byte offset where the match to replace starts"),
+                ]
+            },
+            enabled: always,
+            run: |s, p| {
+                let query = find_query(p)?;
+                let replacement = string(p, "replacement")?;
+                let index = element_index(s, p)?;
+                let start = opt_index(p, "start")?.ok_or(CommandError::Missing("start"))?;
+                let hits = find::find_all(&s.script, &query);
+                let Some(hit) = hits.iter().find(|h| h.element == index && h.start == start) else {
+                    return Ok(Outcome { message: Some("Nothing to replace there".into()), value: json!({ "replaced": false }) });
+                };
+                let text = s.script.elements.get(index).map(|e| e.text.clone()).unwrap_or_default();
+                let new_text = format!("{}{replacement}{}", text.get(..hit.start).unwrap_or(""), text.get(hit.end..).unwrap_or(""));
+                set_text(s, index, &new_text, false)?;
+                s.caret =
+                    Caret { element: index, offset: (hit.start + replacement.len()).min(s.script.elements.get(index).map_or(0, |e| e.text.len())) };
+                Ok(Outcome::value(json!({ "replaced": true })))
+            },
+        },
+        Command {
+            id: "find.replace_all",
+            label: "Replace All",
+            menu: "",
+            shortcut: None,
+            params: const { &[FIND_TEXT, FIND_CASE, FIND_WORD, FIND_KIND, FIND_REPLACEMENT] },
+            enabled: always,
+            run: |s, p| {
+                let query = find_query(p)?;
+                let replacement = string(p, "replacement")?;
+                let hits = find::find_all(&s.script, &query);
+                if hits.is_empty() {
+                    return Ok(Outcome { message: Some(format!("“{}” is not in the script", query.text)), value: json!({ "count": 0 }) });
+                }
+                // Work out every new text first: a replacement that changes nothing is no edit.
+                let mut changed: Vec<(usize, std::string::String)> = Vec::new();
+                for (index, element) in s.script.elements.iter().enumerate() {
+                    let ranges: Vec<&find::Hit> = hits.iter().filter(|h| h.element == index).collect();
+                    if ranges.is_empty() {
+                        continue;
+                    }
+                    let mut text = element.text.clone();
+                    for hit in ranges.iter().rev() {
+                        text.replace_range(hit.start..hit.end, &replacement);
+                    }
+                    if element.kind.is_single_line() {
+                        text = text.replace(['\n', '\r'], " ");
+                    }
+                    if element.kind.is_caps() {
+                        text = text.to_uppercase();
+                    }
+                    if text != element.text {
+                        changed.push((index, text));
+                    }
+                }
+                if changed.is_empty() {
+                    return Ok(Outcome { message: Some("Nothing to change".into()), value: json!({ "count": 0 }) });
+                }
+                // One undo step for the lot.
+                s.checkpoint(EditKind::Other);
+                for (index, text) in changed {
+                    if let Some(element) = s.script.elements.get_mut(index) {
+                        element.text = text;
+                    }
+                }
+                s.clamp_caret();
+                let count = hits.len();
+                Ok(Outcome {
+                    message: Some(format!("Replaced {count} {}", if count == 1 { "match" } else { "matches" })),
+                    value: json!({ "count": count }),
+                })
+            },
+        },
+        Command {
+            id: "character.rename",
+            label: "Rename Character",
+            menu: "",
+            shortcut: None,
+            params: const {
+                &[
+                    param("from", String, true, "The character's current name"),
+                    param("to", String, true, "The new name"),
+                    param("everywhere", Bool, false, "Also rename capitalised whole-word mentions in action, dialogue and other text"),
+                    param("merge", Bool, false, "Allow renaming onto a name another character already has, merging the two"),
+                ]
+            },
+            enabled: always,
+            run: |s, p| {
+                let from = string(p, "from")?.trim().to_uppercase();
+                let to = string(p, "to")?.trim().to_string();
+                if to.is_empty() {
+                    return Err(CommandError::Invalid { name: "to", reason: "the new name is empty".into() });
+                }
+                if to.contains(['(', ')', '^']) {
+                    return Err(CommandError::Invalid {
+                        name: "to",
+                        reason: "a name cannot contain ( ) or ^; extensions such as (V.O.) are kept as they are".into(),
+                    });
+                }
+                let new_name = to.to_uppercase();
+                let merge = opt_bool(p, "merge")?.unwrap_or(false);
+                if new_name != from && !merge && character_names(&s.script).iter().any(|(n, _)| *n == new_name) {
+                    return Err(CommandError::Invalid {
+                        name: "to",
+                        reason: format!("{new_name} is already a character; renaming would merge the two"),
+                    });
+                }
+                let everywhere = opt_bool(p, "everywhere")?.unwrap_or(false);
+                let is_cue = |e: &Element| e.kind == ElementKind::Character && e.character_name().to_uppercase() == from;
+                if !s.script.elements.iter().any(is_cue) {
+                    return Err(CommandError::Invalid { name: "from", reason: format!("no character is called {from}") });
+                }
+                let mention = find::Query { text: from.clone(), case: false, whole_word: true, kind: None };
+                // One undo step for every cue and mention.
+                s.checkpoint(EditKind::Other);
+                let (mut cues, mut mentions) = (0, 0);
+                for element in &mut s.script.elements {
+                    if is_cue(element) {
+                        // Keep the extensions: `NORA (V.O.)` becomes `EMMA (V.O.)`.
+                        let name_len = element.character_name().len();
+                        let start = element.text.len() - element.text.trim_start().len();
+                        let rest = element.text.get(start + name_len..).unwrap_or("").to_string();
+                        element.text = format!("{new_name}{rest}");
+                        cues += 1;
+                    } else if everywhere && element.kind != ElementKind::Character {
+                        // Names in prose are capitalised, so `will` is not WILL and `may` is not MAY.
+                        let hits: Vec<(usize, usize)> = find::find_in(&element.text, &mention)
+                            .into_iter()
+                            .filter(|&(start, _)| element.text.get(start..).and_then(|t| t.chars().next()).is_some_and(char::is_uppercase))
+                            .collect();
+                        for &(start, end) in hits.iter().rev() {
+                            let found = element.text.get(start..end).unwrap_or("");
+                            let name = name_like(found, &to);
+                            element.text.replace_range(start..end, &name);
+                        }
+                        if element.kind.is_caps() {
+                            element.text = element.text.to_uppercase();
+                        }
+                        mentions += hits.len();
+                    }
+                }
+                s.clamp_caret();
+                let message = if everywhere {
+                    format!("Renamed {from} in {cues} {} and {mentions} {}", plural(cues, "cue", "cues"), plural(mentions, "mention", "mentions"))
+                } else {
+                    format!("Renamed {from} in {cues} {}", plural(cues, "cue", "cues"))
+                };
+                Ok(Outcome { message: Some(message), value: json!({ "cues": cues, "mentions": mentions }) })
+            },
+        },
+        Command {
+            id: "character.list",
+            label: "List Characters",
+            menu: "",
+            shortcut: None,
+            params: &[],
+            enabled: always,
+            run: |s, _| Ok(Outcome::value(json!(character_names(&s.script)))),
         },
         Command {
             id: "element.set_text",
