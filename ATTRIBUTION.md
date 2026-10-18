@@ -26,3 +26,6 @@ Rust dependencies are fetched by Cargo and keep their own licences (see `Cargo.l
 [craft-libs](https://github.com/storytold/craft-libs) (MIT OR Apache-2.0) is used as a git
 dependency pinned to one revision; its own third-party notices are in its `NOTICE` and
 `ATTRIBUTION.md`. No code is copied from it into this repository.
+[method-libs](https://github.com/method-production-suite/method-libs) (MIT OR Apache-2.0)
+provides the updater, `method-update`, as a git dependency pinned to one revision.
+`scripts/check-ignore-expiry.py` is copied from it unchanged.

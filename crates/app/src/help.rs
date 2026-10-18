@@ -14,8 +14,6 @@ pub const SUITE_WEBSITE: &str = "https://methodproduction.com";
 pub const USER_GUIDE: &str = "https://github.com/method-production-suite/method-storyteller/blob/main/docs/user-guide.md";
 /// Where a bug report goes.
 pub const NEW_ISSUE: &str = "https://github.com/method-production-suite/method-storyteller/issues/new";
-/// The menu's tooltip and status line until the updater exists.
-pub const UPDATES_LATER: &str = "Updates arrive with the first release";
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 const LICENCE: &str = "MIT OR Apache-2.0";

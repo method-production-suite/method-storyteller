@@ -10,6 +10,7 @@ mod help;
 mod native_menu;
 mod prefs;
 mod theme;
+mod updates;
 
 use std::path::PathBuf;
 
@@ -37,6 +38,7 @@ fn main() -> eframe::Result {
     }));
 
     prefs::migrate_legacy_folders();
+    updates::sweep_at_startup();
 
     let viewport = egui::ViewportBuilder::default()
         .with_title(storyteller_engine::APP_NAME)

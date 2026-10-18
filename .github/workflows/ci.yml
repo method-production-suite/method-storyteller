@@ -53,8 +53,8 @@ jobs:
           else
             base=""
           fi
-          # craft-libs is pinned to one reviewed revision (Cargo.toml).
-          allow=(--allow-git https://github.com/storytold/craft-libs)
+          # craft-libs and method-libs are pinned to one reviewed revision each (Cargo.toml).
+          allow=(--allow-git https://github.com/storytold/craft-libs --allow-git https://github.com/method-production-suite/method-libs)
           if [ -n "$base" ]; then
             python3 scripts/check-crate-ages.py --only-changed "$base" "${allow[@]}"
           else
@@ -68,6 +68,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # deny.toml's `# ignore-expires:` date; fails once it has passed while the ignores it
+      # covers are still listed.
+      - run: python3 scripts/check-ignore-expiry.py
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
           command: check
