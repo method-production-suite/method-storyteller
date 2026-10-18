@@ -239,9 +239,19 @@ pub fn set_text(session: &mut Session, index: usize, text: &str, typing: bool) -
     if element.text == text {
         return Ok(());
     }
+    // Typing "int." or "ext." at the start of action makes it a scene heading, as in Final Draft.
+    let becomes_heading = typing && element.kind == ElementKind::Action && flow::is_heading_start(&text);
     session.checkpoint(if typing { EditKind::Typing(index) } else { EditKind::Other });
     if let Some(element) = session.script.elements.get_mut(index) {
         element.text = text;
+    }
+    if becomes_heading {
+        // Its own undo step, so one Undo turns it back into the action just typed.
+        session.checkpoint(EditKind::Other);
+        if let Some(element) = session.script.elements.get_mut(index) {
+            element.kind = ElementKind::SceneHeading;
+            element.normalize();
+        }
     }
     Ok(())
 }
@@ -280,24 +290,23 @@ fn new_element(kind: ElementKind) -> (Element, usize) {
     if kind == ElementKind::Parenthetical { (Element::new(kind, "()"), 1) } else { (Element::new(kind, ""), 0) }
 }
 
+/// What Enter did.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Entered {
+    /// Ended the element and started the next one.
+    Next,
+    /// The element is empty: the app offers the element picker (Final Draft's behaviour).
+    Picker,
+}
+
 /// Enter at the caret: Final Draft element flow.
-pub fn enter(session: &mut Session, index: usize, offset: usize) -> Result<(), CommandError> {
+pub fn enter(session: &mut Session, index: usize, offset: usize) -> Result<Entered, CommandError> {
     let Some(element) = session.script.elements.get(index).cloned() else {
         return Err(CommandError::Invalid { name: "index", reason: "no such element".into() });
     };
     let rule = flow::rule_for(element.kind);
-    let empty = element.text.trim().is_empty() || (element.kind == ElementKind::Parenthetical && element.text.trim() == "()");
-    if empty {
-        set_kind(session, index, rule.enter_empty)?;
-        if let Some(element) = session.script.elements.get_mut(index) {
-            element.text.clear();
-        }
-        let (fresh, caret) = new_element(rule.enter_empty);
-        if let Some(element) = session.script.elements.get_mut(index) {
-            element.text = fresh.text;
-        }
-        session.caret = Caret { element: index, offset: caret };
-        return Ok(());
+    if flow::is_empty(element.kind, &element.text) {
+        return Ok(Entered::Picker);
     }
     session.checkpoint(EditKind::Other);
     let offset = floor_char_boundary(&element.text, offset);
@@ -305,7 +314,7 @@ pub fn enter(session: &mut Session, index: usize, offset: usize) -> Result<(), C
         // At the start of a paragraph: open an empty one of the same type above it.
         insert(session, index, Element::new(element.kind, ""))?;
         session.caret = Caret { element: index + 1, offset: 0 };
-        return Ok(());
+        return Ok(Entered::Next);
     }
     let mut head = element.text.get(..offset).unwrap_or("").to_string();
     let mut tail = element.text.get(offset..).unwrap_or("").trim_start().to_string();
@@ -326,7 +335,53 @@ pub fn enter(session: &mut Session, index: usize, offset: usize) -> Result<(), C
     }
     insert(session, index + 1, fresh)?;
     session.caret = Caret { element: index + 1, offset: caret };
+    Ok(Entered::Next)
+}
+
+/// Start an element of `kind` right after `index`, with the caret in it.
+fn start_after(session: &mut Session, index: usize, kind: ElementKind) -> Result<(), CommandError> {
+    session.checkpoint(EditKind::Other);
+    let (fresh, caret) = new_element(kind);
+    insert(session, index + 1, fresh)?;
+    session.caret = Caret { element: index + 1, offset: caret };
     Ok(())
+}
+
+/// Tab: an empty element changes type; after a non-empty one the next element starts
+/// (a parenthetical after a cue or a speech, a cue after action).
+pub fn tab(session: &mut Session, index: usize) -> Result<(), CommandError> {
+    let Some(element) = session.script.elements.get(index) else {
+        return Err(CommandError::Invalid { name: "index", reason: "no such element".into() });
+    };
+    let rule = flow::rule_for(element.kind);
+    if flow::is_empty(element.kind, &element.text) {
+        set_kind(session, index, rule.tab_empty)?;
+        let (fresh, caret) = new_element(rule.tab_empty);
+        if let Some(element) = session.script.elements.get_mut(index) {
+            element.text = fresh.text;
+        }
+        session.caret = Caret { element: index, offset: caret };
+        return Ok(());
+    }
+    start_after(session, index, rule.tab_next)
+}
+
+/// ⌘1–⌘7: an empty element becomes that type; otherwise an element of that type starts after it.
+pub fn element_shortcut(session: &mut Session, index: usize, kind: ElementKind) -> Result<(), CommandError> {
+    let Some(element) = session.script.elements.get(index) else {
+        return Err(CommandError::Invalid { name: "index", reason: "no such element".into() });
+    };
+    if flow::is_empty(element.kind, &element.text) {
+        set_kind(session, index, kind)?;
+        if kind == ElementKind::Parenthetical && session.element(index).is_some_and(|e| e.text.trim().is_empty()) {
+            if let Some(element) = session.script.elements.get_mut(index) {
+                element.text = "()".into();
+            }
+            session.caret = Caret { element: index, offset: 1 };
+        }
+        return Ok(());
+    }
+    start_after(session, index, kind)
 }
 
 /// Backspace at the start of an element: merge it into the previous one.
@@ -365,6 +420,33 @@ pub fn merge_previous(session: &mut Session, index: usize) -> Result<bool, Comma
 
 /// A `format.*` command that sets the element type (⌘1–⌘7).
 macro_rules! kind_command {
+    ($id:expr, $label:expr, $menu:expr, $shortcut:expr, $kind:expr) => {
+        Command {
+            id: $id,
+            label: $label,
+            menu: $menu,
+            shortcut: Some($shortcut),
+            params: const { &[param("index", ParamType::Integer, false, "Element index (default: the caret's element)")] },
+            enabled: always,
+            run: |s, p| {
+                let index = element_index(s, p)?;
+                element_shortcut(s, index, $kind)?;
+                Ok(Outcome::done())
+            },
+        }
+    };
+}
+
+/// The change-to shortcuts: ⌘⌥1–7 on macOS; Ctrl+Shift+1–7 elsewhere, where Ctrl+Alt is AltGr
+/// and would swallow characters typed on many keyboard layouts.
+const CONVERT_KEYS: [&str; 7] = if cfg!(target_os = "macos") {
+    ["Cmd+Alt+1", "Cmd+Alt+2", "Cmd+Alt+3", "Cmd+Alt+4", "Cmd+Alt+5", "Cmd+Alt+6", "Cmd+Alt+7"]
+} else {
+    ["Cmd+Shift+1", "Cmd+Shift+2", "Cmd+Shift+3", "Cmd+Shift+4", "Cmd+Shift+5", "Cmd+Shift+6", "Cmd+Shift+7"]
+};
+
+/// ⌘⌥1–⌘⌥7: change the current element's type in place.
+macro_rules! convert_command {
     ($id:expr, $label:expr, $menu:expr, $shortcut:expr, $kind:expr) => {
         Command {
             id: $id,
@@ -619,6 +701,25 @@ fn all_commands() -> Vec<Command> {
         kind_command!("format.dialogue", "Dialogue", "Format/Dialogue", "Cmd+5", ElementKind::Dialogue),
         kind_command!("format.transition", "Transition", "Format/Transition", "Cmd+6", ElementKind::Transition),
         kind_command!("format.shot", "Shot", "Format/Shot", "Cmd+7", ElementKind::Shot),
+        convert_command!(
+            "convert.scene_heading",
+            "Change to Scene Heading",
+            "Format/Change to Scene Heading",
+            CONVERT_KEYS[0],
+            ElementKind::SceneHeading
+        ),
+        convert_command!("convert.action", "Change to Action", "Format/Change to Action", CONVERT_KEYS[1], ElementKind::Action),
+        convert_command!("convert.character", "Change to Character", "Format/Change to Character", CONVERT_KEYS[2], ElementKind::Character),
+        convert_command!(
+            "convert.parenthetical",
+            "Change to Parenthetical",
+            "Format/Change to Parenthetical",
+            CONVERT_KEYS[3],
+            ElementKind::Parenthetical
+        ),
+        convert_command!("convert.dialogue", "Change to Dialogue", "Format/Change to Dialogue", CONVERT_KEYS[4], ElementKind::Dialogue),
+        convert_command!("convert.transition", "Change to Transition", "Format/Change to Transition", CONVERT_KEYS[5], ElementKind::Transition),
+        convert_command!("convert.shot", "Change to Shot", "Format/Change to Shot", CONVERT_KEYS[6], ElementKind::Shot),
         Command {
             id: "flow.enter",
             label: "New Element (Enter)",
@@ -629,8 +730,10 @@ fn all_commands() -> Vec<Command> {
             run: |s, p| {
                 let index = element_index(s, p)?;
                 let offset = text_offset(s, p, index)?;
-                enter(s, index, offset)?;
-                Ok(Outcome::done())
+                Ok(match enter(s, index, offset)? {
+                    Entered::Next => Outcome::done(),
+                    Entered::Picker => Outcome { message: Some("Choose an element".into()), value: serde_json::json!({ "picker": true }) },
+                })
             },
         },
         Command {
@@ -642,8 +745,7 @@ fn all_commands() -> Vec<Command> {
             enabled: always,
             run: |s, p| {
                 let index = element_index(s, p)?;
-                let to = s.element(index).map(|e| flow::rule_for(e.kind).tab).unwrap_or(ElementKind::Action);
-                set_kind(s, index, to)?;
+                tab(s, index)?;
                 Ok(Outcome::done())
             },
         },

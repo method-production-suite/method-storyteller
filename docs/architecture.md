@@ -1,4 +1,4 @@
-# Method Storyteller — architecture
+# Method Storyteller: architecture
 
 ## 1. Workspace and layers
 
@@ -12,7 +12,7 @@ on higher ones; nothing below L3 depends on egui/eframe/winit/rfd. `cargo xtask 
 | L2 | `storyteller-engine` | Session (script, path, dirty, undo), command registry, flow rules, control protocol | core, pdf, `craft-atomic`, `serde_json` |
 | L3 | `storyteller-cli` (bin `method-storyteller`, deprecated alias `mst`) | Convert, paginate, export, run commands, headless control server | engine |
 | L3 | `method-storyteller` (bin `method-storyteller-app`) | egui/eframe desktop app | engine, `eframe`, `rfd`, `craft-settings`, `craft-quit` |
-| tool | `xtask` | `ci`, `layers`, `assets`, `privacy`; `corpus` (local only: measures import and pagination against private Final Draft files) | — |
+| tool | `xtask` | `ci`, `layers`, `assets`, `privacy`; `corpus` (local only: measures import and pagination against private Final Draft files) | none |
 
 `storyteller-core` builds for `wasm32-unknown-unknown` (no filesystem, no threads), so a web
 version or a FilmCraft integration can reuse it.
@@ -73,7 +73,7 @@ Pure function `paginate(&Script, &Layout) -> Paginated`.
 
 1. **Measure:** each element → `Block { kind, lines: Vec<LayoutLine>, space_before, breakable }`,
    wrapping with the element's column width (`wrap.rs`, char-based: Courier is monospace).
-2. **Group:** keep-together groups — a dialogue block (cue + parentheticals + dialogue lines),
+2. **Group:** keep-together groups: a dialogue block (cue + parentheticals + dialogue lines),
    a scene heading with what follows, a transition with what precedes.
 3. **Fill:** greedy page filler over groups with the break rules from spec §5.1, inserting
    `(MORE)` / `NAME (CONT'D)` and sentence-boundary splits.

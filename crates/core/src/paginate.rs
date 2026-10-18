@@ -225,6 +225,37 @@ impl Group {
     }
 }
 
+/// Whether the cue at `index` gets an automatic ` (CONT'D)`: the same character spoke the
+/// previous speech in this scene (with action or another element in between), and the cue does
+/// not already say so. A scene heading starts afresh; dual-dialogue cues are left alone.
+pub fn auto_contd_at(script: &Script, index: usize) -> bool {
+    let Some(element) = script.elements.get(index).filter(|e| e.kind == ElementKind::Character) else { return false };
+    let name = crate::model::character_name(&element.text).to_uppercase();
+    // A cue that already carries a continued extension, such as `(CONT'D)` or `(cont’d)`.
+    let marked = element.text.to_uppercase().replace(' ', "").contains("(CONT");
+    if name.is_empty() || element.dual || marked {
+        return false;
+    }
+    let next_cue =
+        script.elements.get(index + 1..).unwrap_or(&[]).iter().find(|e| e.kind == ElementKind::Character || e.kind == ElementKind::SceneHeading);
+    if next_cue.is_some_and(|e| e.kind == ElementKind::Character && e.dual) {
+        return false;
+    }
+    for previous in script.elements.get(..index).unwrap_or(&[]).iter().rev() {
+        match previous.kind {
+            ElementKind::SceneHeading => return false,
+            ElementKind::Character => return crate::model::character_name(&previous.text).eq_ignore_ascii_case(&name),
+            _ => {}
+        }
+    }
+    false
+}
+
+/// [`auto_contd_at`] for every element.
+pub fn auto_contd(script: &Script) -> Vec<bool> {
+    (0..script.elements.len()).map(|index| auto_contd_at(script, index)).collect()
+}
+
 fn block_for(script: &Script, index: usize, layout: &Layout, style: ElementStyle) -> Option<Block> {
     let element = script.elements.get(index)?;
     // An imported paragraph may override its element's indents and spacing.
@@ -232,7 +263,10 @@ fn block_for(script: &Script, index: usize, layout: &Layout, style: ElementStyle
         Some(fdx) => crate::fdx::paragraph_style(fdx, style),
         None => style,
     };
-    let source = wrap::styled_chars(&element.text, element.kind.is_caps());
+    let mut source = wrap::styled_chars(&element.text, element.kind.is_caps());
+    if layout.auto_contd && element.kind == ElementKind::Character && auto_contd_at(script, index) {
+        source.extend(wrap::unstyled(&format!(" {}", layout.contd)));
+    }
     if source.is_empty() && !element.text.trim().is_empty() {
         // Only notes: nothing to print.
         return None;

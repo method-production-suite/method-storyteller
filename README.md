@@ -1,4 +1,9 @@
-# Method Storyteller
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/wordmark-dark.svg">
+    <img src="docs/brand/wordmark.svg" alt="Method Storyteller" height="48">
+  </picture>
+</h1>
 
 An open-source screenwriting app: free, native on macOS, Windows and Linux (built from source for
 now; installers are coming), and your script is an open file you own (plain-text Fountain by
@@ -80,12 +85,15 @@ stderr) and will be removed in a future release.
 
 | Key | Does |
 | --- | --- |
-| Enter | End the element and start the next one (Scene heading → Action, Character → Dialogue, Dialogue → Character …) |
-| Enter on an empty element | Change its type (empty Action → Scene heading, empty Character → Action …) |
-| Tab / Shift-Tab | Change the element type (Action ↔ Character, Dialogue → Parenthetical …) |
-| ⌘1 … ⌘7 | Scene heading, Action, Character, Parenthetical, Dialogue, Transition, Shot |
+| Enter | End the element and start the next one (Scene heading → Action, Character → Dialogue, Dialogue → Action …) |
+| Enter on an empty element | Open the element picker: S, A, C, P, D, T, H … or the arrows |
+| Tab | On an empty element, change its type (Action → Character, Character → Transition …); after text, start the next one (a parenthetical after a cue or a speech) |
+| ⌘1 … ⌘7 | Start a Scene heading, Action, Character, Parenthetical, Dialogue, Transition or Shot |
+| ⌘⌥1 … ⌘⌥7 (Ctrl+Shift on Windows and Linux) | Change the current element to that type |
 | Shift-Enter | Line break inside an action or dialogue paragraph |
 | Backspace at the start | Join with the previous element |
+
+The status bar always shows what Tab and Enter will do next.
 
 (Ctrl instead of ⌘ on Windows and Linux.)
 
@@ -102,7 +110,8 @@ then send JSON lines to `127.0.0.1:9876`; see [docs/control-protocol.md](docs/co
 
 `cargo xtask ci` runs every gate: `cargo fmt --check`, `cargo clippy --workspace --all-targets
 -- -D warnings`, `cargo test --workspace`, the crate layering check and the asset attribution
-check. Read [AGENTS.md](AGENTS.md) before contributing. Pagination changes are reviewed through
+check. Read [AGENTS.md](AGENTS.md) before contributing, and [docs/BRAND.md](docs/BRAND.md) before
+writing anything a person will read. Pagination changes are reviewed through
 the golden files in `crates/core/tests/golden/` (`UPDATE_GOLDEN=1 cargo test -p storyteller-core`
 regenerates them).
 
