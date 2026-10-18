@@ -541,6 +541,9 @@ pub fn apply_layout(document: &OsfDocument, layout: &mut Layout) {
     if let Some(more) = get(&settings, "more_text").filter(|t| !t.trim().is_empty()) {
         layout.more = more.to_string();
     }
+    if let Some(auto) = get(&settings, "dialogue_continues") {
+        layout.auto_contd = truthy(Some(auto));
+    }
     if let Some(contd) = get(&settings, "cont_text").filter(|t| !t.trim().is_empty()) {
         layout.contd = format!("({})", contd.trim().trim_start_matches('(').trim_end_matches(')'));
     }

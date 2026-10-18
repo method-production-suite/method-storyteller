@@ -50,62 +50,56 @@ printed.
 
 ## 4. Editing (MVP)
 
-### 4.1 Element flow (Final Draft–style)
+### 4.1 Element flow (as Final Draft does it)
 
-Corrected in October 2026 from the V1 research ([docs/research/v1-feature-inventory.md](research/v1-feature-inventory.md)):
-Enter after Dialogue, Enter on an empty element and Tab in Character changed. The code follows in
-milestone M3.
+Built in milestone M3 from Final Draft's documented defaults and its tutorial videos
+([docs/research/v1-feature-inventory.md](research/v1-feature-inventory.md)). One table in the
+engine (`flow.rs`) holds every rule, so they can become a preference later.
 
-Enter ends the current element and starts the next one:
+| In | Enter starts | Tab on an empty element | Tab after text starts | Shift-Tab gives |
+| --- | --- | --- | --- | --- |
+| Scene heading | Action | Action | Action | Action |
+| Action | Action | Character | Character | Scene heading |
+| Character | Dialogue | Transition | Parenthetical | Action |
+| Parenthetical | Dialogue | Dialogue | Dialogue | Dialogue |
+| Dialogue | Action | Parenthetical | Parenthetical | Character |
+| Transition | Scene heading | Scene heading | Scene heading | Action |
+| Shot | Action | Action | Action | Action |
 
-| After | Enter starts |
-| --- | --- |
-| Scene heading | Action |
-| Action | Action |
-| Character | Dialogue |
-| Parenthetical | Dialogue |
-| Dialogue | Action |
-| Transition | Scene heading |
-| Shot | Action |
-
-Enter on an *empty* element opens an element picker under the caret, with a one-letter key per
-element (S Scene heading, A Action, C Character, P Parenthetical, D Dialogue, T Transition,
-H Shot). Esc keeps the element as it is.
-
-Tab changes the current element:
-
-| In | Tab gives | Shift-Tab gives |
-| --- | --- | --- |
-| Action | Character | Scene heading |
-| Character | Transition, only when the cue is empty (with text in the cue, Tab is to be confirmed) | Action |
-| Dialogue | Parenthetical | Character |
-| Parenthetical | Dialogue | Dialogue |
-| Scene heading | Action | Action |
-| Transition | Scene heading | Action |
-| Shot | Action | Action |
-
-Enter in the middle of an element splits it at the caret (the second half takes the "next"
-element type). Backspace at the start of an element merges it into the previous one.
-Up/Down at the first/last line move between elements. ⌘1–⌘7 (Ctrl on Windows/Linux) set the
-element type directly: 1 Scene heading, 2 Action, 3 Character, 4 Parenthetical, 5 Dialogue,
-6 Transition, 7 Shot. Parentheticals get their brackets added automatically.
-
-Scene headings, character cues and transitions display and save in capitals.
-
-All tables live in one data structure in the engine (`flow.rs`) so they can become a user
-preference later.
+- **Enter on an empty element** opens the element picker under the caret: one letter per
+  element (S Scene heading, A Action, C Character, P Parenthetical, D Dialogue, T Transition,
+  H Shot, N Centered, L Lyrics), or the arrows and Enter. Esc keeps the element as it is.
+- Enter in the middle of an element splits it at the caret, and the second half takes the next
+  element's type. Backspace at the start of an element joins it to the previous one. Up/Down at
+  the first or last line move between elements.
+- **⌘1–⌘7** (Ctrl on Windows and Linux) start a new element of that type after the current one:
+  1 Scene heading, 2 Action, 3 Character, 4 Parenthetical, 5 Dialogue, 6 Transition, 7 Shot. On
+  an empty element they change its type instead. **⌘⌥1–⌘⌥7** change the current element's type
+  in place (Ctrl+Shift+1–7 on Windows and Linux, where Ctrl+Alt is AltGr). Parentheticals get
+  their brackets automatically.
+- Typing `int.` or `ext.` at the start of action turns it into a scene heading (its own undo
+  step).
+- Scene headings, character cues and transitions display and save in capitals.
+- The status bar always shows what Tab and Enter will do next.
+- Smart quotes (Format > Smart Quotes, on by default) curl `"` and `'` as they are typed in action,
+  dialogue, parentheticals and lyrics; capitalised elements (headings, cues, transitions) keep
+  straight ones. A leading apostrophe (`'90s`, `'til`) curls the right way.
 
 ### 4.2 Autocomplete
 
-- **Character:** names already used in the script, most frequent first; extensions offered after
-  `(`: `V.O.`, `O.S.`, `O.C.`, `CONT'D`.
-- **Scene heading:** prefix (`INT.`, `EXT.`, `INT./EXT.`, `EST.`), then locations already used,
-  then time of day after ` - ` (`DAY`, `NIGHT`, `MORNING`, `EVENING`, `CONTINUOUS`, `LATER`,
-  `MOMENTS LATER`, plus any used).
-- **Transition:** `CUT TO:`, `FADE IN:`, `FADE OUT.`, `DISSOLVE TO:`, `SMASH CUT TO:`,
-  `MATCH CUT TO:`, plus any used.
+- **Character:** names already used in the script, most frequent first. Extensions are offered
+  after `(`: `V.O.`, `O.S.`, `O.C.`, `CONT'D`. An empty cue in a two-hander offers the speaker
+  before last.
+- **Scene heading:** the intro (`INT.`, `EXT.`, `INT./EXT.`, `EXT./INT.`, `I/E`, `EST.`), then
+  locations already used, then the time of day after ` - `, in Final Draft's order: `DAY`,
+  `NIGHT`, `AFTERNOON`, `MORNING`, `EVENING`, `LATER`, `MOMENTS LATER`, `CONTINUOUS`,
+  `THE NEXT DAY`, `MAGIC HOUR`, `DAWN`, `DUSK`, `SAME`, `SAME TIME`. Times already used come
+  first.
+- **Transition:** `CUT TO:`, `FADE IN:`, `FADE OUT.`, `FADE TO BLACK.`, `DISSOLVE TO:`,
+  `SMASH CUT TO:`, `MATCH CUT TO:`, `JUMP CUT TO:`, `BACK TO:`, plus any used.
 
-A popup shows matches under the caret; Up/Down choose, Enter or Tab accept, Esc dismisses.
+A popup shows matches under the caret. Up/Down choose, Enter or Tab accept, and Esc dismisses.
+Autocomplete lists stored in the document, and editing them, come later.
 
 ### 4.3 Undo
 
@@ -192,14 +186,16 @@ settings and per-paragraph overrides, and these replace the defaults below.
    moves down with it (when that is possible without breaking rules 1–4).
 6. **Dual dialogue** never splits.
 7. `===` forces a break.
-8. **Automatic `(CONT'D)`** (v1, on by default): when the same character speaks again after only
-   action in the same scene, the cue gets ` (CONT'D)`. A scene heading resets it.
+8. **Automatic `(CONT'D)`** (built, on by default; off when an imported file says so): when the
+   same character speaks again in the same scene, the cue gets ` (CONT'D)` at layout time. The
+   text is not changed, and the editor shows the addition faintly. A scene heading resets it,
+   dual-dialogue cues are left alone, and a cue that already says CONT'D is not doubled.
 9. **Scene `CONTINUED`** (v1, off by default): `(CONTINUED)` at the bottom and `CONTINUED:` at the
    top of a page that splits a scene. Each costs a line, so it is part of pagination.
 
 Rules 3 and 4 were measured from Final Draft's PDFs in M2; the old rule that a parenthetical is
-never last before `(MORE)` turned out to be wrong. Rules 8 and 9 are not built yet: the corpus
-writes `(CONT'D)` into the cue text, and has scene `CONTINUED` off in 106 of 109 files.
+never last before `(MORE)` turned out to be wrong. Rule 9 is not built yet: the corpus has scene
+`CONTINUED` off in 106 of 109 files.
 
 These rules match how Final Draft behaves by default, observed from its public output, not
 from its code. Golden tests pin each rule, and `cargo xtask corpus` measures them against real
