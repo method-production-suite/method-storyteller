@@ -776,9 +776,9 @@ fn all_commands() -> Vec<Command> {
                 if hits.is_empty() {
                     return Ok(Outcome { message: Some(format!("“{}” is not in the script", query.text)), value: json!({ "count": 0 }) });
                 }
-                // One undo step for the lot.
-                s.checkpoint(EditKind::Other);
-                for (index, element) in s.script.elements.iter_mut().enumerate() {
+                // Work out every new text first: a replacement that changes nothing is no edit.
+                let mut changed: Vec<(usize, std::string::String)> = Vec::new();
+                for (index, element) in s.script.elements.iter().enumerate() {
                     let ranges: Vec<&find::Hit> = hits.iter().filter(|h| h.element == index).collect();
                     if ranges.is_empty() {
                         continue;
@@ -793,7 +793,19 @@ fn all_commands() -> Vec<Command> {
                     if element.kind.is_caps() {
                         text = text.to_uppercase();
                     }
-                    element.text = text;
+                    if text != element.text {
+                        changed.push((index, text));
+                    }
+                }
+                if changed.is_empty() {
+                    return Ok(Outcome { message: Some("Nothing to change".into()), value: json!({ "count": 0 }) });
+                }
+                // One undo step for the lot.
+                s.checkpoint(EditKind::Other);
+                for (index, text) in changed {
+                    if let Some(element) = s.script.elements.get_mut(index) {
+                        element.text = text;
+                    }
                 }
                 s.clamp_caret();
                 let count = hits.len();

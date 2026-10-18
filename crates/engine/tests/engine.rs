@@ -273,6 +273,14 @@ fn find_and_replace() {
     run(&registry, &mut s, "edit.undo", json!({}));
     assert_eq!(s.script.elements[1].text, before);
     assert_eq!(s.script.elements[3].text, "The glass is still.");
+
+    // A Replace All that changes nothing is no edit: no undo step, the script stays clean.
+    s.dirty = false;
+    let undoable = s.can_undo();
+    let same = run(&registry, &mut s, "find.replace_all", json!({ "text": "glass", "replacement": "glass", "whole_word": true }));
+    assert_eq!(same["value"]["count"], json!(0));
+    assert!(!s.dirty);
+    assert_eq!(s.can_undo(), undoable);
 }
 
 /// Rename a character: cues keep their extensions; with `everywhere`, mentions follow in their
