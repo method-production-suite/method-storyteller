@@ -152,6 +152,34 @@ impl Registry {
     }
 }
 
+/// The element `nav.go_to` lands on: a scene heading, or the first element on a page.
+fn go_to(session: &mut Session, scene: Option<String>, page: Option<usize>) -> Result<usize, CommandError> {
+    let paginated = session.paginated();
+    if let Some(scene) = scene {
+        let wanted = scene.trim();
+        // A printed scene number first (12, 12A), then the scene's position for unnumbered scripts.
+        let by_number = paginated.scenes.iter().find(|s| s.number.as_deref().is_some_and(|n| n.eq_ignore_ascii_case(wanted)));
+        let by_position = || wanted.parse::<usize>().ok().and_then(|n| n.checked_sub(1)).and_then(|n| paginated.scenes.get(n));
+        return by_number
+            .or_else(by_position)
+            .map(|s| s.element)
+            .ok_or_else(|| CommandError::Invalid { name: "scene", reason: format!("there is no scene {wanted}") });
+    }
+    let page = page.ok_or(CommandError::Missing("scene"))?;
+    let count = paginated.page_count();
+    let wanted = u32::try_from(page).unwrap_or(u32::MAX);
+    if page == 0 || page > count {
+        return Err(CommandError::Invalid { name: "page", reason: format!("there is no page {page} (the script has {count})") });
+    }
+    // The first element that starts on the page, or the one running onto it from the page before.
+    let pages = &paginated.element_pages;
+    pages
+        .iter()
+        .position(|&p| p == wanted)
+        .or_else(|| pages.iter().rposition(|&p| p > 0 && p < wanted))
+        .ok_or_else(|| CommandError::Invalid { name: "page", reason: format!("page {page} has no script text") })
+}
+
 // ---------------------------------------------------------------------------------------------
 // Parameter helpers
 
@@ -613,6 +641,25 @@ fn all_commands() -> Vec<Command> {
                 s.caret = Caret { element: index, offset };
                 s.break_typing();
                 Ok(Outcome::done())
+            },
+        },
+        Command {
+            id: "nav.go_to",
+            label: "Go To",
+            menu: "",
+            shortcut: None,
+            params: const {
+                &[
+                    param("scene", String, false, "Scene number as printed (12, 12A), or its position when scenes are unnumbered"),
+                    param("page", Integer, false, "Page number"),
+                ]
+            },
+            enabled: always,
+            run: |s, p| {
+                let index = go_to(s, opt_string(p, "scene")?, opt_index(p, "page")?)?;
+                s.caret = Caret { element: index, offset: 0 };
+                s.break_typing();
+                Ok(Outcome::value(json!({ "element": index })))
             },
         },
         Command {

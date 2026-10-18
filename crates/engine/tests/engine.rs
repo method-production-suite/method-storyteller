@@ -195,3 +195,30 @@ fn tab_starts_the_next_element_and_shortcuts_insert() {
     run(&registry, &mut s, "convert.action", json!({ "index": 1 }));
     assert_eq!(kinds(&s), [K::Character, K::Action, K::Shot], "the change-to shortcut converts in place");
 }
+
+/// Go To lands on a scene by printed number or position, and on a page's first element.
+#[test]
+fn go_to_scene_and_page() {
+    let registry = Registry::new();
+    let long = "Action that fills the page. ".repeat(120);
+    let text = format!("INT. A - DAY #4#\n\n{long}\n\nEXT. B - NIGHT #4A#\n\nShort.\n\nINT. C - DAY\n\nEnd.\n");
+    let mut s = Session::new(storyteller_core::fountain::parse(&text).unwrap());
+    let go = |s: &mut Session, params: Value| {
+        let params: Map<String, Value> = params.as_object().cloned().unwrap_or_default();
+        registry.run("nav.go_to", s, &params).map(|_| s.caret.element)
+    };
+    assert_eq!(go(&mut s, json!({ "scene": "4a" })).unwrap(), 2);
+    assert_eq!(go(&mut s, json!({ "scene": "4" })).unwrap(), 0);
+    // Unnumbered: the third scene by position.
+    assert_eq!(go(&mut s, json!({ "scene": "3" })).unwrap(), 4);
+    assert!(go(&mut s, json!({ "scene": "9" })).is_err());
+    assert_eq!(go(&mut s, json!({ "page": 1 })).unwrap(), 0);
+    let pages = s.paginated().page_count();
+    assert!(pages >= 2, "{pages} pages");
+    // Page 2 starts inside the long action, which runs on from page 1.
+    let element = go(&mut s, json!({ "page": 2 })).unwrap();
+    assert!(element <= 2, "{element}");
+    assert!(go(&mut s, json!({ "page": 0 })).is_err());
+    assert!(go(&mut s, json!({ "page": pages + 1 })).is_err());
+    assert!(go(&mut s, json!({})).is_err());
+}

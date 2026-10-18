@@ -109,6 +109,7 @@ one step.
 ### 4.4 Navigation and scene numbers
 
 - **Scene navigator** side panel: every scene heading with its number and page; click to jump.
+- **Go To** (Edit > Go To…, ⌘⌥G; command `nav.go_to`): a scene by its printed number (12, 12A), or by position when scenes are unnumbered, or a page; the caret lands on the scene heading or on the page's first element.
 - **Scene numbers:** `Production → Number scenes` assigns 1, 2, 3…; existing numbers are kept
   when "keep existing" is chosen (A-numbering for inserted scenes is a later-phase revision
   feature). Toggle for showing them in the editor and PDF. Stored in Fountain as `#12#`, in FDX

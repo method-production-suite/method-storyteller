@@ -32,7 +32,7 @@ struct AppCommand {
     shortcut: Option<&'static str>,
 }
 
-const APP_COMMANDS: [AppCommand; 19] = [
+const APP_COMMANDS: [AppCommand; 20] = [
     AppCommand { id: "app.title_page", label: "Title Page…", menu: "File/Title Page…", shortcut: Some("Cmd+Shift+T") },
     AppCommand { id: "prefs.new_fountain", label: "Save New Scripts as Fountain", menu: "File/Save New Scripts as Fountain", shortcut: None },
     AppCommand {
@@ -42,6 +42,7 @@ const APP_COMMANDS: [AppCommand; 19] = [
         shortcut: None,
     },
     AppCommand { id: "app.quit", label: "Quit", menu: "File/Quit", shortcut: Some("Cmd+Q") },
+    AppCommand { id: "app.go_to", label: "Go To…", menu: "Edit/Go To…", shortcut: Some("Cmd+Alt+G") },
     AppCommand { id: "prefs.smart_quotes", label: "Smart Quotes", menu: "Format/Smart Quotes", shortcut: None },
     AppCommand { id: "view.navigator", label: "Scene Navigator", menu: "View/Scene Navigator", shortcut: Some("Cmd+Shift+N") },
     AppCommand { id: "view.page_view", label: "Page View", menu: "View/Page View", shortcut: Some("Cmd+Shift+P") },
@@ -94,6 +95,15 @@ struct TitleDraft {
     fields: Vec<(String, String)>,
 }
 
+/// The Go To dialog: a scene number or a page.
+#[derive(Default)]
+struct GoToDraft {
+    text: String,
+    page: bool,
+    error: Option<String>,
+    focused: bool,
+}
+
 pub struct StorytellerApp {
     session: Session,
     registry: Registry,
@@ -106,6 +116,7 @@ pub struct StorytellerApp {
     prompt: Option<Pending>,
     discard_confirmed: bool,
     title_dialog: Option<TitleDraft>,
+    go_to: Option<GoToDraft>,
     help: HelpWindows,
     status: String,
     error: Option<String>,
@@ -130,16 +141,17 @@ struct MenuEntry {
 
 impl StorytellerApp {
     pub fn new(cc: &eframe::CreationContext<'_>, file: Option<PathBuf>, control_port: Option<u16>) -> Self {
-        let mut app = Self::without_menu(cc, file, control_port);
+        let mut app = Self::without_menu(cc, file, control_port, Location::Auto);
         app.install_menu(&cc.egui_ctx);
         app
     }
 
-    /// The app without the macOS menu bar, which the offscreen pictures leave out.
-    fn without_menu(cc: &eframe::CreationContext<'_>, file: Option<PathBuf>, control_port: Option<u16>) -> Self {
+    /// The app without the macOS menu bar, which offscreen tests and pictures leave out.
+    /// Tests pass [`Location::Memory`] so they never touch real settings.
+    fn without_menu(cc: &eframe::CreationContext<'_>, file: Option<PathBuf>, control_port: Option<u16>, settings: Location) -> Self {
         editor::install_fonts(&cc.egui_ctx);
         theme::apply(&cc.egui_ctx);
-        let (prefs, report) = SettingsStore::<Prefs>::open(Location::Auto);
+        let (prefs, report) = SettingsStore::<Prefs>::open(settings);
         let registry = Registry::new();
         let mut shortcuts = Vec::new();
         for command in registry.iter() {
@@ -169,6 +181,7 @@ impl StorytellerApp {
             prompt: None,
             discard_confirmed: false,
             title_dialog: None,
+            go_to: None,
             help: HelpWindows::default(),
             status: String::new(),
             error: report.has_problems().then(|| "Settings could not be fully loaded; defaults are in use.".to_string()),
@@ -239,6 +252,7 @@ impl StorytellerApp {
                     storyteller_core::TitlePage::STANDARD_KEYS.iter().map(|k| (k.to_string(), page.get(k).unwrap_or("").to_string())).collect();
                 self.title_dialog = Some(TitleDraft { fields });
             }
+            "app.go_to" => self.go_to = Some(GoToDraft::default()),
             "app.quit" => ctx.send_viewport_cmd(ViewportCommand::Close),
             "view.navigator" => {
                 self.prefs.update(|p| p.view.navigator = !p.view.navigator);
@@ -954,6 +968,76 @@ impl StorytellerApp {
         }
     }
 
+    fn go_to_dialog(&mut self, ctx: &egui::Context) {
+        let Some(draft) = &mut self.go_to else { return };
+        let mut go = false;
+        let mut close = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+        egui::Window::new("Go To").collapsible(false).resizable(false).show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                let scene = ui.selectable_value(&mut draft.page, false, "Scene");
+                self.automation.add("dialog.go_to.scene", "radio", "Scene", &scene);
+                let page = ui.selectable_value(&mut draft.page, true, "Page");
+                self.automation.add("dialog.go_to.page", "radio", "Page", &page);
+            });
+            let hint = if draft.page { "Page number" } else { "Scene number, such as 12 or 12A" };
+            let response = ui.add(egui::TextEdit::singleline(&mut draft.text).hint_text(hint).desired_width(240.0));
+            self.automation.add("dialog.go_to.text", "textbox", "Go to", &response);
+            if !draft.focused {
+                response.request_focus();
+                draft.focused = true;
+            }
+            if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                go = true;
+            }
+            if let Some(error) = &draft.error {
+                ui.colored_label(ui.visuals().error_fg_color, error);
+            }
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                let ok = ui.button("Go");
+                self.automation.add("dialog.go_to.ok", "button", "Go", &ok);
+                let cancel = ui.button("Cancel");
+                self.automation.add("dialog.go_to.cancel", "button", "Cancel", &cancel);
+                go |= ok.clicked();
+                close |= cancel.clicked();
+            });
+        });
+        if close {
+            self.go_to = None;
+            self.refocus();
+            return;
+        }
+        if !go {
+            return;
+        }
+        let text = draft.text.trim().to_string();
+        let target = if draft.page {
+            match text.parse::<u64>() {
+                Ok(page) => params(&[("page", json!(page))]),
+                Err(_) => {
+                    draft.error = Some("Type a page number.".into());
+                    return;
+                }
+            }
+        } else {
+            params(&[("scene", json!(text))])
+        };
+        match self.registry.run("nav.go_to", &mut self.session, &target) {
+            Ok(_) => {
+                self.go_to = None;
+                self.editor.pending_focus = Some((self.session.caret.element, 0));
+            }
+            Err(error) => {
+                if let Some(draft) = &mut self.go_to {
+                    draft.error = Some(match error {
+                        storyteller_engine::CommandError::Invalid { reason, .. } => capitalise(&reason),
+                        other => other.to_string(),
+                    });
+                }
+            }
+        }
+    }
+
     fn help_windows(&mut self, ctx: &egui::Context) {
         let rows = if self.help.shortcuts { self.shortcut_rows(ctx) } else { Vec::new() };
         match self.help.show(ctx, &mut self.automation, &rows) {
@@ -1019,6 +1103,7 @@ impl StorytellerApp {
             .inner;
         self.apply(actions);
         self.title_page_dialog(&ctx);
+        self.go_to_dialog(&ctx);
         self.help_windows(&ctx);
         self.unsaved_prompt(&ctx);
         for id in std::mem::take(&mut self.queued) {
@@ -1124,7 +1209,7 @@ impl eframe::App for StorytellerApp {
         self.handle_screenshot(ctx);
         self.handle_control(ctx);
         self.sync_native_menu();
-        if self.prompt.is_none() && self.title_dialog.is_none() {
+        if self.prompt.is_none() && self.title_dialog.is_none() && self.go_to.is_none() {
             for (shortcut, id) in self.shortcuts.clone() {
                 if self.menu_owns_shortcut(id) {
                     continue;
@@ -1165,6 +1250,17 @@ impl eframe::App for StorytellerApp {
     }
 }
 
+/// `there is no page 9` → `There is no page 9.`
+fn capitalise(text: &str) -> String {
+    let mut chars = text.chars();
+    let first = chars.next().map(|c| c.to_uppercase().collect::<String>()).unwrap_or_default();
+    format!("{first}{}.", chars.as_str())
+}
+
 #[cfg(test)]
 #[path = "screens.rs"]
 mod screens;
+
+#[cfg(test)]
+#[path = "ui_tests.rs"]
+mod ui_tests;
