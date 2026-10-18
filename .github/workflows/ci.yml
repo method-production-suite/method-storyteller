@@ -1,5 +1,14 @@
 name: ci
-on: [push, pull_request]
+# Pushes to main, and pull requests: a feature branch with a PR runs once, not twice
+# (the free plan runs few jobs at a time across the whole org; SUITE-STANDARDS.md §6).
+on:
+  push:
+    branches: [main]
+  pull_request:
+# A new push to a pull request cancels its stale run; runs on main always finish.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 permissions:
   contents: read
 jobs:
