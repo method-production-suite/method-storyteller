@@ -108,7 +108,7 @@ one step.
 
 ### 4.4 Navigation and scene numbers
 
-- **Scene navigator** side panel: every scene heading with its number and page; click to jump.
+- **Scene navigator** side panel: every scene heading with its number, its length in eighths of a page and its page; click to jump.
 - **Scene numbers:** `Production → Number scenes` assigns 1, 2, 3…; existing numbers are kept
   when "keep existing" is chosen (A-numbering for inserted scenes is a later-phase revision
   feature). Toggle for showing them in the editor and PDF. Stored in Fountain as `#12#`, in FDX

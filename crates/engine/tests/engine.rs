@@ -195,3 +195,20 @@ fn tab_starts_the_next_element_and_shortcuts_insert() {
     run(&registry, &mut s, "convert.action", json!({ "index": 1 }));
     assert_eq!(kinds(&s), [K::Character, K::Action, K::Shot], "the change-to shortcut converts in place");
 }
+
+/// Scene lengths are cached with the pagination and refreshed by an edit.
+#[test]
+fn scene_lengths_follow_edits() {
+    let registry = Registry::new();
+    let script = storyteller_core::fountain::parse("INT. A - DAY\n\nShort.\n\nEXT. B - NIGHT\n\nAlso short.\n").unwrap();
+    let mut s = Session::new(script);
+    let before: Vec<(usize, u32)> = s.scene_lengths().iter().map(|l| (l.element, l.eighths)).collect();
+    assert_eq!(before.len(), 2);
+    assert_eq!(before[0].0, 0);
+    assert_eq!(before[1].0, 2);
+    let long = "A long line of action that goes on. ".repeat(60);
+    s.caret.element = 1;
+    run(&registry, &mut s, "element.set_text", json!({ "text": long }));
+    let after = s.scene_lengths()[0].eighths;
+    assert!(after > before[0].1, "{after} should be longer than {}", before[0].1);
+}
