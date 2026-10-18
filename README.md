@@ -1,4 +1,9 @@
-# Method Storyteller
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/wordmark-dark.svg">
+    <img src="docs/brand/wordmark.svg" alt="Method Storyteller" height="48">
+  </picture>
+</h1>
 
 An open-source screenwriting app: free, native on macOS, Windows and Linux (built from source for
 now; installers are coming), and your script is an open file you own (plain-text Fountain by
@@ -81,7 +86,8 @@ then send JSON lines to `127.0.0.1:9876`; see [docs/control-protocol.md](docs/co
 
 `cargo xtask ci` runs every gate: `cargo fmt --check`, `cargo clippy --workspace --all-targets
 -- -D warnings`, `cargo test --workspace`, the crate layering check and the asset attribution
-check. Read [AGENTS.md](AGENTS.md) before contributing. Pagination changes are reviewed through
+check. Read [AGENTS.md](AGENTS.md) before contributing, and [docs/BRAND.md](docs/BRAND.md) before
+writing anything a person will read. Pagination changes are reviewed through
 the golden files in `crates/core/tests/golden/` (`UPDATE_GOLDEN=1 cargo test -p storyteller-core`
 regenerates them).
 
