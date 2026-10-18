@@ -34,11 +34,22 @@ says otherwise.
 5. **"Paginate like…" profiles for other apps.** Only one app's pagination is calibrated against
    real output. **Recommend: after V1**, starting with the (MORE)/(CONT'D) text and split
    behaviour, which are cheap and documented.
+6. **Spell check engine and dictionary.** Options: the operating system's own checker (native on
+   macOS and Windows, nothing on Linux, three code paths); or one pure-Rust Hunspell-compatible
+   checker (`spellbook`, MPL-2.0, allowed by `deny.toml`) with a bundled English dictionary from
+   SCOWL/wordlist.aspell.net (permissive licence, attributed in ATTRIBUTION.md), the same on every
+   platform and testable offscreen. **Recommend: spellbook with the SCOWL en_US dictionary**,
+   other languages as downloadable dictionaries later; ignore lists kept in the document (an
+   `.fdx` already carries them). Reversible; built on this unless the owner says otherwise.
 
 ### Tests that need the owner's hands
 
 - **The writing feel (M3).** Write a few pages from scratch: Enter, Tab, the element picker,
   SmartType, ⌘1–7 and ⌘⌥1–7. Say what feels wrong.
+- **Navigation and editing (M4).** In a real script: the scene lengths in
+  the navigator against what you expect; ⌘⌥G to a scene number and a page; ⌘F, Enter and ⇧Enter,
+  Replace, Replace All and one ⌘Z; Production > Rename Character with and without "Also in
+  action, dialogue and other text".
 - **The Final Draft 11 session (M7).** One scripted session settles the eight open questions in
   the V1 inventory: whether our `.fdx` exports open cleanly, encodings never seen filled in
   (alternates, tags in text, A-page locks), A-page and A-scene lettering edge cases, pagination
@@ -68,31 +79,39 @@ says otherwise.
 - M3, the writing feel: Enter/Tab flow, element picker, ⌘1–7 and ⌘⌥1–7, status-bar hint,
   automatic (CONT'D), SmartType times and next-speaker guess, smart quotes.
 
+- The suite standards: identity, the Help menu, repo hygiene with the 14-day crate-age check,
+  the release workflow, the brand (docs/BRAND.md), and pictures that retake themselves
+  (`cargo xtask screens`, drawn offscreen from the Field Station sample).
+- M4 so far: scene lengths in the navigator, Go To (scene or page), find and replace with one
+  Undo for Replace All, rename a character.
+
 **In review**
-- M3 ([#11](https://github.com/method-production-suite/method-storyteller/pull/11)); the Help menu
-  and the release workflow (their own PRs).
+- The updater, `method-update`, wired and inactive until Storyteller has an updater key
+  ([#23](https://github.com/method-production-suite/method-storyteller/pull/23)).
+- The methodstoryteller.com page, `site/` ([#24](https://github.com/method-production-suite/method-storyteller/pull/24)).
 
 ---
 
 ## Next, in order
 
 ### Suite standards (SUITE-STANDARDS.md)
-1. **Help menu** [partial, in review] S. About, User Guide, Keyboard Shortcuts, What's New, Report
-   a Bug, Licenses; Check for Updates wired, live once `method-update` lands in method-libs.
-2. **Updates** [missing] S. Wire `method-update` when it lands: check 2 minutes after launch and
-   every 6 hours, "Update ready", an off switch.
-3. **Repo hygiene** [missing] S. `deny.toml` and the 14-day crate-age check in CI; Actions pinned
+1. **Help menu** [have] S. About, User Guide, Keyboard Shortcuts, What's New, Report a Bug,
+   Licenses, Check for Updates.
+2. **Updates** [partial, in review] S. `method-update` wired: a check 2 minutes after launch and
+   every 6 hours, Restart to Update, an off switch. Live once Storyteller has an updater key and
+   the release publishes `latest.json`.
+3. **Repo hygiene** [have] S. `deny.toml` and the 14-day crate-age check in CI; Actions pinned
    to the suite SHAs.
-4. **Release workflow** [partial, in review] M. Draft releases, a signed and notarized Apple
+4. **Release workflow** [have] M. Draft releases, a signed and notarized Apple
    silicon `.dmg`, Windows and Linux installers, version-free names.
-5. **Brand** [missing] S. The rose accent is in; adopt the mark and icon.
-6. **Pictures** [missing] M. A capture command retakes every README picture from an invented
+5. **Brand** [have] S. docs/BRAND.md, the provisional mark, the app icon.
+6. **Pictures** [have] M. A capture command retakes every README picture from an invented
    Field Station script, 1280×800, light and dark.
 
 ### V1 milestones
-7. **M4, notes and navigation** M. Script notes (range, colour, author), Go To (page, scene,
-   bookmark), find and replace, rename a character everywhere, scene lengths in the navigator,
-   element-preserving copy and paste, spell check.
+7. **M4, notes and navigation** [partial] M. Done: scene lengths in the navigator, Go To (page,
+   scene), find and replace, rename a character. Still to do: spell check (decision 6), script
+   notes (range, colour, author), bookmarks for Go To, element-preserving copy and paste.
 8. **M5, production I** L. Scene numbering with A-suffix inserts, omit and unomit, revision
    sets (name, mark, colour), revision mode and marks, revised-pages header. Needs decision 1.
 9. **M6, production II** L. Lock pages and A-pages, revised-pages-only PDF, scene, character,
