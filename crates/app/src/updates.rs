@@ -22,9 +22,12 @@ const PUBKEY: &str = "";
 /// The bundle as the installer names it.
 pub const BUNDLE_NAME: &str = "Method Storyteller.app";
 
+/// The updater has one target, `darwin-aarch64`: any other build never touches the network.
+const APPLE_SILICON: bool = cfg!(all(target_os = "macos", target_arch = "aarch64"));
+
 /// What the menu says while this build cannot update itself.
 pub const UPDATES_LATER: &str = "Updates arrive with the first release";
-/// Off Apple silicon Macs.
+/// Anywhere but an Apple silicon Mac.
 pub const MAC_ONLY: &str = "Updates come through the app on Apple silicon Macs; elsewhere, download new versions from methodproduction.com";
 
 pub fn update_config() -> AppConfig {
@@ -41,9 +44,7 @@ pub fn update_config() -> AppConfig {
 
 /// Puts back a bundle an interrupted update left hidden, before the window opens.
 pub fn sweep_at_startup() {
-    if cfg!(target_os = "macos")
-        && let Ok(exe) = std::env::current_exe()
-    {
+    if APPLE_SILICON && let Ok(exe) = std::env::current_exe() {
         let swept = method_update::install::sweep_at_startup(&exe, &update_config().bundle);
         if swept.restored.is_some() || !swept.removed.is_empty() {
             eprintln!("update sweep: restored {:?}, removed {:?}", swept.restored, swept.removed);
@@ -70,7 +71,7 @@ impl Updates {
         let updater = Arc::new(updater);
         // The schedule: a look every TICK, a check when one is due. A build that cannot
         // update itself starts no timer at all.
-        if cfg!(target_os = "macos") && updater.unavailable().is_none() {
+        if APPLE_SILICON && updater.unavailable().is_none() {
             let (u, ctx) = (updater.clone(), ctx.clone());
             std::thread::spawn(move || {
                 loop {
@@ -87,7 +88,7 @@ impl Updates {
 
     /// Why Check for Updates cannot run here, for the menu's tooltip; `None` when it can.
     pub fn unavailable(&self) -> Option<&'static str> {
-        if !cfg!(target_os = "macos") {
+        if !APPLE_SILICON {
             Some(MAC_ONLY)
         } else if self.updater.unavailable().is_some() {
             Some(UPDATES_LATER)
@@ -120,10 +121,15 @@ impl Updates {
         });
     }
 
-    /// What to show now: the phase, plus a one-time answer, handed over once.
+    /// What to show now: the phase, plus a one-time answer, handed over once. A failure is
+    /// shown once: then the updater goes back to idle.
     pub fn status(&self) -> Status {
         let said = self.said.lock().ok().and_then(|mut slot| slot.take());
-        self.updater.status(said)
+        let status = self.updater.status(said);
+        if status.phase == "failed" {
+            self.updater.dismiss();
+        }
+        status
     }
 
     /// "Restart to Update": swaps the bundle, starts the new one, and the caller exits.

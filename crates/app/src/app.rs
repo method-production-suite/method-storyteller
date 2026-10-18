@@ -113,6 +113,8 @@ pub struct StorytellerApp {
     #[cfg(target_os = "macos")]
     native: Option<crate::native_menu::NativeMenu>,
     updates: crate::updates::Updates,
+    /// The last update line put in the status, to put it there only when it changes.
+    update_line: Option<String>,
 }
 
 /// One menu entry: command id, label, shortcut text and whether it can run now.
@@ -171,6 +173,7 @@ impl StorytellerApp {
                 craft_settings::paths::data_dir(crate::prefs::APP_ID).map(|d| d.join("updates.json")),
                 prefs_automatic,
             ),
+            update_line: None,
         };
         app.install_menu(&cc.egui_ctx);
         let last_seen = app.prefs.get().general.last_seen_version.clone();
@@ -915,9 +918,14 @@ impl StorytellerApp {
             let hint_label = ui.label(egui::RichText::new(&hint).weak());
             self.automation.add("status.hint", "text", hint, &hint_label);
             ui.separator();
+            // The update's line goes in the status once per change, so other messages still show.
             let update = self.updates.status();
-            if let Some(line) = crate::updates::status_line(&update) {
-                self.status = line;
+            let line = crate::updates::status_line(&update);
+            if line != self.update_line {
+                if let Some(line) = &line {
+                    self.status = line.clone();
+                }
+                self.update_line = line;
             }
             if update.phase == "ready" {
                 let restart = ui.button("Restart to Update");
