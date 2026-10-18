@@ -121,7 +121,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
             println!("{}", script.title_page.get("Title").map(storyteller_core::inline::plain).unwrap_or_else(|| input.display().to_string()));
             println!("{pages} pages, {} scenes, {} elements", script.scene_indices().len(), script.elements.len());
             for (name, count) in characters {
-                println!("  {name:<30} {count} speeches");
+                println!("  {name:<30} {count} {}", if count == 1 { "speech" } else { "speeches" });
             }
         }
         "run" => {

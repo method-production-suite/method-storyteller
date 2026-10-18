@@ -14,6 +14,12 @@ Every bundled asset, with its author, source and licence. Each file also has a
 
 The fonts are distributed unmodified. PDF export embeds subsets of them, which the OFL permits.
 
+## Pictures
+
+`assets/screens/` holds pictures of this app, taken by `cargo xtask screens` from
+`examples/field-station.fountain`, an invented script written for this project. They are
+under the project's own licence, and need no sidecars.
+
 ## Libraries
 
 Rust dependencies are fetched by Cargo and keep their own licences (see `Cargo.lock`).

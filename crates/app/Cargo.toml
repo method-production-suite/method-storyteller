@@ -41,3 +41,5 @@ muda = { version = "0.21.2", default-features = false }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+# Draws the app to an image with no window, for `cargo xtask screens`.
+egui_kittest = { version = "=0.36.2", features = ["eframe", "wgpu"] }
