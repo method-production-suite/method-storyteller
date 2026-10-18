@@ -20,7 +20,9 @@
 #                      Connect API key, the .p8 base64); needs the signing secrets too.
 #   Windows signing:   WINDOWS_CERTIFICATE (a code signing .pfx, base64),
 #                      WINDOWS_CERTIFICATE_PASSWORD. The suite's model step (Method
-#                      Schedule's); no certificate exists yet, so it stays off.
+#                      Schedule's), for the app and the installer; no certificate exists
+#                      yet, so it stays off.
+# Every compile happens before any secret reaches the runner.
 # No updater archive or latest.json yet: Storyteller has no updater (SUITE-STANDARDS.md
 # section 1 brings one through method-libs).
 #
@@ -44,7 +46,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   check:
-    name: tag and version
+    name: tag, version and notes
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:
@@ -70,6 +72,16 @@ jobs:
           version="$(cargo xtask version)"
           if [ "$tag" != "v$version" ]; then
             echo "::error::The tag $tag is not v$version, the version in Cargo.toml."
+            exit 1
+          fi
+          # The draft's description; nothing is built without it.
+          notes="docs/releases/$version.md"
+          if [ ! -s "$notes" ]; then
+            echo "::error::$notes is missing: write it from docs/release-notes-template.md first."
+            exit 1
+          fi
+          if grep -n '{{' "$notes"; then
+            echo "::error::$notes still has {{placeholders}} from the skeleton."
             exit 1
           fi
           # A tag on a side branch must not build a release.
@@ -125,6 +137,20 @@ jobs:
       - name: Add the Rust target (macOS)
         if: runner.os == 'macOS'
         run: rustup target add aarch64-apple-darwin
+
+      # Every build runs before any secret reaches the runner, so no dependency's build
+      # script runs while the signing keychain or the notarization key exists. The packaging
+      # steps below use --no-build.
+      - name: Build the app and the packaging tool
+        env:
+          TARGET: ${{ runner.os == 'macOS' && 'aarch64-apple-darwin' || '' }}
+        run: |
+          set -euo pipefail
+          target=()
+          if [ -n "$TARGET" ]; then target=(--target "$TARGET"); fi
+          # ${a[@]+...}: an empty array is "unbound" under set -u in the Mac runner's bash 3.2.
+          cargo build --release --locked --package method-storyteller --bin method-storyteller-app ${target[@]+"${target[@]}"}
+          cargo build --locked --package xtask
 
       - name: Decide what gets signed
         run: |
@@ -190,8 +216,7 @@ jobs:
           set -euo pipefail
           sign=()
           if [ "${MACOS_SIGN:-no}" = yes ]; then sign=(--sign "$APPLE_SIGNING_IDENTITY"); fi
-          # ${a[@]+...}: an empty array is "unbound" under set -u in the runner's bash 3.2.
-          cargo xtask bundle-macos --target aarch64-apple-darwin ${sign[@]+"${sign[@]}"}
+          cargo xtask bundle-macos --target aarch64-apple-darwin --no-build ${sign[@]+"${sign[@]}"}
 
       - name: Notarize and staple the app (macOS)
         if: runner.os == 'macOS' && env.MACOS_NOTARIZE == 'yes'
@@ -233,7 +258,12 @@ jobs:
           app="target/bundle/macos/Method Storyteller.app"
           dmg="target/bundle/macos/Method-Storyteller-macOS.dmg"
           codesign --verify --deep --strict --verbose=2 "$app"
-          lipo -archs "$app/Contents/MacOS/method-storyteller-app"
+          # Apple silicon only: a universal or Intel binary fails here.
+          archs="$(lipo -archs "$app/Contents/MacOS/method-storyteller-app")"
+          if [ "$archs" != arm64 ]; then
+            echo "::error::The app binary is \"$archs\", not arm64 only."
+            exit 1
+          fi
           plutil -p "$app/Contents/Info.plist" | grep -F '"CFBundleIdentifier" => "com.methodstoryteller.desktop"'
           if [ "${MACOS_SIGN:-no}" = yes ]; then
             codesign --verify --strict --verbose=2 "$dmg"
@@ -251,13 +281,9 @@ jobs:
           if [ -n "${SIGNING_KEYCHAIN:-}" ]; then security delete-keychain "$SIGNING_KEYCHAIN" || true; fi
           rm -f "$RUNNER_TEMP/AuthKey.p8"
 
-      - name: Build the installer (Windows)
-        if: runner.os == 'Windows'
-        run: cargo xtask package-windows
-
       # Windows signing, skipped without the secrets (the suite's model step, from Method
-      # Schedule).
-      - name: Sign the Windows installer
+      # Schedule): the app itself before it goes into the installer, then the installer.
+      - name: Sign the app (Windows)
         if: runner.os == 'Windows' && env.HAS_WIN_SIGNING == 'true'
         shell: pwsh
         env:
@@ -267,11 +293,32 @@ jobs:
           $pfx = Join-Path $env:RUNNER_TEMP 'cert.pfx'
           [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
           $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1
+          & $signtool.FullName sign /f $pfx /p $env:WINDOWS_CERTIFICATE_PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256 target/release/method-storyteller-app.exe
+          $code = $LASTEXITCODE
+          Remove-Item $pfx
+          if ($code -ne 0) { exit $code }
+
+      - name: Build the installer (Windows)
+        if: runner.os == 'Windows'
+        run: cargo xtask package-windows --no-build
+
+      - name: Sign the installer (Windows)
+        if: runner.os == 'Windows' && env.HAS_WIN_SIGNING == 'true'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP 'cert.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1
+          $code = 0
           foreach ($f in Get-ChildItem target/bundle/windows/*.exe) {
             & $signtool.FullName sign /f $pfx /p $env:WINDOWS_CERTIFICATE_PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256 $f.FullName
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            if ($LASTEXITCODE -ne 0) { $code = $LASTEXITCODE; break }
           }
           Remove-Item $pfx
+          if ($code -ne 0) { exit $code }
 
       - name: Build the packages (Linux)
         if: runner.os == 'Linux'
@@ -283,7 +330,7 @@ jobs:
           curl --fail --location --silent --show-error --output "$tools/runtime" "$APPIMAGE_RUNTIME_URL"
           printf '%s  %s\n' "$APPIMAGETOOL_SHA256" "$tools/appimagetool" "$APPIMAGE_RUNTIME_SHA256" "$tools/runtime" | sha256sum --check --strict
           chmod +x "$tools/appimagetool"
-          cargo xtask package-linux --appimagetool "$tools/appimagetool" --runtime "$tools/runtime"
+          cargo xtask package-linux --no-build --appimagetool "$tools/appimagetool" --runtime "$tools/runtime"
           dpkg-deb --info target/bundle/linux/Method-Storyteller-linux-amd64.deb
           dpkg-deb --contents target/bundle/linux/Method-Storyteller-linux-amd64.deb
 
@@ -359,25 +406,22 @@ jobs:
           set -euo pipefail
           version="${TAG#v}"
           notes="$RUNNER_TEMP/notes.md"
-          if [ -f "docs/releases/$version.md" ]; then
-            cp "docs/releases/$version.md" "$notes"
-          else
-            echo "Draft: write docs/releases/$version.md from docs/release-notes-template.md before publishing." > "$notes"
-          fi
+          cp "docs/releases/$version.md" "$notes"
           if [ "$(cat meta/macos-notarized 2>/dev/null || echo no)" != yes ]; then
-            printf '\n---\n\nThis macOS build is not notarized: the first launch needs Control-click > Open, or System Settings > Privacy & Security > Open Anyway.\n' >> "$notes"
+            printf '\n---\n\nThis macOS build is not notarized: the first time it opens, macOS blocks it. Then open System Settings > Privacy & Security and click Open Anyway.\n' >> "$notes"
           fi
           prerelease=()
           case "$version" in *-*) prerelease=(--prerelease) ;; esac
           ls -l dist
-          # A re-run (workflow_dispatch) may refresh the files of a draft, never of a
-          # published release.
+          # A re-run (workflow_dispatch) may refresh the files and notes of a draft, never
+          # of a published release.
           if draft="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null)"; then
             if [ "$draft" != true ]; then
               echo "::error::$TAG is already published; cut the next version instead."
               exit 1
             fi
             gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$notes"
           else
             gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
               "${prerelease[@]}" --title "Method Storyteller $version" --notes-file "$notes"

@@ -29,7 +29,8 @@ prerelease is drafted as a GitHub prerelease.
 Every version has `docs/releases/<version>.md`, written for people who write scripts: the
 voice, the shape and the skeleton are in [release-notes-template.md](release-notes-template.md)
 (what's new, fixed, not there yet, who helped). The workflow uses it as the draft's
-description; without it the draft says the notes are still to be written.
+description, and refuses to build a tag whose notes are missing or still hold a `{{...}}`
+placeholder.
 
 ## The installers
 
@@ -98,8 +99,8 @@ From an up-to-date `main` with a clean tree (`0.2.0` stands for the new version)
 Never move, delete or force-push a public tag: fix a problem with the next patch version.
 
 To rebuild an existing tag's draft (a runner failed, say), run the workflow by hand
-(Actions > release > Run workflow) with the tag. It refreshes the files of a draft and
-refuses a release that is already published.
+(Actions > release > Run workflow) with the tag. It refreshes the files and the notes of a
+draft and refuses a release that is already published.
 
 ## Before publishing the draft
 
@@ -145,7 +146,8 @@ gh secret set AC_API_KEY_P8_BASE64 -R method-production-suite/method-storyteller
 The Mac build is signed with whichever Developer ID Application identity the `.p12` holds;
 its name is masked in the logs and never written in the repository. Without the Apple
 secrets the Mac build is ad-hoc signed, and the draft's description says the first launch
-needs Open Anyway. Without the Windows secrets the installer is unsigned. The job log says
+needs System Settings > Privacy & Security > Open Anyway. With the Windows secrets both the
+app and the installer are signed; without them both are unsigned. The job log says
 what was skipped.
 
 Updates: Storyteller has no updater yet, so there is no updater key and no `latest.json`.
@@ -156,8 +158,8 @@ will be added here when it lands.
 
 | Job | Permissions | What it does |
 |---|---|---|
-| `check` | contents: read | the tag is `v` plus the version in `Cargo.toml`, and points at a commit on `main` |
-| `build` (macOS arm64, Windows x64, Linux x64) | contents: read | packages each platform; on macOS signs, notarizes, staples and verifies, each only when its secrets are there; on Windows signs only with a certificate |
+| `check` | contents: read | the tag is `v` plus the version in `Cargo.toml`, points at a commit on `main`, and `docs/releases/<version>.md` is written |
+| `build` (macOS arm64, Windows x64, Linux x64) | contents: read | compiles everything first, before any secret reaches the runner; then packages each platform with `--no-build`; on macOS signs, notarizes, staples and verifies (the binary must be arm64 only), each only when its secrets are there; on Windows signs the app and the installer only with a certificate |
 | `draft` | contents: write (the only job with it) | checks all four installers are there, writes `SHA256SUMS.txt`, and runs `gh release create --draft` with the notes |
 
 Only first-party actions are used, each pinned to the suite's full commit SHA. Each secret
