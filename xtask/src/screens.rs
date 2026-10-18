@@ -8,12 +8,11 @@
 //! the run never touches the user's own.
 
 use std::io::{BufRead, BufReader, Write};
-use std::net::TcpStream;
+use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::time::{Duration, Instant};
 
-const PORT: u16 = 48765;
 const WIDTH: u32 = 1280;
 const HEIGHT: u32 = 800;
 const THEMES: [&str; 2] = ["light", "dark"];
@@ -34,7 +33,7 @@ pub fn run(root: &Path) -> Result<(), String> {
     let bin = root.join("target/release");
     let work = root.join("target/screens");
     let _ = std::fs::remove_dir_all(&work);
-    std::fs::create_dir_all(work.join("config")).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&work).map_err(|e| e.to_string())?;
     let fountain = work.join("field-station.fountain");
     std::fs::copy(root.join(SAMPLE), &fountain).map_err(|e| format!("{SAMPLE}: {e}"))?;
     let fdx = work.join("field-station.fdx");
@@ -47,19 +46,27 @@ pub fn run(root: &Path) -> Result<(), String> {
     }
     let app = bin.join("method-storyteller-app");
     for theme in THEMES {
-        let mut session = AppSession::launch(&app, &fountain, &work)?;
-        session.call("ui.window", &format!(r#"{{"width":{WIDTH},"height":{HEIGHT},"theme":"{theme}"}}"#))?;
+        // Every shot sets its own view, and every launch gets fresh settings, so nothing
+        // carries over from one shot or theme to the next.
+        let frame = |pages: bool| format!(r#"{{"width":{WIDTH},"height":{HEIGHT},"theme":"{theme}","page_view":{pages}}}"#);
+        let mut session = AppSession::launch(&app, &fountain, &work, &format!("{theme}-script"))?;
+        // The writing view: one continuous column.
+        session.call("ui.window", &frame(false))?;
         session.call("ui.focus", r#"{"element":6,"offset":0}"#)?;
         session.shoot(&work, "hero", theme, &outputs)?;
-        // Page view, scrolled to the break between pages 1 and 2.
-        session.call("ui.command", r#"{"id":"view.page_view"}"#)?;
-        session.call("ui.focus", r#"{"element":23,"offset":0}"#)?;
-        session.shoot(&work, "page", theme, &outputs)?;
-        session.call("ui.command", r#"{"id":"view.page_view"}"#)?;
         drop(session);
 
-        let mut session = AppSession::launch(&app, &fdx, &work)?;
-        session.call("ui.window", &format!(r#"{{"width":{WIDTH},"height":{HEIGHT},"theme":"{theme}"}}"#))?;
+        // Page view, scrolled to the break between pages 1 and 2. A launch of its own, so
+        // the scroll starts from the top every run.
+        let mut session = AppSession::launch(&app, &fountain, &work, &format!("{theme}-page"))?;
+        session.call("ui.window", &frame(true))?;
+        std::thread::sleep(Duration::from_millis(800));
+        session.call("ui.focus", r#"{"element":23,"offset":0}"#)?;
+        session.shoot(&work, "page", theme, &outputs)?;
+        drop(session);
+
+        let mut session = AppSession::launch(&app, &fdx, &work, &format!("{theme}-import"))?;
+        session.call("ui.window", &frame(true))?;
         session.call("ui.focus", r#"{"element":0,"offset":0}"#)?;
         session.shoot(&work, "import", theme, &outputs)?;
         drop(session);
@@ -88,16 +95,23 @@ struct AppSession {
 }
 
 impl AppSession {
-    fn launch(app: &Path, file: &Path, work: &Path) -> Result<Self, String> {
+    fn launch(app: &Path, file: &Path, work: &Path, name: &str) -> Result<Self, String> {
+        let config = work.join("config").join(name);
+        std::fs::create_dir_all(&config).map_err(|e| e.to_string())?;
+        let port = free_port()?;
         let child = Command::new(app)
             .arg(file)
-            .args(["--control", &PORT.to_string()])
-            .env(CONFIG_VAR, work.join("config"))
+            .args(["--control", &port.to_string()])
+            .env(CONFIG_VAR, config)
             .spawn()
             .map_err(|e| format!("{}: {e}", app.display()))?;
+        let mut child = child;
         let started = Instant::now();
         let stream = loop {
-            match TcpStream::connect(("127.0.0.1", PORT)) {
+            if let Ok(Some(status)) = child.try_wait() {
+                return Err(format!("the app exited before opening its control channel ({status})"));
+            }
+            match TcpStream::connect(("127.0.0.1", port)) {
                 Ok(stream) => break stream,
                 Err(_) if started.elapsed() < Duration::from_secs(30) => std::thread::sleep(Duration::from_millis(200)),
                 Err(e) => return Err(format!("the app did not open its control channel: {e}")),
@@ -136,6 +150,12 @@ impl Drop for AppSession {
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
+}
+
+/// A port nothing is listening on, so the run never drives another process.
+fn free_port() -> Result<u16, String> {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).map_err(|e| e.to_string())?;
+    listener.local_addr().map(|a| a.port()).map_err(|e| e.to_string())
 }
 
 fn copy_out(shot: &Path, outputs: &[PathBuf]) -> Result<(), String> {

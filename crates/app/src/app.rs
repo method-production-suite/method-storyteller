@@ -469,6 +469,9 @@ impl StorytellerApp {
                     Some("dark") => ctx.set_theme(egui::Theme::Dark),
                     _ => {}
                 }
+                if let Some(pages) = parsed.pointer("/params/page_view").and_then(Value::as_bool) {
+                    self.prefs.update(|p| p.view.page_view = pages);
+                }
                 // The status line otherwise still names the control port.
                 self.status.clear();
                 let _ = request.reply.send(json!({"id": id, "result": {}}).to_string());

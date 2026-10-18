@@ -11,7 +11,7 @@ default).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/screens/hero-dark.png">
-  <img src="assets/screens/hero-light.png" alt="Method Storyteller with an invented script, Field Station, open: the scene list on the left and a formatted screenplay page beside it." width="1280">
+  <img src="assets/screens/hero-light.png" alt="Method Storyteller with an invented script, Field Station, open: the scene list on the left and the formatted script beside it." width="1280">
 </picture>
 
 - **Write without thinking about formatting.** Tab and Enter move between scene heading, action,
