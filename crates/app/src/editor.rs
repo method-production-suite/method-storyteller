@@ -11,8 +11,9 @@ use egui::{
     Align, Color32, FontData, FontDefinitions, FontFamily, FontId, Frame, Id, Key, Margin, Modifiers, Order, Rect, Stroke, TextEdit, Ui, pos2, vec2,
 };
 use storyteller_core::layout::{Align as PageAlign, POINTS_PER_COLUMN, WRAP_ADVANCE_POINTS};
-use storyteller_core::{ElementKind, autocomplete};
+use storyteller_core::{ElementKind, autocomplete, paginate};
 use storyteller_engine::Session;
+use storyteller_engine::flow;
 
 use crate::automation::Automation;
 
@@ -46,8 +47,18 @@ impl Completion {
     }
 }
 
+/// The element picker Enter opens on an empty element.
+pub struct Picker {
+    pub index: usize,
+    pub selected: usize,
+}
+
 #[derive(Default)]
 pub struct EditorState {
+    /// Open while choosing an element for an empty paragraph.
+    pub picker: Option<Picker>,
+    /// The element that had focus last frame, to give it back after Esc.
+    last_focused: Option<usize>,
     /// Focus this element at this byte offset on the next frame.
     pub pending_focus: Option<(usize, usize)>,
     pub focused: Option<usize>,
@@ -59,13 +70,40 @@ pub struct EditorState {
 
 /// What the view asks the app to do after drawing.
 pub enum EditAction {
-    SetText { index: usize, text: String, caret: usize },
-    Caret { index: usize, offset: usize },
-    Enter { index: usize, offset: usize },
-    Tab { index: usize, back: bool },
-    MergePrevious { index: usize },
-    Focus { index: usize, offset: usize },
-    Accept { index: usize, text: String, then_enter: bool },
+    SetText {
+        index: usize,
+        text: String,
+        caret: usize,
+    },
+    Caret {
+        index: usize,
+        offset: usize,
+    },
+    Enter {
+        index: usize,
+        offset: usize,
+    },
+    Tab {
+        index: usize,
+        back: bool,
+    },
+    MergePrevious {
+        index: usize,
+    },
+    Focus {
+        index: usize,
+        offset: usize,
+    },
+    Accept {
+        index: usize,
+        text: String,
+        then_enter: bool,
+    },
+    /// Chosen in the element picker.
+    Pick {
+        index: usize,
+        kind: ElementKind,
+    },
 }
 
 pub fn char_to_byte(text: &str, chars: usize) -> usize {
@@ -115,6 +153,22 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
     let ink = Color32::from_gray(25);
     let faint = crate::theme::faint_ink();
     let count = session.script.elements.len();
+    let automatic = if layout.auto_contd { paginate::auto_contd(&session.script) } else { Vec::new() };
+    // egui drops focus on Esc before any widget sees it; Esc closes popups here, so give the
+    // caret back to the element it was in.
+    let nothing_focused = ui.memory(|m| m.focused().is_none());
+    if ui.input(|i| i.key_pressed(Key::Escape))
+        && nothing_focused
+        && editor.pending_focus.is_none()
+        && let Some(last) = editor.last_focused
+    {
+        let offset = if session.caret.element == last { session.caret.offset } else { usize::MAX };
+        editor.pending_focus = Some((last, offset));
+        if editor.picker.as_ref().is_some_and(|p| p.index == last) {
+            editor.picker = None;
+        }
+        editor.completion.dismissed = true;
+    }
     editor.focused = None;
 
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
@@ -177,7 +231,10 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                         let mut text = element.text.clone();
                         let focused = ui.memory(|m| m.has_focus(id));
                         let single_line = kind.is_single_line();
-                        if focused {
+                        let picking = editor.picker.as_ref().is_some_and(|p| p.index == index);
+                        if focused && picking {
+                            picker_keys(ui, index, editor, &mut actions);
+                        } else if focused {
                             handle_keys(ui, id, index, count, &text, single_line, editor, &mut actions);
                         }
                         if let Some((target, offset)) = editor.pending_focus
@@ -238,6 +295,11 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                         {
                             scene_numbers(ui, response.rect, number, layout.scene_number_left_end, layout.scene_number_right, col, &font, ink);
                         }
+                        if kind == ElementKind::Character && automatic.get(index).copied().unwrap_or(false) {
+                            // The automatic (CONT'D), drawn faint: it is added at layout, not typed.
+                            let at = output.galley_pos + output.galley.rect.right_top().to_vec2() + vec2(advance, 0.0);
+                            ui.painter().text(at, egui::Align2::LEFT_TOP, &layout.contd, font.clone(), faint);
+                        }
                         if editor.scroll_to_focus && has_focus {
                             response.scroll_to_me(Some(Align::Center));
                             editor.scroll_to_focus = false;
@@ -257,7 +319,11 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                                     actions.push(EditAction::Caret { index, offset: char_to_byte(&text, cursor.primary.index.into()) });
                                 }
                             }
-                            completion_popup(ui, session, editor, automation, index, kind, &text, response.rect, &font, &mut actions);
+                            if picking {
+                                picker_popup(ui, editor, automation, index, response.rect, &mut actions);
+                            } else {
+                                completion_popup(ui, session, editor, automation, index, kind, &text, response.rect, &font, &mut actions);
+                            }
                         }
                     }
                     let y = ui.cursor().top() + row * 6.0;
@@ -277,6 +343,13 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
         });
         ui.add_space(row * 3.0);
     });
+    if editor.focused.is_some() {
+        editor.last_focused = editor.focused;
+    }
+    // Clicking elsewhere closes the picker.
+    if editor.picker.as_ref().is_some_and(|p| editor.focused != Some(p.index)) && editor.pending_focus.is_none() {
+        editor.picker = None;
+    }
     actions
 }
 
@@ -411,8 +484,13 @@ fn completion_popup(
     }
     let completion = &mut editor.completion;
     if completion.index != index || completion.text != text {
-        *completion =
-            Completion { index, text: text.to_string(), items: autocomplete::suggest(&session.script, kind, text), selected: 0, dismissed: false };
+        *completion = Completion {
+            index,
+            text: text.to_string(),
+            items: autocomplete::suggest_at(&session.script, index, kind, text),
+            selected: 0,
+            dismissed: false,
+        };
     }
     if !completion.visible_for(index) {
         return;
@@ -433,4 +511,58 @@ fn completion_popup(
             });
         },
     );
+}
+
+/// Keys while the element picker is open: a choice's letter, arrows and Enter, or Esc.
+fn picker_keys(ui: &mut Ui, index: usize, editor: &mut EditorState, actions: &mut Vec<EditAction>) {
+    let Some(picker) = editor.picker.as_mut() else { return };
+    let count = flow::PICKER.len();
+    let mut chosen = None;
+    let mut close = false;
+    ui.input_mut(|input| {
+        if input.consume_key(Modifiers::NONE, Key::ArrowDown) {
+            picker.selected = (picker.selected + 1) % count;
+        }
+        if input.consume_key(Modifiers::NONE, Key::ArrowUp) {
+            picker.selected = picker.selected.checked_sub(1).unwrap_or(count - 1);
+        }
+        if input.consume_key(Modifiers::NONE, Key::Escape) {
+            close = true;
+        }
+        if input.consume_key(Modifiers::NONE, Key::Enter) {
+            chosen = flow::PICKER.get(picker.selected).map(|(_, kind)| *kind);
+        }
+        for (letter, kind) in flow::PICKER {
+            if let Some(key) = Key::from_name(&letter.to_string())
+                && (input.consume_key(Modifiers::NONE, key) || input.consume_key(Modifiers::SHIFT, key))
+            {
+                chosen = Some(kind);
+            }
+        }
+        // The picker has the keyboard: nothing typed reaches the text.
+        input.events.retain(|event| !matches!(event, egui::Event::Text(_) | egui::Event::Key { .. }));
+    });
+    if let Some(kind) = chosen {
+        actions.push(EditAction::Pick { index, kind });
+        editor.picker = None;
+    } else if close {
+        editor.picker = None;
+    }
+}
+
+/// The element picker under an empty paragraph.
+fn picker_popup(ui: &Ui, editor: &EditorState, automation: &mut Automation, index: usize, rect: Rect, actions: &mut Vec<EditAction>) {
+    let Some(picker) = editor.picker.as_ref() else { return };
+    egui::Area::new(Id::new("storyteller.picker")).order(Order::Foreground).fixed_pos(rect.left_bottom() + vec2(0.0, 2.0)).show(ui.ctx(), |ui| {
+        Frame::popup(ui.style()).show(ui, |ui| {
+            ui.label(egui::RichText::new("Element").small().weak());
+            for (n, (letter, kind)) in flow::PICKER.iter().enumerate() {
+                let response = ui.selectable_label(n == picker.selected, format!("{letter}   {}", kind.label()));
+                automation.add(format!("picker.{}", kind.id()), "option", kind.label(), &response);
+                if response.clicked() {
+                    actions.push(EditAction::Pick { index, kind: *kind });
+                }
+            }
+        });
+    });
 }

@@ -79,6 +79,9 @@ pub struct Layout {
     pub show_scene_numbers: bool,
     pub more: String,
     pub contd: String,
+    /// Add `contd` to a cue when the same character speaks again in a scene (docs/spec.md §5.1).
+    #[serde(default = "yes")]
+    pub auto_contd: bool,
     pub scene_heading: ElementStyle,
     pub action: ElementStyle,
     pub character: ElementStyle,
@@ -109,6 +112,7 @@ impl Default for Layout {
             show_scene_numbers: true,
             more: "(MORE)".into(),
             contd: "(CONT'D)".into(),
+            auto_contd: true,
             // Widths are characters per line (see `chars_per_line`), not columns.
             scene_heading: ElementStyle::new(15, 61, Align::Left, 2),
             action: ElementStyle::new(15, 61, Align::Left, 1),
@@ -133,6 +137,10 @@ impl Default for Layout {
             custom: Vec::new(),
         }
     }
+}
+
+fn yes() -> bool {
+    true
 }
 
 impl Layout {

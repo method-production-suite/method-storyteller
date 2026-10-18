@@ -59,12 +59,15 @@ stderr) and will be removed in a future release.
 
 | Key | Does |
 | --- | --- |
-| Enter | End the element and start the next one (Scene heading → Action, Character → Dialogue, Dialogue → Character …) |
-| Enter on an empty element | Change its type (empty Action → Scene heading, empty Character → Action …) |
-| Tab / Shift-Tab | Change the element type (Action ↔ Character, Dialogue → Parenthetical …) |
-| ⌘1 … ⌘7 | Scene heading, Action, Character, Parenthetical, Dialogue, Transition, Shot |
+| Enter | End the element and start the next one (Scene heading → Action, Character → Dialogue, Dialogue → Action …) |
+| Enter on an empty element | Open the element picker: S, A, C, P, D, T, H … or the arrows |
+| Tab | On an empty element, change its type (Action → Character, Character → Transition …); after text, start the next one (a parenthetical after a cue or a speech) |
+| ⌘1 … ⌘7 | Start a Scene heading, Action, Character, Parenthetical, Dialogue, Transition or Shot |
+| ⌘⌥1 … ⌘⌥7 | Change the current element to that type |
 | Shift-Enter | Line break inside an action or dialogue paragraph |
 | Backspace at the start | Join with the previous element |
+
+The status bar always shows what Tab and Enter will do next.
 
 (Ctrl instead of ⌘ on Windows and Linux.)
 

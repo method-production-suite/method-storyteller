@@ -9,23 +9,71 @@ use crate::model::{ElementKind, Script, character_name};
 /// Most suggestions returned.
 pub const MAX_SUGGESTIONS: usize = 10;
 
-pub const SCENE_PREFIXES: [&str; 5] = ["INT.", "EXT.", "INT./EXT.", "EXT./INT.", "EST."];
-pub const TIMES_OF_DAY: [&str; 9] = ["DAY", "NIGHT", "MORNING", "AFTERNOON", "EVENING", "CONTINUOUS", "LATER", "MOMENTS LATER", "SAME"];
+pub const SCENE_PREFIXES: [&str; 6] = ["INT.", "EXT.", "INT./EXT.", "EXT./INT.", "I/E", "EST."];
+/// Times of day, in the order Final Draft's SmartType offers them.
+pub const TIMES_OF_DAY: [&str; 14] = [
+    "DAY",
+    "NIGHT",
+    "AFTERNOON",
+    "MORNING",
+    "EVENING",
+    "LATER",
+    "MOMENTS LATER",
+    "CONTINUOUS",
+    "THE NEXT DAY",
+    "MAGIC HOUR",
+    "DAWN",
+    "DUSK",
+    "SAME",
+    "SAME TIME",
+];
 pub const TRANSITIONS: [&str; 9] =
     ["CUT TO:", "FADE IN:", "FADE OUT.", "FADE TO BLACK.", "DISSOLVE TO:", "SMASH CUT TO:", "MATCH CUT TO:", "JUMP CUT TO:", "BACK TO:"];
 pub const EXTENSIONS: [&str; 4] = ["V.O.", "O.S.", "O.C.", "CONT'D"];
 
-/// Ranked, de-duplicated candidates starting with `prefix` (but not equal to it).
+/// Ranked, de-duplicated candidates starting with `prefix` (but not equal to it): heaviest
+/// first, then in the order they were first offered (so built-in lists keep their order).
 fn rank(prefix: &str, candidates: impl IntoIterator<Item = (String, usize)>) -> Vec<String> {
-    let mut counts: HashMap<String, usize> = HashMap::new();
-    for (candidate, weight) in candidates {
+    let mut counts: HashMap<String, (usize, usize)> = HashMap::new();
+    for (order, (candidate, weight)) in candidates.into_iter().enumerate() {
         if candidate.starts_with(prefix) && candidate != prefix && !candidate.is_empty() {
-            *counts.entry(candidate).or_default() += weight;
+            let entry = counts.entry(candidate).or_insert((0, order));
+            entry.0 += weight;
         }
     }
-    let mut ranked: Vec<(String, usize)> = counts.into_iter().collect();
-    ranked.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    let mut ranked: Vec<(String, (usize, usize))> = counts.into_iter().collect();
+    ranked.sort_by(|a, b| b.1.0.cmp(&a.1.0).then_with(|| a.1.1.cmp(&b.1.1)));
     ranked.into_iter().take(MAX_SUGGESTIONS).map(|(text, _)| text).collect()
+}
+
+/// In a two-hander, who speaks next: the speaker before last, when the last two speeches in
+/// this scene alternate between two people (Final Draft's "guess next character").
+pub fn next_speaker(script: &Script, index: usize) -> Option<String> {
+    let mut speakers: Vec<String> = Vec::new();
+    for element in script.elements.get(..index).unwrap_or(&[]).iter().rev() {
+        match element.kind {
+            ElementKind::SceneHeading => break,
+            ElementKind::Character => {
+                speakers.push(character_name(&element.text).to_uppercase());
+                if speakers.len() == 2 {
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    match speakers.as_slice() {
+        [last, before] if last != before && !before.is_empty() => Some(before.clone()),
+        _ => None,
+    }
+}
+
+/// [`suggest`] for the element at `index`: an empty cue offers the guessed next speaker.
+pub fn suggest_at(script: &Script, index: usize, kind: ElementKind, text: &str) -> Vec<String> {
+    if kind == ElementKind::Character && text.trim().is_empty() {
+        return next_speaker(script, index).into_iter().collect();
+    }
+    suggest(script, kind, text)
 }
 
 /// Split a heading into (prefix, location, time of day).
@@ -119,9 +167,27 @@ mod tests {
 
     #[test]
     fn scene_heading_parts() {
-        assert_eq!(suggest(&script(), ElementKind::SceneHeading, "i"), ["INT.", "INT./EXT."]);
+        assert_eq!(suggest(&script(), ElementKind::SceneHeading, "i"), ["INT.", "INT./EXT.", "I/E"]);
+        let times = suggest(&Script::default(), ElementKind::SceneHeading, "INT. HALL - ");
+        assert_eq!(times.get(..4).unwrap_or_default(), ["INT. HALL - DAY", "INT. HALL - NIGHT", "INT. HALL - AFTERNOON", "INT. HALL - MORNING"]);
         assert_eq!(suggest(&script(), ElementKind::SceneHeading, "int. kit"), ["INT. KITCHEN", "INT. KITCHEN GARDEN"]);
         assert_eq!(suggest(&script(), ElementKind::SceneHeading, "INT. HALL - N")[0], "INT. HALL - NIGHT");
+    }
+
+    #[test]
+    fn guesses_the_next_speaker_in_a_two_hander() {
+        let mut script = script();
+        script.elements.push(Element::new(ElementKind::Character, ""));
+        let last = script.elements.len() - 1;
+        // MARGARET, MARGARET (V.O.)... the fixture's last two speakers are the same person.
+        assert!(suggest_at(&script, last, ElementKind::Character, "").is_empty());
+        let mut exchange = Script::default();
+        for name in ["ANNA", "BEN", "ANNA"] {
+            exchange.elements.push(Element::new(ElementKind::Character, name));
+            exchange.elements.push(Element::new(ElementKind::Dialogue, "Line."));
+        }
+        exchange.elements.push(Element::new(ElementKind::Character, ""));
+        assert_eq!(suggest_at(&exchange, 6, ElementKind::Character, ""), ["BEN"]);
     }
 
     #[test]

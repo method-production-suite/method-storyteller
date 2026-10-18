@@ -31,7 +31,7 @@ struct AppCommand {
     shortcut: Option<&'static str>,
 }
 
-const APP_COMMANDS: [AppCommand; 9] = [
+const APP_COMMANDS: [AppCommand; 10] = [
     AppCommand { id: "app.title_page", label: "Title Page…", menu: "File/Title Page…", shortcut: Some("Cmd+Shift+T") },
     AppCommand { id: "prefs.new_fountain", label: "Save New Scripts as Fountain", menu: "File/Save New Scripts as Fountain", shortcut: None },
     AppCommand {
@@ -41,6 +41,7 @@ const APP_COMMANDS: [AppCommand; 9] = [
         shortcut: None,
     },
     AppCommand { id: "app.quit", label: "Quit", menu: "File/Quit", shortcut: Some("Cmd+Q") },
+    AppCommand { id: "prefs.smart_quotes", label: "Smart Quotes", menu: "Format/Smart Quotes", shortcut: None },
     AppCommand { id: "view.navigator", label: "Scene Navigator", menu: "View/Scene Navigator", shortcut: Some("Cmd+Shift+N") },
     AppCommand { id: "view.page_view", label: "Page View", menu: "View/Page View", shortcut: Some("Cmd+Shift+P") },
     AppCommand { id: "view.zoom_in", label: "Zoom In", menu: "View/Zoom In", shortcut: Some("Cmd+Equals") },
@@ -209,6 +210,9 @@ impl StorytellerApp {
             "view.page_view" => {
                 self.prefs.update(|p| p.view.page_view = !p.view.page_view);
             }
+            "prefs.smart_quotes" => {
+                self.prefs.update(|p| p.general.smart_quotes = !p.general.smart_quotes);
+            }
             "prefs.new_fountain" => {
                 self.prefs.update(|p| p.general.new_script_format = "fountain".into());
                 self.status = "New scripts will be saved as Fountain (.fountain).".into();
@@ -359,7 +363,15 @@ impl StorytellerApp {
     fn apply(&mut self, actions: Vec<EditAction>) {
         for action in actions {
             match action {
-                EditAction::SetText { index, text, caret } => {
+                EditAction::SetText { index, mut text, mut caret } => {
+                    if self.prefs.get().general.smart_quotes {
+                        let old = self.session.element(index).map(|e| e.text.clone()).unwrap_or_default();
+                        if let Some((curled, at)) = storyteller_engine::flow::smart_quote(&old, &text, caret) {
+                            text = curled;
+                            caret = at;
+                            self.editor.pending_focus = Some((index, caret));
+                        }
+                    }
                     let _ = storyteller_engine::commands::set_text(&mut self.session, index, &text, true);
                     self.session.caret = Caret { element: index, offset: caret };
                     self.session.clamp_caret();
@@ -369,7 +381,21 @@ impl StorytellerApp {
                     self.session.clamp_caret();
                 }
                 EditAction::Enter { index, offset } => {
-                    self.run("flow.enter", params(&[("index", json!(index)), ("offset", json!(offset))]));
+                    match self.registry.run("flow.enter", &mut self.session, &params(&[("index", json!(index)), ("offset", json!(offset))])) {
+                        Ok(outcome) if outcome.value.get("picker").and_then(Value::as_bool) == Some(true) => {
+                            let current = self.session.element(index).map_or(ElementKind::Action, |e| e.kind);
+                            let selected = storyteller_engine::flow::PICKER.iter().position(|(_, k)| *k == current).unwrap_or(1);
+                            self.editor.picker = Some(editor::Picker { index, selected });
+                        }
+                        Ok(_) => self.error = None,
+                        Err(error) => self.error = Some(error.to_string()),
+                    }
+                    self.refocus();
+                }
+                EditAction::Pick { index, kind } => {
+                    if let Err(error) = storyteller_engine::commands::element_shortcut(&mut self.session, index, kind) {
+                        self.error = Some(error.to_string());
+                    }
                     self.refocus();
                 }
                 EditAction::Tab { index, back } => {
@@ -509,6 +535,7 @@ impl StorytellerApp {
             "view.scene_numbers" => Some(self.session.layout.show_scene_numbers),
             "prefs.new_fountain" => Some(self.prefs.get().general.new_script_format != "osf"),
             "prefs.new_osf" => Some(self.prefs.get().general.new_script_format == "osf"),
+            "prefs.smart_quotes" => Some(self.prefs.get().general.smart_quotes),
             _ => None,
         }
     }
@@ -770,6 +797,16 @@ impl StorytellerApp {
             ui.separator();
             let page_label = ui.label(format!("Page {page} of {pages}"));
             self.automation.add("status.page", "text", format!("Page {page} of {pages}"), &page_label);
+            ui.separator();
+            // What Tab and Enter will do here, as Final Draft's status bar shows.
+            let text = self.session.current().map(|e| e.text.clone()).unwrap_or_default();
+            let hint = if self.editor.picker.is_some() {
+                "Type a letter, or use the arrows and Enter    Esc: keep it".to_string()
+            } else {
+                storyteller_engine::flow::hint(kind, &text)
+            };
+            let hint_label = ui.label(egui::RichText::new(&hint).weak());
+            self.automation.add("status.hint", "text", hint, &hint_label);
             ui.separator();
             if let Some(error) = &self.error {
                 ui.colored_label(ui.visuals().error_fg_color, error);

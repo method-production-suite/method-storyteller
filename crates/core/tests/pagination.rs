@@ -81,12 +81,18 @@ fn check_rules(script: &Script, paginated: &Paginated) {
         }
     }
     // No printed word is lost or duplicated.
+    let automatic = storyteller_core::paginate::auto_contd(script);
     let mut printed = Vec::new();
     for page in &paginated.pages {
         for line in &page.lines {
             // A `NAME (CONT'D)` cue repeats the name, so it is not counted.
-            if let LineRole::Element(_) = line.role {
-                printed.extend(words(&line.text()));
+            if let LineRole::Element(kind) = line.role {
+                let mut text = line.text();
+                // An automatic (CONT'D) is added at layout, not typed.
+                if kind == K::Character && line.element.is_some_and(|e| automatic.get(e).copied().unwrap_or(false)) {
+                    text = text.trim_end().strip_suffix(layout.contd.as_str()).unwrap_or(&text).to_string();
+                }
+                printed.extend(words(&text));
             }
         }
     }
@@ -267,4 +273,21 @@ fn generated_scripts_obey_the_rules() {
         assert!(paginated.pages.len() > 5);
         check_rules(&script, &paginated);
     }
+}
+
+#[test]
+fn automatic_contd_when_the_same_character_speaks_again() {
+    let script = fountain::parse(
+        "INT. HALL - DAY\n\nANNA\nOne.\n\nShe turns.\n\nANNA\nTwo.\n\nBEN\nThree.\n\nANNA (CONT'D)\nFour.\n\nEXT. ROAD - DAY\n\nANNA\nFive.\n",
+    )
+    .unwrap();
+    let flags = storyteller_core::paginate::auto_contd(&script);
+    let cues: Vec<(String, bool)> =
+        script.elements.iter().zip(&flags).filter(|(e, _)| e.kind == K::Character).map(|(e, f)| (e.text.clone(), *f)).collect();
+    assert_eq!(cues, [("ANNA".into(), false), ("ANNA".into(), true), ("BEN".into(), false), ("ANNA (CONT'D)".into(), false), ("ANNA".into(), false)]);
+    let paginated = paginate(&script, &Layout::default());
+    let printed: Vec<String> = body_lines(&paginated, 0).into_iter().map(|(_, t)| t).collect();
+    assert!(printed.contains(&"ANNA (CONT'D)".to_string()), "{printed:?}");
+    let off = paginate(&script, &Layout { auto_contd: false, ..Layout::default() });
+    assert_eq!(body_lines(&off, 0).iter().filter(|(_, t)| t.contains("CONT'D")).count(), 1, "only the typed one");
 }

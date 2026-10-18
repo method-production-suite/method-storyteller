@@ -29,11 +29,13 @@ pub struct General {
     pub recent: Vec<String>,
     /// The format new scripts are saved in: `fountain` or `osf`.
     pub new_script_format: String,
+    /// Curl straight quotes as they are typed.
+    pub smart_quotes: bool,
 }
 
 impl Default for General {
     fn default() -> Self {
-        General { recent: Vec::new(), new_script_format: "fountain".into() }
+        General { recent: Vec::new(), new_script_format: "fountain".into(), smart_quotes: true }
     }
 }
 

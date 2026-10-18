@@ -41,8 +41,11 @@ fn final_draft_flow() {
     s.caret.offset = s.current().unwrap().text.len() - 1;
     run(&registry, &mut s, "flow.enter", json!({})); // → dialogue
     type_text(&mut s, "It's starting again.");
-    run(&registry, &mut s, "flow.enter", json!({})); // → character
-    run(&registry, &mut s, "flow.enter", json!({})); // empty character → action
+    run(&registry, &mut s, "flow.enter", json!({})); // dialogue → action
+    // Enter on the empty line asks for the element picker and changes nothing.
+    let picker = run(&registry, &mut s, "flow.enter", json!({}));
+    assert_eq!(picker["value"]["picker"], json!(true));
+    assert_eq!(s.current().unwrap().kind, K::Action);
     type_text(&mut s, "She waits.");
     assert_eq!(kinds(&s), [K::SceneHeading, K::Action, K::Character, K::Parenthetical, K::Dialogue, K::Action]);
     let texts: Vec<&str> = s.script.elements.iter().map(|e| e.text.as_str()).collect();
@@ -73,7 +76,7 @@ fn format_shortcuts_and_scene_numbers() {
     let mut s = Session::default();
     run(&registry, &mut s, "element.set_text", json!({ "text": "ext. sea - day" }));
     run(&registry, &mut s, "element.insert", json!({ "kind": "action", "text": "Waves." }));
-    run(&registry, &mut s, "format.transition", json!({}));
+    run(&registry, &mut s, "convert.transition", json!({}));
     assert_eq!(s.current().unwrap().kind, K::Transition);
     assert_eq!(s.current().unwrap().text, "WAVES.");
     run(&registry, &mut s, "element.insert", json!({ "kind": "scene_heading", "text": "INT. BOAT - DAY" }));
@@ -160,4 +163,31 @@ fn control_server_over_tcp() {
     BufReader::new(stream).read_line(&mut line).unwrap();
     assert_eq!(serde_json::from_str::<Value>(&line).unwrap()["result"], "pong");
     owner.join().unwrap();
+}
+
+#[test]
+fn tab_starts_the_next_element_and_shortcuts_insert() {
+    let registry = Registry::new();
+    let mut s = Session::default();
+    run(&registry, &mut s, "element.set_text", json!({ "text": "int.", "typing": true }));
+    assert_eq!(s.current().unwrap().kind, K::SceneHeading, "a scene heading stays one");
+    run(&registry, &mut s, "element.set_kind", json!({ "kind": "action" }));
+    run(&registry, &mut s, "element.set_text", json!({ "text": "ext.", "typing": true }));
+    assert_eq!((s.current().unwrap().kind, s.current().unwrap().text.as_str()), (K::SceneHeading, "EXT."), "typing ext. in action makes a heading");
+
+    let mut s = Session::default();
+    run(&registry, &mut s, "element.set_kind", json!({ "kind": "character" }));
+    run(&registry, &mut s, "flow.tab", json!({}));
+    assert_eq!(s.current().unwrap().kind, K::Transition, "Tab in an empty cue gives a transition");
+    run(&registry, &mut s, "element.set_kind", json!({ "kind": "character" }));
+    run(&registry, &mut s, "element.set_text", json!({ "text": "ANNA" }));
+    run(&registry, &mut s, "flow.tab", json!({}));
+    assert_eq!(kinds(&s), [K::Character, K::Parenthetical], "Tab after a cue starts a parenthetical");
+    assert_eq!((s.current().unwrap().text.as_str(), s.caret.offset), ("()", 1));
+
+    run(&registry, &mut s, "element.set_text", json!({ "text": "(quietly)" }));
+    run(&registry, &mut s, "format.shot", json!({}));
+    assert_eq!(kinds(&s), [K::Character, K::Parenthetical, K::Shot], "a shortcut after text starts a new element");
+    run(&registry, &mut s, "convert.action", json!({ "index": 1 }));
+    assert_eq!(kinds(&s), [K::Character, K::Action, K::Shot], "the change-to shortcut converts in place");
 }

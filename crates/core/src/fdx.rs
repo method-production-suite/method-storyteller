@@ -995,6 +995,9 @@ pub fn apply_layout(document: &FdxDocument, layout: &mut Layout) {
                     if let Some(contd) = get(breaks, "DialogueTop").filter(|v| !v.trim().is_empty()) {
                         layout.contd = contd.to_string();
                     }
+                    if let Some(auto) = get(breaks, "AutomaticCharacterContinueds") {
+                        layout.auto_contd = auto.trim().eq_ignore_ascii_case("yes") || auto.trim() == "1" || auto.trim().eq_ignore_ascii_case("true");
+                    }
                 }
             }
             _ => {}
