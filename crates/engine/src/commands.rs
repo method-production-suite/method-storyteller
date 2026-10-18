@@ -157,13 +157,15 @@ fn go_to(session: &mut Session, scene: Option<String>, page: Option<usize>) -> R
     let paginated = session.paginated();
     if let Some(scene) = scene {
         let wanted = scene.trim();
-        // A printed scene number first (12, 12A), then the scene's position for unnumbered scripts.
-        let by_number = paginated.scenes.iter().find(|s| s.number.as_deref().is_some_and(|n| n.eq_ignore_ascii_case(wanted)));
-        let by_position = || wanted.parse::<usize>().ok().and_then(|n| n.checked_sub(1)).and_then(|n| paginated.scenes.get(n));
-        return by_number
-            .or_else(by_position)
-            .map(|s| s.element)
-            .ok_or_else(|| CommandError::Invalid { name: "scene", reason: format!("there is no scene {wanted}") });
+        // The printed scene number (12, 12A). Only a script with no scene numbers at all goes by
+        // position, so a missing number is never mistaken for another scene.
+        let numbered = paginated.scenes.iter().any(|s| s.number.is_some());
+        let found = if numbered {
+            paginated.scenes.iter().find(|s| s.number.as_deref().is_some_and(|n| n.eq_ignore_ascii_case(wanted)))
+        } else {
+            wanted.parse::<usize>().ok().and_then(|n| n.checked_sub(1)).and_then(|n| paginated.scenes.get(n))
+        };
+        return found.map(|s| s.element).ok_or_else(|| CommandError::Invalid { name: "scene", reason: format!("there is no scene {wanted}") });
     }
     let page = page.ok_or(CommandError::Missing("scene"))?;
     let count = paginated.page_count();

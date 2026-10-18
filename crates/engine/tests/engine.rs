@@ -201,7 +201,7 @@ fn tab_starts_the_next_element_and_shortcuts_insert() {
 fn go_to_scene_and_page() {
     let registry = Registry::new();
     let long = "Action that fills the page. ".repeat(120);
-    let text = format!("INT. A - DAY #4#\n\n{long}\n\nEXT. B - NIGHT #4A#\n\nShort.\n\nINT. C - DAY\n\nEnd.\n");
+    let text = format!("INT. A - DAY #4#\n\n{long}\n\nEXT. B - NIGHT #4A#\n\nShort.\n\nINT. C - DAY #5#\n\nEnd.\n");
     let mut s = Session::new(storyteller_core::fountain::parse(&text).unwrap());
     let go = |s: &mut Session, params: Value| {
         let params: Map<String, Value> = params.as_object().cloned().unwrap_or_default();
@@ -209,9 +209,14 @@ fn go_to_scene_and_page() {
     };
     assert_eq!(go(&mut s, json!({ "scene": "4a" })).unwrap(), 2);
     assert_eq!(go(&mut s, json!({ "scene": "4" })).unwrap(), 0);
-    // Unnumbered: the third scene by position.
-    assert_eq!(go(&mut s, json!({ "scene": "3" })).unwrap(), 4);
+    // Numbered: a missing number is an error, never the scene in that position.
+    assert!(go(&mut s, json!({ "scene": "3" })).is_err());
     assert!(go(&mut s, json!({ "scene": "9" })).is_err());
+    // Unnumbered: by position.
+    let mut plain =
+        Session::new(storyteller_core::fountain::parse("INT. A - DAY\n\nOne.\n\nEXT. B - NIGHT\n\nTwo.\n\nINT. C - DAY\n\nThree.\n").unwrap());
+    assert_eq!(go(&mut plain, json!({ "scene": "3" })).unwrap(), 4);
+    assert!(go(&mut plain, json!({ "scene": "4" })).is_err());
     assert_eq!(go(&mut s, json!({ "page": 1 })).unwrap(), 0);
     let pages = s.paginated().page_count();
     assert!(pages >= 2, "{pages} pages");
