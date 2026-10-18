@@ -825,6 +825,7 @@ impl StorytellerApp {
 
     fn navigator(&mut self, ui: &mut egui::Ui) {
         let scenes = self.session.paginated().scenes.clone();
+        let lengths: std::collections::HashMap<usize, u32> = self.session.scene_lengths().iter().map(|l| (l.element, l.eighths)).collect();
         let current =
             self.session.script.elements.iter().take(self.session.caret.element + 1).filter(|e| e.kind == ElementKind::SceneHeading).count();
         ui.add_space(8.0);
@@ -849,14 +850,23 @@ impl StorytellerApp {
                 let painter = ui.painter().with_clip_rect(rect);
                 let small = egui::FontId::proportional(11.5);
                 painter.text(rect.left_center() + egui::vec2(30.0, 0.0), egui::Align2::RIGHT_CENTER, number, small.clone(), weak);
-                painter.text(rect.right_center() - egui::vec2(8.0, 0.0), egui::Align2::RIGHT_CENTER, scene.page.to_string(), small, weak);
+                painter.text(rect.right_center() - egui::vec2(8.0, 0.0), egui::Align2::RIGHT_CENTER, scene.page.to_string(), small.clone(), weak);
+                // Length in eighths of a page, as a schedule counts it.
+                let length = lengths.get(&scene.element).map(|&e| storyteller_core::paginate::format_eighths(e));
+                if let Some(length) = &length {
+                    painter.text(rect.right_center() - egui::vec2(34.0, 0.0), egui::Align2::RIGHT_CENTER, length, small, weak);
+                }
                 let galley = ui.fonts_mut(|f| {
                     let mut job = egui::text::LayoutJob::simple_singleline(heading.to_string(), egui::FontId::proportional(13.0), text);
-                    job.wrap = egui::text::TextWrapping::truncate_at_width(rect.width() - 76.0);
+                    job.wrap = egui::text::TextWrapping::truncate_at_width(rect.width() - 118.0);
                     f.layout_job(job)
                 });
                 painter.galley(rect.left_center() + egui::vec2(38.0, -galley.size().y / 2.0), galley, text);
-                let response = response.on_hover_text(format!("{heading}\nPage {}", scene.page));
+                let detail = match &length {
+                    Some(length) => format!("{heading}\nPage {}, length {length}", scene.page),
+                    None => format!("{heading}\nPage {}", scene.page),
+                };
+                let response = response.on_hover_text(detail);
                 self.automation.add(format!("navigator.scene.{n}"), "listitem", heading.to_string(), &response);
                 if response.clicked() {
                     self.editor.pending_focus = Some((scene.element, 0));

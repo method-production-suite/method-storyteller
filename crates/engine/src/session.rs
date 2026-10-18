@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 use storyteller_core::layout::Layout;
-use storyteller_core::paginate::{Paginated, paginate};
+use storyteller_core::paginate::{Paginated, SceneLength, paginate, scene_lengths};
 use storyteller_core::{Element, ElementKind, Script};
 
 use crate::files::FileFormat;
@@ -44,6 +44,7 @@ pub struct Session {
     redo: Vec<Snapshot>,
     last_edit: Option<EditKind>,
     paginated: Option<Paginated>,
+    lengths: Option<Vec<SceneLength>>,
 }
 
 impl Default for Session {
@@ -69,6 +70,7 @@ impl Session {
             redo: Vec::new(),
             last_edit: None,
             paginated: None,
+            lengths: None,
         }
     }
 
@@ -85,6 +87,7 @@ impl Session {
         self.last_edit = Some(kind);
         self.dirty = true;
         self.paginated = None;
+        self.lengths = None;
     }
 
     pub fn can_undo(&self) -> bool {
@@ -115,6 +118,7 @@ impl Session {
         self.last_edit = None;
         self.dirty = true;
         self.paginated = None;
+        self.lengths = None;
         self.clamp_caret();
     }
 
@@ -124,6 +128,7 @@ impl Session {
         self.redo.clear();
         self.last_edit = None;
         self.paginated = None;
+        self.lengths = None;
     }
 
     /// Mark the end of a typing run so the next keystroke starts a new undo step.
@@ -157,9 +162,20 @@ impl Session {
         self.paginated.get_or_insert_with(|| paginate(script, layout))
     }
 
+    /// Each scene's page and length in eighths of a page, cached like the pagination.
+    pub fn scene_lengths(&mut self) -> &[SceneLength] {
+        if self.lengths.is_none() {
+            self.paginated();
+            let (script, layout) = (&self.script, &self.layout);
+            self.lengths = self.paginated.as_ref().map(|paginated| scene_lengths(script, paginated, layout));
+        }
+        self.lengths.as_deref().unwrap_or_default()
+    }
+
     /// Drop the cached pagination (after a layout change).
     pub fn invalidate_layout(&mut self) {
         self.paginated = None;
+        self.lengths = None;
     }
 
     /// Window or tab title: file name and an unsaved marker.
