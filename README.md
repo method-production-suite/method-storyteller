@@ -92,6 +92,8 @@ stderr) and will be removed in a future release.
 | ⌘⌥1 … ⌘⌥7 (Ctrl+Shift on Windows and Linux) | Change the current element to that type |
 | Shift-Enter | Line break inside an action or dialogue paragraph |
 | Backspace at the start | Join with the previous element |
+| ⌘⌥G (Ctrl+Shift+G on Windows and Linux) | Go to a scene (by its number) or a page |
+| ⌘F, then Enter / Shift-Enter (⌘G / ⇧⌘G; F3 / Shift+F3 on Windows and Linux) | Find, next and previous; the find bar also replaces one match or all (one Undo) |
 
 The status bar always shows what Tab and Enter will do next.
 

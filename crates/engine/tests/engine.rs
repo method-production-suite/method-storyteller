@@ -196,6 +196,153 @@ fn tab_starts_the_next_element_and_shortcuts_insert() {
     assert_eq!(kinds(&s), [K::Character, K::Action, K::Shot], "the change-to shortcut converts in place");
 }
 
+/// Go To lands on a scene by printed number or position, and on a page's first element.
+#[test]
+fn go_to_scene_and_page() {
+    let registry = Registry::new();
+    let long = "Action that fills the page. ".repeat(120);
+    let text = format!("INT. A - DAY #4#\n\n{long}\n\nEXT. B - NIGHT #4A#\n\nShort.\n\nINT. C - DAY #5#\n\nEnd.\n");
+    let mut s = Session::new(storyteller_core::fountain::parse(&text).unwrap());
+    let go = |s: &mut Session, params: Value| {
+        let params: Map<String, Value> = params.as_object().cloned().unwrap_or_default();
+        registry.run("nav.go_to", s, &params).map(|_| s.caret.element)
+    };
+    assert_eq!(go(&mut s, json!({ "scene": "4a" })).unwrap(), 2);
+    assert_eq!(go(&mut s, json!({ "scene": "4" })).unwrap(), 0);
+    // Numbered: a missing number is an error, never the scene in that position.
+    assert!(go(&mut s, json!({ "scene": "3" })).is_err());
+    assert!(go(&mut s, json!({ "scene": "9" })).is_err());
+    // Unnumbered: by position.
+    let mut plain =
+        Session::new(storyteller_core::fountain::parse("INT. A - DAY\n\nOne.\n\nEXT. B - NIGHT\n\nTwo.\n\nINT. C - DAY\n\nThree.\n").unwrap());
+    assert_eq!(go(&mut plain, json!({ "scene": "3" })).unwrap(), 4);
+    assert!(go(&mut plain, json!({ "scene": "4" })).is_err());
+    assert_eq!(go(&mut s, json!({ "page": 1 })).unwrap(), 0);
+    let pages = s.paginated().page_count();
+    assert!(pages >= 2, "{pages} pages");
+    // Page 2 starts inside the long action, which runs on from page 1.
+    let element = go(&mut s, json!({ "page": 2 })).unwrap();
+    assert!(element <= 2, "{element}");
+    assert!(go(&mut s, json!({ "page": 0 })).is_err());
+    assert!(go(&mut s, json!({ "page": pages + 1 })).is_err());
+    assert!(go(&mut s, json!({})).is_err());
+}
+
+/// Find steps through matches and wraps; Replace changes one; Replace All is one undo step.
+#[test]
+fn find_and_replace() {
+    let registry = Registry::new();
+    let script = "INT. HUT - DAY\n\nNora taps the glass. nora waits.\n\nNORA\nThe glass is still.\n\nEXT. FLATS - DAY\n\nGlassy ground.\n";
+    let mut s = Session::new(storyteller_core::fountain::parse(script).unwrap());
+    let next = |s: &mut Session, extra: Value| {
+        let mut params = json!({ "text": "nora" }).as_object().cloned().unwrap();
+        params.extend(extra.as_object().cloned().unwrap_or_default());
+        serde_json::to_value(registry.run("find.next", s, &params).unwrap()).unwrap()["value"].clone()
+    };
+    let first = next(&mut s, json!({}));
+    assert_eq!(
+        (first["element"].as_u64(), first["start"].as_u64(), first["number"].as_u64(), first["total"].as_u64()),
+        (Some(1), Some(0), Some(1), Some(3))
+    );
+    let second = next(&mut s, json!({}));
+    assert_eq!((second["element"].as_u64(), second["start"].as_u64()), (Some(1), Some(21)));
+    let third = next(&mut s, json!({}));
+    assert_eq!(third["element"].as_u64(), Some(2));
+    let wrapped = next(&mut s, json!({}));
+    assert_eq!(wrapped["number"].as_u64(), Some(1));
+    // Case, and one element type.
+    assert_eq!(next(&mut s, json!({ "case": true, "text": "NORA" }))["element"].as_u64(), Some(2));
+    assert_eq!(next(&mut s, json!({ "kind": "character" }))["total"].as_u64(), Some(1));
+    // Whole words: "glass" but not "Glassy".
+    assert_eq!(next(&mut s, json!({ "text": "glass", "whole_word": true }))["total"].as_u64(), Some(2));
+    assert_eq!(next(&mut s, json!({ "text": "missing" }))["total"].as_u64(), Some(0));
+
+    // Replace one, at an explicit match; a cue stays in capitals.
+    run(&registry, &mut s, "find.replace", json!({ "text": "nora", "replacement": "Emma", "index": 2, "start": 0 }));
+    assert_eq!(s.script.elements[2].text, "EMMA");
+    let none = run(&registry, &mut s, "find.replace", json!({ "text": "nora", "replacement": "Emma", "index": 2, "start": 0 }));
+    assert_eq!(none["value"]["replaced"], json!(false));
+
+    // Replace All, then one Undo puts every match back.
+    let before = s.script.elements[1].text.clone();
+    let all = run(&registry, &mut s, "find.replace_all", json!({ "text": "glass", "replacement": "window", "whole_word": true }));
+    assert_eq!(all["value"]["count"], json!(2));
+    assert_eq!(s.script.elements[1].text, "Nora taps the window. nora waits.");
+    assert_eq!(s.script.elements[3].text, "The window is still.");
+    assert_eq!(s.script.elements[5].text, "Glassy ground.");
+    run(&registry, &mut s, "edit.undo", json!({}));
+    assert_eq!(s.script.elements[1].text, before);
+    assert_eq!(s.script.elements[3].text, "The glass is still.");
+
+    // A Replace All that changes nothing is no edit: no undo step, the script stays clean.
+    s.dirty = false;
+    let undoable = s.can_undo();
+    let same = run(&registry, &mut s, "find.replace_all", json!({ "text": "glass", "replacement": "glass", "whole_word": true }));
+    assert_eq!(same["value"]["count"], json!(0));
+    assert!(!s.dirty);
+    assert_eq!(s.can_undo(), undoable);
+}
+
+/// Rename a character: cues keep their extensions; with `everywhere`, mentions follow in their
+/// own case; one Undo puts it all back.
+#[test]
+fn rename_character() {
+    let registry = Registry::new();
+    let script = "INT. HUT - DAY\n\nNORA taps the glass. Nora's hands shake.\n\nNORA\nHello.\n\nNORA (V.O.)\nStill here.\n\nEMMETT\nNora?\n\nNORAH\nWrong one.\n";
+    let mut s = Session::new(storyteller_core::fountain::parse(script).unwrap());
+    let original = s.script.clone();
+    let cues = run(&registry, &mut s, "character.rename", json!({ "from": "nora", "to": "Emma" }));
+    assert_eq!(cues["value"]["cues"], json!(2));
+    let texts: Vec<&str> = s.script.elements.iter().map(|e| e.text.as_str()).collect();
+    assert_eq!(texts[2], "EMMA");
+    assert_eq!(texts[4], "EMMA (V.O.)");
+    assert_eq!(texts[1], "NORA taps the glass. Nora's hands shake.", "cues only by default");
+    assert_eq!(texts[8], "NORAH");
+    run(&registry, &mut s, "edit.undo", json!({}));
+    assert_eq!(s.script, original);
+
+    let all = run(&registry, &mut s, "character.rename", json!({ "from": "NORA", "to": "Emma", "everywhere": true }));
+    assert_eq!((all["value"]["cues"].clone(), all["value"]["mentions"].clone()), (json!(2), json!(3)));
+    let texts: Vec<&str> = s.script.elements.iter().map(|e| e.text.as_str()).collect();
+    assert_eq!(texts[1], "EMMA taps the glass. Emma's hands shake.");
+    assert_eq!(texts[7], "Emma?");
+    assert_eq!(texts[8], "NORAH", "a different name is left alone");
+    run(&registry, &mut s, "edit.undo", json!({}));
+    assert_eq!(s.script, original, "one Undo reverses the rename");
+
+    // The new name typed in capitals still takes each mention's own case.
+    run(&registry, &mut s, "character.rename", json!({ "from": "NORA", "to": "EMMA", "everywhere": true }));
+    assert_eq!(s.script.elements[1].text, "EMMA taps the glass. Emma's hands shake.");
+    run(&registry, &mut s, "edit.undo", json!({}));
+
+    // Only capitalised mentions: a name that is also a word leaves the word alone.
+    let words = "INT. HUT - DAY\n\nWill says he will. Don't.\n\nWILL\nI will.\n\nDON\nWe don't.\n";
+    let mut w = Session::new(storyteller_core::fountain::parse(words).unwrap());
+    run(&registry, &mut w, "character.rename", json!({ "from": "WILL", "to": "Theo", "everywhere": true }));
+    assert_eq!(w.script.elements[1].text, "Theo says he will. Don't.");
+    assert_eq!(w.script.elements[3].text, "I will.");
+    run(&registry, &mut w, "character.rename", json!({ "from": "DON", "to": "Ray", "everywhere": true }));
+    assert_eq!(w.script.elements[1].text, "Theo says he will. Don't.", "DON is not in Don't");
+
+    // Renaming onto another character's name asks first; brackets and ^ are refused.
+    let refuse = |s: &mut Session, params: Value| {
+        let params: Map<String, Value> = params.as_object().cloned().unwrap_or_default();
+        registry.run("character.rename", s, &params).err().map(|e| e.to_string())
+    };
+    let merge = refuse(&mut s, json!({ "from": "NORA", "to": "Emmett" })).unwrap_or_default();
+    assert!(merge.contains("EMMETT is already a character"), "{merge}");
+    assert!(refuse(&mut s, json!({ "from": "NORA", "to": "Emma (V.O.)" })).is_some());
+    assert!(refuse(&mut s, json!({ "from": "NORA", "to": "Emma^" })).is_some());
+    let merged = run(&registry, &mut s, "character.rename", json!({ "from": "NORA", "to": "Emmett", "merge": true }));
+    assert_eq!(merged["value"]["cues"], json!(2));
+    run(&registry, &mut s, "edit.undo", json!({}));
+
+    let names = run(&registry, &mut s, "character.list", json!({}));
+    assert_eq!(names["value"][0], json!(["NORA", 2]));
+    let params: Map<String, Value> = json!({ "from": "NOBODY", "to": "X" }).as_object().cloned().unwrap();
+    assert!(registry.run("character.rename", &mut s, &params).is_err());
+}
+
 /// Scene lengths are cached with the pagination and refreshed by an edit.
 #[test]
 fn scene_lengths_follow_edits() {
