@@ -82,10 +82,33 @@ pub fn release_notes<'a>(changelog: &'a str, version: &str) -> Option<&'a str> {
     Some(changelog.get(start?..)?.trim())
 }
 
-/// Whether What's New should open by itself: only when the version changed since the last
-/// launch, never on a first launch.
+/// `major.minor.patch`, ignoring a `v` prefix and any `-pre` or `+build` suffix.
+fn semver(text: &str) -> Option<(u64, u64, u64)> {
+    let core = text.trim().trim_start_matches('v').split(['-', '+']).next()?;
+    let mut parts = core.split('.').map(|p| p.parse::<u64>().ok());
+    let version = (parts.next()??, parts.next()??, parts.next()??);
+    parts.next().is_none().then_some(version)
+}
+
+/// Whether `version` is newer than `last_seen`. Versions that do not parse count as newer when
+/// they differ, so a stray value never hides What's New for good.
+fn is_newer(version: &str, last_seen: &str) -> bool {
+    match (semver(version), semver(last_seen)) {
+        (Some(new), Some(old)) => new > old,
+        _ => version != last_seen,
+    }
+}
+
+/// Whether What's New should open by itself: only when this version is newer than the last one
+/// that ran, never on a first launch and never after going back to an older build.
 pub fn whats_new_due(last_seen: &str, version: &str) -> bool {
-    !last_seen.is_empty() && last_seen != version
+    !last_seen.is_empty() && is_newer(version, last_seen)
+}
+
+/// Whether to record `version` as the last one seen: on a first launch or an update, but not
+/// when an older build runs, so the newer build does not show What's New again.
+pub fn record_version(last_seen: &str, version: &str) -> bool {
+    last_seen.is_empty() || is_newer(version, last_seen)
 }
 
 /// Opens one of the app's own `https` links in the browser, with the system's opener (no shell,
@@ -377,6 +400,24 @@ mod tests {
         assert!(!whats_new_due("", "0.1.0"), "not on a first launch");
         assert!(!whats_new_due("0.1.0", "0.1.0"));
         assert!(whats_new_due("0.1.0", "0.2.0"));
+        assert!(whats_new_due("0.9.0", "0.10.0"), "numbers, not text");
+    }
+
+    #[test]
+    fn an_older_build_neither_shows_whats_new_nor_moves_the_version_back() {
+        assert!(!whats_new_due("0.2.0", "0.1.0"));
+        assert!(!record_version("0.2.0", "0.1.0"));
+        assert!(!record_version("0.2.0", "0.2.0"));
+        assert!(record_version("0.1.0", "0.2.0"));
+        assert!(record_version("", "0.1.0"));
+    }
+
+    #[test]
+    fn versions_that_do_not_parse_fall_back_to_a_plain_comparison() {
+        assert_eq!(semver("v1.2.3-beta.1"), Some((1, 2, 3)));
+        assert_eq!(semver("1.2"), None);
+        assert!(whats_new_due("garbage", "0.1.0"));
+        assert!(!whats_new_due("garbage", "garbage"));
     }
 
     #[test]

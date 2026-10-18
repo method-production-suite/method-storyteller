@@ -171,7 +171,7 @@ impl StorytellerApp {
         app.install_menu(&cc.egui_ctx);
         let last_seen = app.prefs.get().general.last_seen_version.clone();
         app.help.whats_new = help::whats_new_due(&last_seen, help::VERSION);
-        if last_seen != help::VERSION {
+        if help::record_version(&last_seen, help::VERSION) {
             app.prefs.update(|p| p.general.last_seen_version = help::VERSION.to_string());
         }
         app.session.layout.show_scene_numbers = app.prefs.get().view.scene_numbers;
