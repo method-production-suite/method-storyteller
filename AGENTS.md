@@ -42,6 +42,8 @@ Writers trust this app with their work; a crash can lose it.
 ## 3. Gates
 
 Before every commit: `cargo xtask ci` (fmt, clippy `-D warnings`, tests, layers, assets, privacy).
+CI also runs `cargo deny check` (deny.toml) and the 14-day crate-age check
+(`scripts/check-crate-ages.py`): a new dependency must be at least 14 days old.
 Real scripts never enter the repository: `cargo xtask corpus` measures against them from a
 manifest outside it (`STORYTELLER_CORPUS`) and prints numbers only.
 Commits are small and green. For UI work, look at the result: run the app with
