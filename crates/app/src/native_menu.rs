@@ -94,14 +94,15 @@ pub fn accelerator(text: &str) -> Option<Accelerator> {
 }
 
 impl NativeMenu {
-    /// Builds the app menu, then one menu per `(title, entries)`, then Window, and installs it.
-    /// Quit goes through craft-quit so unsaved changes are asked about first.
+    /// Builds the app menu, then one menu per `(title, entries)` with Window before Help, and
+    /// installs it. Quit goes through craft-quit so unsaved changes are asked about first.
+    /// About opens the app's own About window (`help.about`), the same one Help > About shows.
     pub fn install(ctx: &egui::Context, app_name: &str, menus: &[(&str, Vec<Entry>)]) -> muda::Result<NativeMenu> {
         let bar = Menu::new();
         let quit = MenuItem::with_id(craft_quit::QUIT_MENU_ID, format!("Quit {app_name}"), true, accelerator("Cmd+Q"));
         let app_menu = Submenu::new(app_name, true);
         app_menu.append_items(&[
-            &PredefinedMenuItem::about(Some(&format!("About {app_name}")), None),
+            &MenuItem::with_id("help.about", format!("About {app_name}"), true, None),
             &PredefinedMenuItem::separator(),
             &PredefinedMenuItem::services(None),
             &PredefinedMenuItem::separator(),
@@ -114,6 +115,7 @@ impl NativeMenu {
         bar.append(&app_menu)?;
 
         let mut items = Vec::new();
+        let mut help = None;
         for (title, entries) in menus {
             let submenu = Submenu::new(*title, true);
             for entry in entries {
@@ -135,13 +137,22 @@ impl NativeMenu {
                 };
                 items.push((entry.id.clone(), item, true, entry.check.unwrap_or(false)));
             }
-            bar.append(&submenu)?;
+            if *title == "Help" {
+                help = Some(submenu);
+            } else {
+                bar.append(&submenu)?;
+            }
         }
 
         let window = Submenu::new("Window", true);
         window.append_items(&[&PredefinedMenuItem::minimize(None), &PredefinedMenuItem::maximize(None), &PredefinedMenuItem::fullscreen(None)])?;
         bar.append(&window)?;
         window.set_as_windows_menu_for_nsapp();
+        // Help comes last, and as the system Help menu macOS adds its search field to it.
+        if let Some(help) = help {
+            bar.append(&help)?;
+            help.set_as_help_menu_for_nsapp();
+        }
         bar.init_for_nsapp();
 
         let (sender, events) = channel();

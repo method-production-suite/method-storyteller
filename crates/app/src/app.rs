@@ -17,11 +17,12 @@ use storyteller_engine::{APP_NAME, Caret, Registry, Session};
 
 use crate::automation::Automation;
 use crate::editor::{self, EditAction, EditorState};
+use crate::help::{self, HelpAction, HelpWindows, ShortcutRow};
 use crate::prefs::{APP_ID, Prefs, RECOVERY_DIR};
 use crate::theme;
 
 const AUTOSAVE_EVERY: Duration = Duration::from_secs(60);
-const MENUS: [&str; 5] = ["File", "Edit", "Format", "Production", "View"];
+const MENUS: [&str; 6] = ["File", "Edit", "Format", "Production", "View", "Help"];
 
 /// Commands that belong to the app rather than the document.
 struct AppCommand {
@@ -31,7 +32,7 @@ struct AppCommand {
     shortcut: Option<&'static str>,
 }
 
-const APP_COMMANDS: [AppCommand; 10] = [
+const APP_COMMANDS: [AppCommand; 19] = [
     AppCommand { id: "app.title_page", label: "Title Page…", menu: "File/Title Page…", shortcut: Some("Cmd+Shift+T") },
     AppCommand { id: "prefs.new_fountain", label: "Save New Scripts as Fountain", menu: "File/Save New Scripts as Fountain", shortcut: None },
     AppCommand {
@@ -47,7 +48,24 @@ const APP_COMMANDS: [AppCommand; 10] = [
     AppCommand { id: "view.zoom_in", label: "Zoom In", menu: "View/Zoom In", shortcut: Some("Cmd+Equals") },
     AppCommand { id: "view.zoom_out", label: "Zoom Out", menu: "View/Zoom Out", shortcut: Some("Cmd+Minus") },
     AppCommand { id: "view.zoom_reset", label: "Actual Size", menu: "View/Actual Size", shortcut: Some("Cmd+0") },
+    AppCommand { id: "help.about", label: "About Method Storyteller", menu: "Help/About Method Storyteller", shortcut: None },
+    AppCommand { id: "help.user_guide", label: "User Guide", menu: "Help/User Guide", shortcut: None },
+    AppCommand { id: "help.shortcuts", label: "Keyboard Shortcuts", menu: "Help/Keyboard Shortcuts", shortcut: None },
+    AppCommand { id: "help.whats_new", label: "What's New", menu: "Help/What's New", shortcut: None },
+    AppCommand { id: "help.check_updates", label: "Check for Updates…", menu: "Help/Check for Updates…", shortcut: None },
+    AppCommand {
+        id: "prefs.check_updates_automatically",
+        label: "Check for Updates Automatically",
+        menu: "Help/Check for Updates Automatically",
+        shortcut: None,
+    },
+    AppCommand { id: "help.report_bug", label: "Report a Bug", menu: "Help/Report a Bug", shortcut: None },
+    AppCommand { id: "help.licenses", label: "Licenses and Notices", menu: "Help/Licenses and Notices", shortcut: None },
+    AppCommand { id: "help.website", label: "methodproduction.com", menu: "Help/methodproduction.com", shortcut: None },
 ];
+
+/// App commands that cannot run yet: the updater arrives with the first release.
+const INACTIVE: [&str; 1] = ["help.check_updates"];
 
 /// Commands handled by the flow keys inside the editor, not as global shortcuts.
 const EDITOR_KEYS: [&str; 3] = ["Enter", "Tab", "Shift+Tab"];
@@ -88,6 +106,7 @@ pub struct StorytellerApp {
     prompt: Option<Pending>,
     discard_confirmed: bool,
     title_dialog: Option<TitleDraft>,
+    help: HelpWindows,
     status: String,
     error: Option<String>,
     last_autosave: Instant,
@@ -140,6 +159,7 @@ impl StorytellerApp {
             prompt: None,
             discard_confirmed: false,
             title_dialog: None,
+            help: HelpWindows::default(),
             status: String::new(),
             error: report.has_problems().then(|| "Settings could not be fully loaded; defaults are in use.".to_string()),
             last_autosave: Instant::now(),
@@ -149,6 +169,11 @@ impl StorytellerApp {
             native: None,
         };
         app.install_menu(&cc.egui_ctx);
+        let last_seen = app.prefs.get().general.last_seen_version.clone();
+        app.help.whats_new = help::whats_new_due(&last_seen, help::VERSION);
+        if help::record_version(&last_seen, help::VERSION) {
+            app.prefs.update(|p| p.general.last_seen_version = help::VERSION.to_string());
+        }
         app.session.layout.show_scene_numbers = app.prefs.get().view.scene_numbers;
         if let Some(path) = file {
             app.open_path(&path);
@@ -234,6 +259,20 @@ impl StorytellerApp {
             "view.zoom_reset" => {
                 self.prefs.update(|p| p.view.zoom = 1.0);
             }
+            "help.about" => self.help.about = true,
+            "help.shortcuts" => self.help.shortcuts = true,
+            "help.whats_new" => self.help.whats_new = true,
+            "help.licenses" => self.help.licenses = Some(self.help.licenses.unwrap_or(0)),
+            "help.user_guide" => self.open_link(help::USER_GUIDE, "Opened the user guide in your browser."),
+            "help.website" => self.open_link(help::SUITE_WEBSITE, "Opened methodproduction.com in your browser."),
+            "help.report_bug" => {
+                let url = help::new_issue_url(help::VERSION, &help::os_label());
+                self.open_link(&url, "Opened a new bug report in your browser. Nothing is sent until you submit it.");
+            }
+            "help.check_updates" => self.status = format!("{}.", help::UPDATES_LATER),
+            "prefs.check_updates_automatically" => {
+                self.prefs.update(|p| p.updates.check_automatically = !p.updates.check_automatically);
+            }
             "view.scene_numbers" => {
                 self.run(id, Map::new());
                 let show = self.session.layout.show_scene_numbers;
@@ -244,6 +283,34 @@ impl StorytellerApp {
                 self.refocus();
             }
         }
+    }
+
+    fn open_link(&mut self, url: &str, done: &str) {
+        match help::open_link(url) {
+            Ok(()) => {
+                self.status = done.to_string();
+                self.error = None;
+            }
+            Err(error) => self.error = Some(error),
+        }
+    }
+
+    /// Every command with a shortcut, grouped by menu, for Help > Keyboard Shortcuts.
+    fn shortcut_rows(&self, ctx: &egui::Context) -> Vec<ShortcutRow> {
+        let commands = self.registry.iter().map(|c| (c.menu, c.label, c.shortcut)).chain(APP_COMMANDS.iter().map(|c| (c.menu, c.label, c.shortcut)));
+        let mut rows: Vec<ShortcutRow> = commands
+            .filter_map(|(menu, label, shortcut)| {
+                let text = shortcut?;
+                let keys =
+                    parse_shortcut(text).map_or_else(|| text.to_string(), |s| ctx.format_shortcut(&s)).replace("Equals", "=").replace("Minus", "-");
+                let group = menu.split_once('/').map_or("Writing", |(group, _)| group);
+                Some(ShortcutRow { group: group.to_string(), label: label.trim_end_matches('…').to_string(), keys })
+            })
+            .collect();
+        // Menus in menu-bar order, the writing keys last; within a group, registry order.
+        let rank = |group: &str| MENUS.iter().position(|m| *m == group).unwrap_or(MENUS.len());
+        rows.sort_by_key(|row| rank(&row.group));
+        rows
     }
 
     fn refocus(&mut self) {
@@ -488,6 +555,7 @@ impl StorytellerApp {
                     navigator: self.prefs.get().view.navigator,
                     zoom: self.prefs.get().zoom(),
                     dialogs: (self.title_dialog.is_some(), self.prompt.is_some()),
+                    help_windows: self.help.open(),
                 };
                 handle_line(&request.line, &mut self.session, &self.registry, &mut host)
             };
@@ -553,7 +621,8 @@ impl StorytellerApp {
             })
             .collect();
         for command in APP_COMMANDS.iter().filter(|c| c.menu.starts_with(&prefix)) {
-            items.push(MenuEntry { id: command.id.to_string(), label: command.label.to_string(), shortcut: command.shortcut, enabled: true });
+            let enabled = !INACTIVE.contains(&command.id);
+            items.push(MenuEntry { id: command.id.to_string(), label: command.label.to_string(), shortcut: command.shortcut, enabled });
         }
         items
     }
@@ -567,6 +636,7 @@ impl StorytellerApp {
             "prefs.new_fountain" => Some(self.prefs.get().general.new_script_format != "osf"),
             "prefs.new_osf" => Some(self.prefs.get().general.new_script_format == "osf"),
             "prefs.smart_quotes" => Some(self.prefs.get().general.smart_quotes),
+            "prefs.check_updates_automatically" => Some(self.prefs.get().updates.check_automatically),
             _ => None,
         }
     }
@@ -657,10 +727,13 @@ impl StorytellerApp {
                         if let Some(shortcut) = shortcut.and_then(parse_shortcut) {
                             button = button.shortcut_text(ui.ctx().format_shortcut(&shortcut));
                         }
-                        let response = match self.checked(id) {
+                        let mut response = match self.checked(id) {
                             Some(on) => ui.add_enabled(*enabled, egui::Button::selectable(on, label.as_str())),
                             None => ui.add_enabled(*enabled, button),
                         };
+                        if id == "help.check_updates" {
+                            response = response.on_disabled_hover_text(help::UPDATES_LATER);
+                        }
                         self.automation.add(format!("menu.item.{id}"), "menuitem", label.clone(), &response);
                         if response.clicked() {
                             clicked = Some(id.clone());
@@ -890,6 +963,15 @@ impl StorytellerApp {
         }
     }
 
+    fn help_windows(&mut self, ctx: &egui::Context) {
+        let rows = if self.help.shortcuts { self.shortcut_rows(ctx) } else { Vec::new() };
+        match self.help.show(ctx, &mut self.automation, &rows) {
+            Some(HelpAction::Open(url)) => self.open_link(url, "Opened the website in your browser."),
+            Some(HelpAction::Licenses) => self.queued.push("help.licenses".into()),
+            None => {}
+        }
+    }
+
     fn unsaved_prompt(&mut self, ctx: &egui::Context) {
         if self.prompt.is_none() {
             return;
@@ -946,6 +1028,7 @@ impl StorytellerApp {
             .inner;
         self.apply(actions);
         self.title_page_dialog(&ctx);
+        self.help_windows(&ctx);
         self.unsaved_prompt(&ctx);
         for id in std::mem::take(&mut self.queued) {
             self.run_command(&ctx, &id);
@@ -987,6 +1070,7 @@ struct AppHost<'a> {
     navigator: bool,
     zoom: f32,
     dialogs: (bool, bool),
+    help_windows: Vec<&'static str>,
 }
 
 impl UiHost for AppHost<'_> {
@@ -1028,6 +1112,7 @@ impl UiHost for AppHost<'_> {
                 "zoom": self.zoom,
                 "title_page_dialog": self.dialogs.0,
                 "unsaved_prompt": self.dialogs.1,
+                "help_windows": self.help_windows,
                 "status": self.status,
                 "error": self.error,
             })),

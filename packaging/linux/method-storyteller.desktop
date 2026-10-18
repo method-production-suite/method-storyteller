@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Method Storyteller
+GenericName=Screenwriting
+Comment=Write screenplays in Fountain, an open file you own
+Exec=method-storyteller-app %f
+Icon=method-storyteller
+Terminal=false
+Categories=Office;TextEditor;
+Keywords=screenplay;screenwriting;script;fountain;
