@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- No scripts, no trackers, no cookies, nothing from anyone else: the policy below holds
+     the page to files served from this site. The pictures in img/ are retaken by
+     `cargo xtask screens`. Brand rules: docs/BRAND.md. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Method Storyteller: open-source screenwriting</title>
+<meta name="description" content="Method Storyteller is a free, open-source screenwriting app for macOS, Windows and Linux. Industry formatting and pagination, and your script is an open file you own.">
+<link rel="canonical" href="https://methodstoryteller.com/">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon.ico" sizes="16x16 32x32">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#F7F6F2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111417" media="(prefers-color-scheme: dark)">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Method Storyteller">
+<meta property="og:url" content="https://methodstoryteller.com/">
+<meta property="og:title" content="Method Storyteller: open-source screenwriting">
+<meta property="og:description" content="A free screenwriting app that formats as you type and paginates the industry way. Your script is an open file you own.">
+<meta property="og:image" content="https://methodstoryteller.com/img/hero-light.png">
+<meta property="og:image:alt" content="Method Storyteller with an invented script, Field Station, open beside its scene list.">
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="top">
+  <div class="wrap">
+    <a class="home" href="./" aria-label="Method Storyteller home">
+      <picture>
+        <source srcset="assets/brand/mark-dark.svg" media="(prefers-color-scheme: dark)">
+        <img src="assets/brand/mark.svg" alt="" width="32" height="32">
+      </picture>
+    </a>
+    <nav class="nav" aria-label="Main">
+      <a href="#features">Features</a>
+      <a href="#formats">Files</a>
+      <a href="#open-files">Open files</a>
+      <a href="#build">Build it</a>
+      <a href="https://github.com/method-production-suite/method-storyteller">Source</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="wrap">
+      <h1 id="hero-title">
+        <picture>
+          <source srcset="assets/brand/wordmark-dark.svg" media="(prefers-color-scheme: dark)">
+          <img src="assets/brand/wordmark.svg" alt="Method Storyteller" width="516" height="63">
+        </picture>
+      </h1>
+      <p class="status"><span class="badge alpha">In development</span> Not released yet. Build it from source on macOS, Windows or Linux.</p>
+      <p class="pitch">Write the script. The formatting takes care of itself.</p>
+      <p class="lede">A free, open-source screenwriting app. Tab and Enter move between scene
+        heading, action, character, parenthetical and dialogue the way screenwriters expect,
+        the pages break the industry way, and your script is an open file on your own
+        computer.</p>
+      <div class="cta">
+        <a class="btn primary" href="#build">Build from source</a>
+        <a class="btn ghost" href="#features">See what it does</a>
+      </div>
+      <p class="fine">No account, no subscription, and it works offline.</p>
+    </div>
+  </section>
+
+  <div class="shot">
+    <div class="wrap">
+      <figure class="snap">
+        <a href="img/hero-light.png">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="img/hero-dark.png">
+            <img src="img/hero-light.png" alt="Method Storyteller with the invented script Field Station: the scene list with each scene's length and page on the left, the formatted script beside it" width="1280" height="800">
+          </picture>
+        </a>
+        <figcaption><strong>Field Station</strong>, an invented script: the scene list with each scene's length and page, and the script as you write it.</figcaption>
+      </figure>
+    </div>
+  </div>
+
+  <section class="band" id="look" aria-labelledby="look-title">
+    <div class="wrap">
+      <h2 id="look-title">A look around</h2>
+      <div class="gallery">
+        <figure class="snap">
+          <a href="img/page-light.png">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="img/page-dark.png">
+            <img src="img/page-light.png" alt="Page view: the end of page 1 and the top of page 2, numbered, as they print" width="1280" height="800">
+          </picture>
+          </a>
+          <figcaption><strong>The formatted page</strong>: page view shows each page as it prints, numbered.</figcaption>
+        </figure>
+        <figure class="snap">
+          <a href="img/import-light.png">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="img/import-dark.png">
+            <img src="img/import-light.png" alt="The same script opened from an .fdx file, every element in its place" width="1280" height="800">
+          </picture>
+          </a>
+          <figcaption><strong>Open an .fdx</strong>: the same script, every element in its place.</figcaption>
+        </figure>
+        <figure class="snap">
+          <a href="img/file-light.png">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="img/file-dark.png">
+            <img src="img/file-light.png" alt="A terminal showing the script as plain Fountain text, and the method-storyteller command reading its pages, scenes and speeches" width="1280" height="800">
+          </picture>
+          </a>
+          <figcaption><strong>A file you own</strong>: plain text, and a command line that reads it.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="band alt" id="features" aria-labelledby="features-title">
+    <div class="wrap">
+      <p class="kicker">Features</p>
+      <h2 id="features-title">What it does today</h2>
+      <p class="intro">All of this is built and in the code. Open a group to see what is in it;
+        the dashed box at the end is what comes next.</p>
+      <div class="groups">
+        <details class="group" id="g-writing">
+          <summary>
+            <span class="group-head"><span class="group-title">Writing</span> <span class="group-count">6</span></span>
+            <span class="group-teaser">Tab and Enter, the element picker, autocomplete, and more</span>
+          </summary>
+          <ul class="feats">
+            <li><strong>Tab and Enter</strong> Enter ends an element and starts the next one; Tab changes an empty element's type or starts a parenthetical after a cue. The status bar always says what each will do.</li>
+            <li><strong>The element picker</strong> Enter on an empty line opens a short list: a letter or the arrows choose scene heading, action, character and the rest.</li>
+            <li><strong>Shortcuts</strong> ⌘1 to ⌘7 start an element of that type; ⌘⌥1 to ⌘⌥7 change the current one (Ctrl and Ctrl+Shift on Windows and Linux).</li>
+            <li><strong>Autocomplete</strong> Character names, locations and times of day as you type, and the next speaker guessed in a conversation.</li>
+            <li><strong>Automatic CONT'D</strong> A character who speaks again in the same scene gets (CONT'D) at layout time, never typed into the script.</li>
+            <li><strong>Smart quotes</strong> Curly quotes and apostrophes as you type, left alone in headings and cues.</li>
+          </ul>
+        </details>
+        <details class="group" id="g-pages">
+          <summary>
+            <span class="group-head"><span class="group-title">Pages</span> <span class="group-count">6</span></span>
+            <span class="group-teaser">Industry pagination, page view, PDF, and more</span>
+          </summary>
+          <ul class="feats">
+            <li><strong>Industry pagination</strong> Courier Prime 12 pt, standard margins, 54 lines a page, (MORE) and (CONT'D) where a speech breaks, and a scene heading never stranded at the foot of a page.</li>
+            <li><strong>Checked against real scripts</strong> On a set of 15 real production scripts, every scene starts on the same page as in the printed original.</li>
+            <li><strong>Page view and draft view</strong> Separate pages as they print, or one continuous column for writing.</li>
+            <li><strong>PDF export</strong> With the title page, and Courier Prime embedded.</li>
+            <li><strong>Title page and scene numbers</strong> A title page dialog, and scene numbers shown in the editor and the PDF.</li>
+            <li><strong>Scene lengths</strong> Each scene's length in eighths of a page beside its page in the scene list, and written into exported .fdx files for scheduling.</li>
+          </ul>
+        </details>
+        <details class="group" id="g-files">
+          <summary>
+            <span class="group-head"><span class="group-title">Files and automation</span> <span class="group-count">4</span></span>
+            <span class="group-teaser">Open formats, a command line, a control channel, and more</span>
+          </summary>
+          <ul class="feats">
+            <li><strong>Open formats, your choice</strong> Fountain by default, or Open Screenplay Format; File &gt; Save New Scripts as… sets which.</li>
+            <li><strong>.fdx and .fadein</strong> Opened and saved, keeping everything Method Storyteller does not use itself.</li>
+            <li><strong>A command line</strong> <code>method-storyteller</code> converts, paginates, exports PDF and runs any command on a script file.</li>
+            <li><strong>Scriptable</strong> Every action is a named command, and a JSON-lines control channel drives the app or a headless engine.</li>
+          </ul>
+        </details>
+      </div>
+      <div class="soon">
+        <h3>Coming next</h3>
+        <ul class="feats">
+          <li><strong>Go To</strong> a scene number or a page.</li>
+          <li><strong>Find and replace</strong> with one Undo for Replace All.</li>
+          <li><strong>Rename a character</strong> in every cue at once.</li>
+          <li><strong>Spell check</strong> as you type.</li>
+          <li><strong>Script notes</strong> on a line or a passage.</li>
+          <li><strong>Production tools</strong> revisions, locked pages and reports.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="formats" aria-labelledby="formats-title">
+    <div class="wrap">
+      <p class="kicker">Works with what you have</p>
+      <h2 id="formats-title">Bring your scripts with you</h2>
+      <div class="fmt-grid">
+        <div class="fmt-card">
+          <h3>Fountain</h3>
+          <p>The default: plain text in an open format that any text editor reads.</p>
+          <ul class="fmt-list">
+            <li><span>.fountain</span> Open and save</li>
+          </ul>
+        </div>
+        <div class="fmt-card">
+          <h3>Open Screenplay Format</h3>
+          <p>Structured XML that keeps more production detail.</p>
+          <ul class="fmt-list">
+            <li><span>.osf</span> Open and save</li>
+            <li><span>.fadein</span> Open and save</li>
+          </ul>
+        </div>
+        <div class="fmt-card">
+          <h3>Other files</h3>
+          <p>For sharing and printing.</p>
+          <ul class="fmt-list">
+            <li><span>.fdx</span> Open and save</li>
+            <li><span>.pdf</span> Export</li>
+          </ul>
+        </div>
+      </div>
+      <p class="fine">.fdx is the file format Final Draft uses. Method Storyteller is not
+        affiliated with its makers.</p>
+    </div>
+  </section>
+
+  <section class="band alt" id="open-files" aria-labelledby="open-title">
+    <div class="wrap">
+      <p class="kicker">Yours to keep</p>
+      <h2 id="open-title">Your script is a file you own</h2>
+      <ul class="points">
+        <li><strong>Plain text by default.</strong> A Fountain script opens in any text editor,
+          now and in twenty years, and sits happily in version control.</li>
+        <li><strong>Nothing leaves your computer.</strong> No account, no cloud, and the app
+          works offline.</li>
+        <li><strong>Free and open source.</strong> MIT or Apache-2.0, at your option.</li>
+      </ul>
+<pre class="code"><code><span class="c">// a scene, as it sits in the file</span>
+<span class="k">INT. FIELD STATION - MAIN ROOM - NIGHT</span>
+
+Nora sits at the bench with the seismograph.
+
+<span class="k">NORA</span>
+(quietly)
+Okay.</code></pre>
+    </div>
+  </section>
+
+  <section class="band" id="build" aria-labelledby="build-title">
+    <div class="wrap">
+      <p class="kicker">Build it</p>
+      <h2 id="build-title">Run it from source</h2>
+      <p class="intro">There is no release yet. With Rust installed, the app builds and runs
+        on macOS, Windows and Linux.</p>
+<pre class="term"><code><span class="p">$ </span>git clone https://github.com/method-production-suite/method-storyteller
+<span class="p">$ </span>cd method-storyteller
+<span class="p">$ </span>cargo run --release -p method-storyteller -- examples/field-station.fountain</code></pre>
+      <p class="fine">The <a href="https://github.com/method-production-suite/method-storyteller#readme">README</a>
+        has the details and the keyboard reference.
+        Found a bug? <a href="https://github.com/method-production-suite/method-storyteller/issues">Tell us</a>.</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <picture>
+      <source srcset="assets/brand/wordmark-dark.svg" media="(prefers-color-scheme: dark)">
+      <img src="assets/brand/wordmark.svg" alt="Method Storyteller" width="131" height="16">
+    </picture>
+    <nav aria-label="Footer">
+      <a href="https://github.com/method-production-suite/method-storyteller">Source code</a>
+      <a href="https://github.com/method-production-suite/method-storyteller/blob/main/docs/ROADMAP.md">Roadmap</a>
+      <a href="https://github.com/method-production-suite/method-storyteller/blob/main/docs/spec.md">Specification</a>
+    </nav>
+    <p>Free and open source, dual-licensed under MIT or Apache-2.0. An independent, clean-room
+      project by the Method Storyteller contributors. Trademarks belong to their respective
+      owners.</p>
+    <p>This site sets no cookies, runs no scripts and loads nothing from anyone else.</p>
+  </div>
+</footer>
+</body>
+</html>

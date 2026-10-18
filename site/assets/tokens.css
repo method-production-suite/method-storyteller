@@ -1,0 +1,71 @@
+/* Method Storyteller brand tokens: the one place the site's colors and type are defined.
+   docs/BRAND.md explains them.
+
+   The token names, the neutrals (paper, ink, rules, shadow), the amber note and the type
+   are the Method family's, value for value, so the sites read as one family. What is ours
+   is the accent: the desktop app's own rose (crates/app/src/theme.rs, ACCENT and
+   ACCENT_DARK). */
+
+:root {
+  /* Surfaces: warm paper behind white cards (the family's). */
+  --bg: #F7F6F2;
+  --surface: #FFFFFF;
+  --surface-2: #EFEDE7;
+
+  /* Text (the family's). */
+  --ink: #1C2228;
+  --ink-soft: #3A424C;
+  --muted: #59626D;
+
+  /* Lines (the family's). --rule-strong is for borders that carry meaning (3:1 or more). */
+  --rule: #DEDBD3;
+  --rule-strong: #8F897C;
+
+  /* Rose, the app's accent. */
+  --accent: #AE3D56;
+  --accent-strong: #8C2F44;
+  --accent-ink: #FFFFFF;  /* text on a rose fill */
+  --accent-soft: #F6E4E8;
+
+  /* Pencil amber: the family's caution color (the status pill). */
+  --note: #8A5A00;
+  --note-fill: #D29A12;
+
+  --code-bg: #EFEDE7;
+  --shadow: 0 1px 2px rgba(28, 34, 40, .06), 0 10px 32px rgba(28, 34, 40, .08);
+
+  /* The terminal sample stays dark in both schemes, like a terminal. */
+  --term-bg: #14181C;
+  --term-ink: #E4E8EC;
+  --term-dim: #9AA3AD;
+  --term-prompt: #EE8DA2;
+  --term-rule: #2B3138;
+
+  /* Type: the system's own faces, as in the app. Nothing is downloaded. */
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111417;
+    --surface: #1B1F24;
+    --surface-2: #22272E;
+    --ink: #E4E8EC;
+    --ink-soft: #C3CAD2;
+    --muted: #9AA3AD;
+    --rule: #2B3138;
+    --rule-strong: #67717D;
+    --accent: #EE8DA2;     /* the app's dark accent */
+    --accent-strong: #F4B3C2;
+    --accent-ink: #2A0E16;
+    --accent-soft: #3A1D26;
+    --note: #E3B341;
+    --note-fill: #E3B341;
+    --code-bg: #22272E;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .35), 0 10px 32px rgba(0, 0, 0, .3);
+    color-scheme: dark;
+  }
+}
