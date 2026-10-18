@@ -289,7 +289,7 @@ fn automatic_contd_when_the_same_character_speaks_again() {
     let printed: Vec<String> = body_lines(&paginated, 0).into_iter().map(|(_, t)| t).collect();
     assert!(printed.contains(&"ANNA (CONT'D)".to_string()), "{printed:?}");
     let control = fountain::parse("INT. ROOM - DAY\n\nMISSION CONTROL\nGo.\n\nA beep.\n\nMISSION CONTROL\nGo again.\n").unwrap();
-    assert!(storyteller_core::paginate::auto_contd(&control)[5], "a name containing CONT still gets it");
+    assert!(storyteller_core::paginate::auto_contd(&control)[4], "a name containing CONT still gets it");
     let off = paginate(&script, &Layout { auto_contd: false, ..Layout::default() });
     assert_eq!(body_lines(&off, 0).iter().filter(|(_, t)| t.contains("CONT'D")).count(), 1, "only the typed one");
 }
