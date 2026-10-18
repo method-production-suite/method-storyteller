@@ -4,6 +4,11 @@ An open-source screenwriting app: free, native on macOS, Windows and Linux (buil
 now; installers are coming), and your script is an open file you own (plain-text Fountain by
 default).
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/screens/hero-dark.png">
+  <img src="assets/screens/hero-light.png" alt="Method Storyteller with an invented script, Field Station, open: the scene list on the left and a formatted screenplay page beside it." width="1280">
+</picture>
+
 - **Write without thinking about formatting.** Tab and Enter move between scene heading, action,
   character, parenthetical, dialogue and transition the way screenwriting apps have always worked.
   Character, location and time-of-day autocomplete.
@@ -16,7 +21,23 @@ default).
 - **Scriptable.** Every action is a named command, every widget has an automation id, and a
   JSON-lines control channel drives the app or a headless engine.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/screens/page-dark.png">
+  <img src="assets/screens/page-light.png" alt="Page view: the end of page 1 and the top of page 2, numbered, with the gap between them as they print." width="1280">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/screens/import-dark.png">
+  <img src="assets/screens/import-light.png" alt="The same script opened from an .fdx file, with every element in its place." width="1280">
+</picture>
+
 ## Yours to keep
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/screens/file-dark.png">
+  <img src="assets/screens/file-light.png" alt="A terminal showing the script as plain Fountain text, and the method-storyteller command reading its pages, scenes and speeches." width="1280">
+</picture>
+
 
 - Free, and open source under MIT OR Apache-2.0.
 - No account, and it works offline.
@@ -84,6 +105,11 @@ then send JSON lines to `127.0.0.1:9876`; see [docs/control-protocol.md](docs/co
 check. Read [AGENTS.md](AGENTS.md) before contributing. Pagination changes are reviewed through
 the golden files in `crates/core/tests/golden/` (`UPDATE_GOLDEN=1 cargo test -p storyteller-core`
 regenerates them).
+
+`cargo xtask screens` retakes every picture above from the invented script in
+[examples/field-station.fountain](examples/field-station.fountain): it drives the real app over
+the control channel, in light and dark, and gives the same pixels every run. It needs a desktop
+session and Chrome (for the terminal picture), and is a release step rather than a CI gate.
 
 Method Storyteller builds on [craft-libs](https://github.com/storytold/craft-libs) (PDF writing,
 atomic saves, settings, macOS quit) and follows the conventions of the storytold Craft apps.

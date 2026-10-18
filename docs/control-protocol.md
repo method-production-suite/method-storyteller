@@ -38,6 +38,7 @@ offsets are UTF-8 byte offsets.
 | `ui.command` | `id` | Runs a command the way its menu item does (including file dialogs) |
 | `ui.state` | | Focused element, autocomplete suggestions, dialogs, zoom, status and error |
 | `ui.screenshot` | `path` | Saves a PNG of the window; replies with its path and size |
+| `ui.window` | optional `width`, `height` (points), `theme` (`light` or `dark`) | Sizes the window, sets the theme and clears the status line, for repeatable pictures |
 
 Synthetic input is delivered over the next frames; the app holds later requests until it has
 been delivered, so a `ui.state` after `ui.type` sees the result.

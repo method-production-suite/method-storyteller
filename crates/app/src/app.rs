@@ -158,6 +158,10 @@ impl StorytellerApp {
                 Ok(receiver) => {
                     app.control = Some(receiver);
                     app.status = format!("Control channel on 127.0.0.1:{port}");
+                    // A steady caret, so screenshots are the same every run.
+                    for theme in [egui::Theme::Light, egui::Theme::Dark] {
+                        cc.egui_ctx.style_mut_of(theme, |style| style.visuals.text_cursor.blink = false);
+                    }
                 }
                 Err(error) => app.error = Some(format!("Control channel unavailable on port {port}: {error}")),
             }
@@ -420,6 +424,23 @@ impl StorytellerApp {
                 ctx.send_viewport_cmd(ViewportCommand::Screenshot(egui::UserData::default()));
                 self.pending_screenshot = Some((id, request.reply, path));
                 break;
+            }
+            if parsed.get("method").and_then(Value::as_str) == Some("ui.window") {
+                let id = parsed.get("id").cloned().unwrap_or(Value::Null);
+                let number = |key: &str| parsed.pointer(&format!("/params/{key}")).and_then(Value::as_f64).map(|v| v as f32);
+                if let (Some(width), Some(height)) = (number("width"), number("height")) {
+                    ctx.send_viewport_cmd(ViewportCommand::InnerSize(egui::vec2(width, height)));
+                }
+                match parsed.pointer("/params/theme").and_then(Value::as_str) {
+                    Some("light") => ctx.set_theme(egui::Theme::Light),
+                    Some("dark") => ctx.set_theme(egui::Theme::Dark),
+                    _ => {}
+                }
+                // The status line otherwise still names the control port.
+                self.status.clear();
+                let _ = request.reply.send(json!({"id": id, "result": {}}).to_string());
+                ctx.request_repaint();
+                continue;
             }
             let reply = {
                 let mut host = AppHost {

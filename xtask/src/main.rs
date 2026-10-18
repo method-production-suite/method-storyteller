@@ -1,7 +1,9 @@
 //! Repository tasks: `cargo xtask layers`, `cargo xtask assets`, `cargo xtask privacy`,
-//! `cargo xtask ci`, and `cargo xtask corpus` (local only, see `corpus.rs`).
+//! `cargo xtask ci`, `cargo xtask corpus` (local only, see `corpus.rs`), and `cargo xtask
+//! screens` (retakes the README pictures, see `screens.rs`).
 
 mod corpus;
+mod screens;
 
 use std::path::Path;
 use std::process::{Command, ExitCode};
@@ -25,7 +27,8 @@ fn main() -> ExitCode {
         "privacy" => privacy(),
         "ci" => ci(),
         "corpus" => corpus::run(root()),
-        _ => Err("usage: cargo xtask <layers|assets|privacy|ci|corpus>".to_string()),
+        "screens" => screens::run(root()),
+        _ => Err("usage: cargo xtask <layers|assets|privacy|ci|corpus|screens>".to_string()),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -95,6 +98,10 @@ fn assets() -> Result<(), String> {
         for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())?.flatten() {
             let path = entry.path();
             if path.is_dir() {
+                // Pictures of the app, taken by `cargo xtask screens` from our own sample.
+                if path.ends_with("assets/screens") {
+                    continue;
+                }
                 stack.push(path);
                 continue;
             }
