@@ -775,7 +775,7 @@ impl StorytellerApp {
                 });
                 painter.galley(rect.left_center() + egui::vec2(38.0, -galley.size().y / 2.0), galley, text);
                 let detail = match &length {
-                    Some(length) => format!("{heading}\nPage {}, {length} pages long", scene.page),
+                    Some(length) => format!("{heading}\nPage {}, length {length}", scene.page),
                     None => format!("{heading}\nPage {}", scene.page),
                 };
                 let response = response.on_hover_text(detail);
