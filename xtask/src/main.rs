@@ -1,10 +1,12 @@
 //! Repository tasks: `cargo xtask layers`, `cargo xtask assets`, `cargo xtask privacy`,
-//! `cargo xtask ci`, `cargo xtask corpus` (local only, see `corpus.rs`), and the packaging
-//! tasks `version`, `bundle-macos`, `dmg-macos`, `package-linux`, `package-windows` (see
-//! `package.rs` and docs/RELEASING.md).
+//! `cargo xtask ci`, `cargo xtask corpus` (local only, see `corpus.rs`), `cargo xtask screens`
+//! (retakes the README pictures, see `screens.rs`), and the packaging tasks `version`,
+//! `bundle-macos`, `dmg-macos`, `package-linux`, `package-windows` (see `package.rs` and
+//! docs/RELEASING.md).
 
 mod corpus;
 mod package;
+mod screens;
 
 use std::path::Path;
 use std::process::{Command, ExitCode};
@@ -23,19 +25,22 @@ const UI_ONLY: [&str; 5] = ["egui", "eframe", "winit", "rfd", "craft-quit"];
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let (task, rest) = args.split_first().map(|(t, r)| (t.as_str(), r)).unwrap_or(("", &[]));
-    let result = match task {
-        "layers" => layers(),
-        "assets" => assets(),
-        "privacy" => privacy(),
-        "ci" => ci(),
-        "corpus" => corpus::run(root()),
-        "version" => package::workspace_version().map(|v| println!("{v}")),
-        "bundle-macos" => package::parse_options(rest).and_then(|o| package::bundle_macos(&o)),
-        "dmg-macos" => package::parse_options(rest).and_then(|o| package::dmg_macos(&o)),
-        "package-linux" => package::parse_options(rest).and_then(|o| package::package_linux(&o)),
-        "package-windows" => package::parse_options(rest).and_then(|o| package::package_windows(&o)),
-        _ => Err("usage: cargo xtask <layers|assets|privacy|ci|corpus|version|bundle-macos|dmg-macos|package-linux|package-windows>".to_string()),
-    };
+    let result =
+        match task {
+            "layers" => layers(),
+            "assets" => assets(),
+            "privacy" => privacy(),
+            "ci" => ci(),
+            "corpus" => corpus::run(root()),
+            "screens" => screens::run(root()),
+            "version" => package::workspace_version().map(|v| println!("{v}")),
+            "bundle-macos" => package::parse_options(rest).and_then(|o| package::bundle_macos(&o)),
+            "dmg-macos" => package::parse_options(rest).and_then(|o| package::dmg_macos(&o)),
+            "package-linux" => package::parse_options(rest).and_then(|o| package::package_linux(&o)),
+            "package-windows" => package::parse_options(rest).and_then(|o| package::package_windows(&o)),
+            _ => Err("usage: cargo xtask <layers|assets|privacy|ci|corpus|screens|version|bundle-macos|dmg-macos|package-linux|package-windows>"
+                .to_string()),
+        };
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(message) => {
@@ -104,6 +109,10 @@ fn assets() -> Result<(), String> {
         for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())?.flatten() {
             let path = entry.path();
             if path.is_dir() {
+                // Pictures of the app, taken by `cargo xtask screens` from our own sample.
+                if path.ends_with("assets/screens") {
+                    continue;
+                }
                 stack.push(path);
                 continue;
             }

@@ -115,6 +115,9 @@ pub struct StorytellerApp {
     /// The macOS menu bar; `None` elsewhere, or if it could not be installed (the window menu shows).
     #[cfg(target_os = "macos")]
     native: Option<crate::native_menu::NativeMenu>,
+    /// Drawn for the offscreen pictures: the window as a Mac shows it, menus in the menu bar.
+    #[cfg(test)]
+    pictures: bool,
 }
 
 /// One menu entry: command id, label, shortcut text and whether it can run now.
@@ -127,6 +130,13 @@ struct MenuEntry {
 
 impl StorytellerApp {
     pub fn new(cc: &eframe::CreationContext<'_>, file: Option<PathBuf>, control_port: Option<u16>) -> Self {
+        let mut app = Self::without_menu(cc, file, control_port);
+        app.install_menu(&cc.egui_ctx);
+        app
+    }
+
+    /// The app without the macOS menu bar, which the offscreen pictures leave out.
+    fn without_menu(cc: &eframe::CreationContext<'_>, file: Option<PathBuf>, control_port: Option<u16>) -> Self {
         editor::install_fonts(&cc.egui_ctx);
         theme::apply(&cc.egui_ctx);
         let (prefs, report) = SettingsStore::<Prefs>::open(Location::Auto);
@@ -167,8 +177,9 @@ impl StorytellerApp {
             shortcuts,
             #[cfg(target_os = "macos")]
             native: None,
+            #[cfg(test)]
+            pictures: false,
         };
-        app.install_menu(&cc.egui_ctx);
         let last_seen = app.prefs.get().general.last_seen_version.clone();
         app.help.whats_new = help::whats_new_due(&last_seen, help::VERSION);
         if help::record_version(&last_seen, help::VERSION) {
@@ -653,6 +664,10 @@ impl StorytellerApp {
 
     /// Whether menus are drawn inside the window (not on macOS with the menu bar installed).
     fn window_menu(&self) -> bool {
+        #[cfg(test)]
+        if self.pictures {
+            return false;
+        }
         #[cfg(target_os = "macos")]
         {
             self.native.is_none()
@@ -1159,3 +1174,7 @@ impl eframe::App for StorytellerApp {
         let _ = self.prefs.flush();
     }
 }
+
+#[cfg(test)]
+#[path = "screens.rs"]
+mod screens;
