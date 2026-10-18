@@ -110,6 +110,7 @@ one step.
 
 - **Scene navigator** side panel: every scene heading with its number and page; click to jump.
 - **Go To** (Edit > Go To…, ⌘⌥G, Ctrl+Shift+G off macOS; command `nav.go_to`): a scene by its printed number (12, 12A), or by position only when the script has no scene numbers, or a page; the caret lands on the scene heading or on the page's first element.
+- **Find and replace** (Edit > Find…, ⌘F; commands `find.next`, `find.replace`, `find.replace_all`): match case, whole words, optionally one element type; matches never span two elements; the current match is highlighted while typing stays in the find bar; Replace All is one Undo step; replacements in capitalised elements (headings, cues, transitions) stay capitalised.
 - **Scene numbers:** `Production → Number scenes` assigns 1, 2, 3…; existing numbers are kept
   when "keep existing" is chosen (A-numbering for inserted scenes is a later-phase revision
   feature). Toggle for showing them in the editor and PDF. Stored in Fountain as `#12#`, in FDX

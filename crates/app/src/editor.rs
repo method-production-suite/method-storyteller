@@ -62,6 +62,10 @@ pub struct EditorState {
     /// Focus this element at this byte offset on the next frame.
     pub pending_focus: Option<(usize, usize)>,
     pub focused: Option<usize>,
+    /// The current find match, `(element, start, end)` in bytes, drawn highlighted.
+    pub highlight: Option<(usize, usize, usize)>,
+    /// Scroll this element into view on the next frame (a find match) without focusing it.
+    pub scroll_to: Option<usize>,
     scroll_to_focus: bool,
     first_row: bool,
     last_row: bool,
@@ -251,8 +255,10 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                         let text_align = align(style.align);
                         let row_height = row;
                         let job_font = font.clone();
+                        let marked = editor.highlight.filter(|h| h.0 == index).map(|h| (h.1, h.2));
+                        let mark = crate::theme::FIND_MARK;
                         let mut layouter = move |ui: &Ui, buffer: &dyn egui::TextBuffer, wrap_width: f32| {
-                            let mut job = LayoutJob::simple(buffer.as_str().to_owned(), job_font.clone(), color, wrap_width);
+                            let mut job = highlighted_job(buffer.as_str(), marked, &job_font, color, mark, wrap_width);
                             job.halign = text_align;
                             for section in &mut job.sections {
                                 section.format.line_height = Some(row_height);
@@ -299,6 +305,10 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                             // The automatic (CONT'D), drawn faint: it is added at layout, not typed.
                             let at = output.galley_pos + output.galley.rect.right_top().to_vec2() + vec2(advance, 0.0);
                             ui.painter().text(at, egui::Align2::LEFT_TOP, &layout.contd, font.clone(), faint);
+                        }
+                        if editor.scroll_to == Some(index) {
+                            response.scroll_to_me(Some(Align::Center));
+                            editor.scroll_to = None;
                         }
                         if editor.scroll_to_focus && has_focus {
                             response.scroll_to_me(Some(Align::Center));
@@ -565,4 +575,20 @@ fn picker_popup(ui: &Ui, editor: &EditorState, automation: &mut Automation, inde
             }
         });
     });
+}
+
+/// One element's text laid out, with an optional byte range drawn as a find match.
+fn highlighted_job(text: &str, marked: Option<(usize, usize)>, font: &FontId, color: Color32, mark: Color32, wrap_width: f32) -> LayoutJob {
+    let range = marked.filter(|&(start, end)| start < end && end <= text.len() && text.is_char_boundary(start) && text.is_char_boundary(end));
+    let Some((start, end)) = range else {
+        return LayoutJob::simple(text.to_owned(), font.clone(), color, wrap_width);
+    };
+    let mut job = LayoutJob { wrap: egui::text::TextWrapping { max_width: wrap_width, ..Default::default() }, ..Default::default() };
+    let plain = egui::TextFormat { font_id: font.clone(), color, ..Default::default() };
+    let found = egui::TextFormat { background: mark, ..plain.clone() };
+    for (part, format) in [(text.get(..start), &plain), (text.get(start..end), &found), (text.get(end..), &plain)] {
+        let part = part.unwrap_or("");
+        job.append(part, 0.0, format.clone());
+    }
+    job
 }

@@ -35,7 +35,11 @@ struct AppCommand {
 /// ⌘⌥G on macOS; Ctrl+Shift+G elsewhere, where Ctrl+Alt is AltGr.
 const GO_TO_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Alt+G" } else { "Cmd+Shift+G" };
 
-const APP_COMMANDS: [AppCommand; 20] = [
+/// Find Next and Previous: ⌘G and ⇧⌘G on macOS; F3 and Shift+F3 elsewhere.
+const FIND_NEXT_KEY: &str = if cfg!(target_os = "macos") { "Cmd+G" } else { "F3" };
+const FIND_PREVIOUS_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Shift+G" } else { "Shift+F3" };
+
+const APP_COMMANDS: [AppCommand; 23] = [
     AppCommand { id: "app.title_page", label: "Title Page…", menu: "File/Title Page…", shortcut: Some("Cmd+Shift+T") },
     AppCommand { id: "prefs.new_fountain", label: "Save New Scripts as Fountain", menu: "File/Save New Scripts as Fountain", shortcut: None },
     AppCommand {
@@ -45,6 +49,9 @@ const APP_COMMANDS: [AppCommand; 20] = [
         shortcut: None,
     },
     AppCommand { id: "app.quit", label: "Quit", menu: "File/Quit", shortcut: Some("Cmd+Q") },
+    AppCommand { id: "app.find", label: "Find…", menu: "Edit/Find…", shortcut: Some("Cmd+F") },
+    AppCommand { id: "app.find_next", label: "Find Next", menu: "Edit/Find Next", shortcut: Some(FIND_NEXT_KEY) },
+    AppCommand { id: "app.find_previous", label: "Find Previous", menu: "Edit/Find Previous", shortcut: Some(FIND_PREVIOUS_KEY) },
     AppCommand { id: "app.go_to", label: "Go To…", menu: "Edit/Go To…", shortcut: Some(GO_TO_KEY) },
     AppCommand { id: "prefs.smart_quotes", label: "Smart Quotes", menu: "Format/Smart Quotes", shortcut: None },
     AppCommand { id: "view.navigator", label: "Scene Navigator", menu: "View/Scene Navigator", shortcut: Some("Cmd+Shift+N") },
@@ -120,6 +127,7 @@ pub struct StorytellerApp {
     discard_confirmed: bool,
     title_dialog: Option<TitleDraft>,
     go_to: Option<GoToDraft>,
+    find: Option<find_bar::FindBar>,
     help: HelpWindows,
     status: String,
     error: Option<String>,
@@ -185,6 +193,7 @@ impl StorytellerApp {
             discard_confirmed: false,
             title_dialog: None,
             go_to: None,
+            find: None,
             help: HelpWindows::default(),
             status: String::new(),
             error: report.has_problems().then(|| "Settings could not be fully loaded; defaults are in use.".to_string()),
@@ -256,6 +265,16 @@ impl StorytellerApp {
                 self.title_dialog = Some(TitleDraft { fields });
             }
             "app.go_to" => self.go_to = Some(GoToDraft::default()),
+            "app.find" => match &mut self.find {
+                Some(bar) => bar.focus(),
+                None => self.find = Some(find_bar::FindBar::open()),
+            },
+            "app.find_next" | "app.find_previous" => {
+                if self.find.is_none() {
+                    self.find = Some(find_bar::FindBar::open());
+                }
+                self.find_step(if id == "app.find_next" { find_bar::Step::Next } else { find_bar::Step::Previous });
+            }
             "app.quit" => ctx.send_viewport_cmd(ViewportCommand::Close),
             "view.navigator" => {
                 self.prefs.update(|p| p.view.navigator = !p.view.navigator);
@@ -1094,6 +1113,9 @@ impl StorytellerApp {
             egui::Panel::top("storyteller.menu").show(ui, |ui| self.menu_bar(ui));
         }
         egui::Panel::top("storyteller.top_bar").exact_size(theme::TOP_BAR_HEIGHT).show(ui, |ui| self.top_bar(ui));
+        if self.find.is_some() {
+            egui::Panel::top("storyteller.find").show(ui, |ui| self.find_bar(ui));
+        }
         egui::Panel::bottom("storyteller.status").show(ui, |ui| self.status_bar(ui));
         if self.prefs.get().view.navigator {
             egui::Panel::left("storyteller.navigator").resizable(true).default_size(250.0).show(ui, |ui| self.navigator(ui));
@@ -1259,6 +1281,9 @@ fn capitalise(text: &str) -> String {
     let first = chars.next().map(|c| c.to_uppercase().collect::<String>()).unwrap_or_default();
     format!("{first}{}.", chars.as_str())
 }
+
+#[path = "find_bar.rs"]
+mod find_bar;
 
 #[cfg(test)]
 #[path = "screens.rs"]

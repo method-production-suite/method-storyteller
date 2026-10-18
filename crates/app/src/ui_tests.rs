@@ -57,3 +57,55 @@ fn go_to_explains_a_missing_page_and_closes_on_escape() {
     harness.run_steps(3);
     assert!(harness.state().go_to.is_none(), "Escape closes the dialog");
 }
+
+const FIND_SCRIPT: &str = "INT. HUT - DAY\n\nNora taps the glass. Nora waits.\n\nNORA\nThe glass is still.\n";
+
+#[test]
+fn find_steps_through_matches_and_highlights_them() {
+    let (mut harness, _file) = harness(FIND_SCRIPT);
+    harness.state_mut().queued.push("app.find".into());
+    harness.run_steps(3);
+    if let Some(bar) = harness.state_mut().find.as_mut() {
+        bar.text = "glass".into();
+    }
+    harness.run_steps(3);
+    let state = harness.state();
+    assert_eq!(state.editor.highlight, Some((1, 14, 19)), "typing finds the first match");
+    assert_eq!(state.find.as_ref().map(|b| b.status.as_str()), Some("1 of 2"));
+    harness.get_by_label("›").click();
+    harness.run_steps(3);
+    assert_eq!(harness.state().editor.highlight, Some((3, 4, 9)));
+    harness.get_by_label("›").click();
+    harness.run_steps(3);
+    assert_eq!(harness.state().editor.highlight, Some((1, 14, 19)), "Next wraps to the top");
+    harness.get_by_label("‹").click();
+    harness.run_steps(3);
+    assert_eq!(harness.state().editor.highlight, Some((3, 4, 9)), "Previous wraps to the end");
+}
+
+#[test]
+fn replace_one_then_all_and_undo_all_at_once() {
+    let (mut harness, _file) = harness(FIND_SCRIPT);
+    harness.state_mut().queued.push("app.find".into());
+    harness.run_steps(3);
+    if let Some(bar) = harness.state_mut().find.as_mut() {
+        bar.text = "nora".into();
+        bar.replacement = "Emma".into();
+    }
+    harness.run_steps(3);
+    harness.get_by_label("Replace").click();
+    harness.run_steps(3);
+    assert_eq!(harness.state().session.script.elements[1].text, "Emma taps the glass. Nora waits.");
+    assert_eq!(harness.state().editor.highlight, Some((1, 21, 25)), "Replace moves on to the next match");
+    harness.get_by_label("Replace All").click();
+    harness.run_steps(3);
+    let script = &harness.state().session.script;
+    assert_eq!(script.elements[1].text, "Emma taps the glass. Emma waits.");
+    assert_eq!(script.elements[2].text, "EMMA", "a cue stays in capitals");
+    assert_eq!(harness.state().find.as_ref().map(|b| b.status.as_str()), Some("Replaced 2 matches"));
+    harness.state_mut().queued.push("edit.undo".into());
+    harness.run_steps(3);
+    let script = &harness.state().session.script;
+    assert_eq!(script.elements[1].text, "Emma taps the glass. Nora waits.", "one Undo reverses Replace All");
+    assert_eq!(script.elements[2].text, "NORA");
+}

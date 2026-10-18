@@ -227,3 +227,50 @@ fn go_to_scene_and_page() {
     assert!(go(&mut s, json!({ "page": pages + 1 })).is_err());
     assert!(go(&mut s, json!({})).is_err());
 }
+
+/// Find steps through matches and wraps; Replace changes one; Replace All is one undo step.
+#[test]
+fn find_and_replace() {
+    let registry = Registry::new();
+    let script = "INT. HUT - DAY\n\nNora taps the glass. nora waits.\n\nNORA\nThe glass is still.\n\nEXT. FLATS - DAY\n\nGlassy ground.\n";
+    let mut s = Session::new(storyteller_core::fountain::parse(script).unwrap());
+    let next = |s: &mut Session, extra: Value| {
+        let mut params = json!({ "text": "nora" }).as_object().cloned().unwrap();
+        params.extend(extra.as_object().cloned().unwrap_or_default());
+        serde_json::to_value(registry.run("find.next", s, &params).unwrap()).unwrap()["value"].clone()
+    };
+    let first = next(&mut s, json!({}));
+    assert_eq!(
+        (first["element"].as_u64(), first["start"].as_u64(), first["number"].as_u64(), first["total"].as_u64()),
+        (Some(1), Some(0), Some(1), Some(3))
+    );
+    let second = next(&mut s, json!({}));
+    assert_eq!((second["element"].as_u64(), second["start"].as_u64()), (Some(1), Some(21)));
+    let third = next(&mut s, json!({}));
+    assert_eq!(third["element"].as_u64(), Some(2));
+    let wrapped = next(&mut s, json!({}));
+    assert_eq!(wrapped["number"].as_u64(), Some(1));
+    // Case, and one element type.
+    assert_eq!(next(&mut s, json!({ "case": true, "text": "NORA" }))["element"].as_u64(), Some(2));
+    assert_eq!(next(&mut s, json!({ "kind": "character" }))["total"].as_u64(), Some(1));
+    // Whole words: "glass" but not "Glassy".
+    assert_eq!(next(&mut s, json!({ "text": "glass", "whole_word": true }))["total"].as_u64(), Some(2));
+    assert_eq!(next(&mut s, json!({ "text": "missing" }))["total"].as_u64(), Some(0));
+
+    // Replace one, at an explicit match; a cue stays in capitals.
+    run(&registry, &mut s, "find.replace", json!({ "text": "nora", "replacement": "Emma", "index": 2, "start": 0 }));
+    assert_eq!(s.script.elements[2].text, "EMMA");
+    let none = run(&registry, &mut s, "find.replace", json!({ "text": "nora", "replacement": "Emma", "index": 2, "start": 0 }));
+    assert_eq!(none["value"]["replaced"], json!(false));
+
+    // Replace All, then one Undo puts every match back.
+    let before = s.script.elements[1].text.clone();
+    let all = run(&registry, &mut s, "find.replace_all", json!({ "text": "glass", "replacement": "window", "whole_word": true }));
+    assert_eq!(all["value"]["count"], json!(2));
+    assert_eq!(s.script.elements[1].text, "Nora taps the window. nora waits.");
+    assert_eq!(s.script.elements[3].text, "The window is still.");
+    assert_eq!(s.script.elements[5].text, "Glassy ground.");
+    run(&registry, &mut s, "edit.undo", json!({}));
+    assert_eq!(s.script.elements[1].text, before);
+    assert_eq!(s.script.elements[3].text, "The glass is still.");
+}

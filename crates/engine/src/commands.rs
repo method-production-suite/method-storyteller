@@ -8,6 +8,7 @@ use serde_json::{Map, Value, json};
 use storyteller_core::{Element, ElementKind, Script, autocomplete};
 
 use crate::files::{self, FileFormat};
+use crate::find;
 use crate::flow;
 use crate::session::{Caret, EditKind, Session, floor_char_boundary};
 
@@ -150,6 +151,19 @@ impl Registry {
         session.clamp_caret();
         Ok(outcome)
     }
+}
+
+/// The find parameters shared by `find.*`.
+fn find_query(params: &Params) -> Result<find::Query, CommandError> {
+    let text = string(params, "text")?;
+    if text.is_empty() {
+        return Err(CommandError::Invalid { name: "text", reason: "nothing to find".into() });
+    }
+    let kind = match opt_string(params, "kind")? {
+        Some(_) => Some(kind(params, "kind")?),
+        None => None,
+    };
+    Ok(find::Query { text, case: opt_bool(params, "case")?.unwrap_or(false), whole_word: opt_bool(params, "whole_word")?.unwrap_or(false), kind })
 }
 
 /// The element `nav.go_to` lands on: a scene heading, or the first element on a page.
@@ -498,6 +512,11 @@ fn all_commands() -> Vec<Command> {
     use ParamType::*;
     const INDEX: ParamSpec = param("index", Integer, false, "Element index (default: the caret's element)");
     const OFFSET: ParamSpec = param("offset", Integer, false, "Byte offset in the element text (default: the caret)");
+    const FIND_TEXT: ParamSpec = param("text", String, true, "Text to find");
+    const FIND_CASE: ParamSpec = param("case", Bool, false, "Match case exactly");
+    const FIND_WORD: ParamSpec = param("whole_word", Bool, false, "Whole words only");
+    const FIND_KIND: ParamSpec = param("kind", Kind, false, "Only in elements of this type");
+    const FIND_REPLACEMENT: ParamSpec = param("replacement", String, true, "Replacement text");
     vec![
         Command {
             id: "file.new",
@@ -662,6 +681,105 @@ fn all_commands() -> Vec<Command> {
                 s.caret = Caret { element: index, offset: 0 };
                 s.break_typing();
                 Ok(Outcome::value(json!({ "element": index })))
+            },
+        },
+        Command {
+            id: "find.next",
+            label: "Find Next",
+            menu: "",
+            shortcut: None,
+            params: const {
+                &[FIND_TEXT, FIND_CASE, FIND_WORD, FIND_KIND, param("backwards", Bool, false, "Find the previous match instead"), INDEX, OFFSET]
+            },
+            enabled: always,
+            run: |s, p| {
+                let query = find_query(p)?;
+                let hits = find::find_all(&s.script, &query);
+                let element = opt_index(p, "index")?.unwrap_or(s.caret.element);
+                let offset = opt_index(p, "offset")?.unwrap_or(s.caret.offset);
+                let backwards = opt_bool(p, "backwards")?.unwrap_or(false);
+                let Some((number, hit)) = find::find_next(&hits, element, offset, backwards) else {
+                    return Ok(Outcome { message: Some(format!("“{}” is not in the script", query.text)), value: json!({ "total": 0 }) });
+                };
+                // Forward, the caret goes after the match; backwards, before it, so repeating moves on.
+                s.caret = Caret { element: hit.element, offset: if backwards { hit.start } else { hit.end } };
+                s.break_typing();
+                Ok(Outcome::value(json!({ "element": hit.element, "start": hit.start, "end": hit.end, "number": number + 1, "total": hits.len() })))
+            },
+        },
+        Command {
+            id: "find.replace",
+            label: "Replace",
+            menu: "",
+            shortcut: None,
+            params: const {
+                &[
+                    FIND_TEXT,
+                    FIND_CASE,
+                    FIND_WORD,
+                    FIND_KIND,
+                    FIND_REPLACEMENT,
+                    INDEX,
+                    param("start", Integer, true, "Byte offset where the match to replace starts"),
+                ]
+            },
+            enabled: always,
+            run: |s, p| {
+                let query = find_query(p)?;
+                let replacement = string(p, "replacement")?;
+                let index = element_index(s, p)?;
+                let start = opt_index(p, "start")?.ok_or(CommandError::Missing("start"))?;
+                let hits = find::find_all(&s.script, &query);
+                let Some(hit) = hits.iter().find(|h| h.element == index && h.start == start) else {
+                    return Ok(Outcome { message: Some("Nothing to replace there".into()), value: json!({ "replaced": false }) });
+                };
+                let text = s.script.elements.get(index).map(|e| e.text.clone()).unwrap_or_default();
+                let new_text = format!("{}{replacement}{}", text.get(..hit.start).unwrap_or(""), text.get(hit.end..).unwrap_or(""));
+                set_text(s, index, &new_text, false)?;
+                s.caret =
+                    Caret { element: index, offset: (hit.start + replacement.len()).min(s.script.elements.get(index).map_or(0, |e| e.text.len())) };
+                Ok(Outcome::value(json!({ "replaced": true })))
+            },
+        },
+        Command {
+            id: "find.replace_all",
+            label: "Replace All",
+            menu: "",
+            shortcut: None,
+            params: const { &[FIND_TEXT, FIND_CASE, FIND_WORD, FIND_KIND, FIND_REPLACEMENT] },
+            enabled: always,
+            run: |s, p| {
+                let query = find_query(p)?;
+                let replacement = string(p, "replacement")?;
+                let hits = find::find_all(&s.script, &query);
+                if hits.is_empty() {
+                    return Ok(Outcome { message: Some(format!("“{}” is not in the script", query.text)), value: json!({ "count": 0 }) });
+                }
+                // One undo step for the lot.
+                s.checkpoint(EditKind::Other);
+                for (index, element) in s.script.elements.iter_mut().enumerate() {
+                    let ranges: Vec<&find::Hit> = hits.iter().filter(|h| h.element == index).collect();
+                    if ranges.is_empty() {
+                        continue;
+                    }
+                    let mut text = element.text.clone();
+                    for hit in ranges.iter().rev() {
+                        text.replace_range(hit.start..hit.end, &replacement);
+                    }
+                    if element.kind.is_single_line() {
+                        text = text.replace(['\n', '\r'], " ");
+                    }
+                    if element.kind.is_caps() {
+                        text = text.to_uppercase();
+                    }
+                    element.text = text;
+                }
+                s.clamp_caret();
+                let count = hits.len();
+                Ok(Outcome {
+                    message: Some(format!("Replaced {count} {}", if count == 1 { "match" } else { "matches" })),
+                    value: json!({ "count": count }),
+                })
             },
         },
         Command {
