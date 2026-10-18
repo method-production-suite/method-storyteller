@@ -115,6 +115,9 @@ pub struct StorytellerApp {
     /// The macOS menu bar; `None` elsewhere, or if it could not be installed (the window menu shows).
     #[cfg(target_os = "macos")]
     native: Option<crate::native_menu::NativeMenu>,
+    /// Drawn for the offscreen pictures: the window as a Mac shows it, menus in the menu bar.
+    #[cfg(test)]
+    pictures: bool,
 }
 
 /// One menu entry: command id, label, shortcut text and whether it can run now.
@@ -127,6 +130,13 @@ struct MenuEntry {
 
 impl StorytellerApp {
     pub fn new(cc: &eframe::CreationContext<'_>, file: Option<PathBuf>, control_port: Option<u16>) -> Self {
+        let mut app = Self::without_menu(cc, file, control_port);
+        app.install_menu(&cc.egui_ctx);
+        app
+    }
+
+    /// The app without the macOS menu bar, which the offscreen pictures leave out.
+    fn without_menu(cc: &eframe::CreationContext<'_>, file: Option<PathBuf>, control_port: Option<u16>) -> Self {
         editor::install_fonts(&cc.egui_ctx);
         theme::apply(&cc.egui_ctx);
         let (prefs, report) = SettingsStore::<Prefs>::open(Location::Auto);
@@ -167,8 +177,9 @@ impl StorytellerApp {
             shortcuts,
             #[cfg(target_os = "macos")]
             native: None,
+            #[cfg(test)]
+            pictures: false,
         };
-        app.install_menu(&cc.egui_ctx);
         let last_seen = app.prefs.get().general.last_seen_version.clone();
         app.help.whats_new = help::whats_new_due(&last_seen, help::VERSION);
         if help::record_version(&last_seen, help::VERSION) {
@@ -184,10 +195,6 @@ impl StorytellerApp {
                 Ok(receiver) => {
                     app.control = Some(receiver);
                     app.status = format!("Control channel on 127.0.0.1:{port}");
-                    // A steady caret, so screenshots are the same every run.
-                    for theme in [egui::Theme::Light, egui::Theme::Dark] {
-                        cc.egui_ctx.style_mut_of(theme, |style| style.visuals.text_cursor.blink = false);
-                    }
                 }
                 Err(error) => app.error = Some(format!("Control channel unavailable on port {port}: {error}")),
             }
@@ -525,26 +532,6 @@ impl StorytellerApp {
                 self.pending_screenshot = Some((id, request.reply, path));
                 break;
             }
-            if parsed.get("method").and_then(Value::as_str) == Some("ui.window") {
-                let id = parsed.get("id").cloned().unwrap_or(Value::Null);
-                let number = |key: &str| parsed.pointer(&format!("/params/{key}")).and_then(Value::as_f64).map(|v| v as f32);
-                if let (Some(width), Some(height)) = (number("width"), number("height")) {
-                    ctx.send_viewport_cmd(ViewportCommand::InnerSize(egui::vec2(width, height)));
-                }
-                match parsed.pointer("/params/theme").and_then(Value::as_str) {
-                    Some("light") => ctx.set_theme(egui::Theme::Light),
-                    Some("dark") => ctx.set_theme(egui::Theme::Dark),
-                    _ => {}
-                }
-                if let Some(pages) = parsed.pointer("/params/page_view").and_then(Value::as_bool) {
-                    self.prefs.update(|p| p.view.page_view = pages);
-                }
-                // The status line otherwise still names the control port.
-                self.status.clear();
-                let _ = request.reply.send(json!({"id": id, "result": {}}).to_string());
-                ctx.request_repaint();
-                continue;
-            }
             let reply = {
                 let mut host = AppHost {
                     automation: &mut self.automation,
@@ -677,6 +664,10 @@ impl StorytellerApp {
 
     /// Whether menus are drawn inside the window (not on macOS with the menu bar installed).
     fn window_menu(&self) -> bool {
+        #[cfg(test)]
+        if self.pictures {
+            return false;
+        }
         #[cfg(target_os = "macos")]
         {
             self.native.is_none()
@@ -1173,3 +1164,7 @@ impl eframe::App for StorytellerApp {
         let _ = self.prefs.flush();
     }
 }
+
+#[cfg(test)]
+#[path = "screens.rs"]
+mod screens;

@@ -116,9 +116,9 @@ the golden files in `crates/core/tests/golden/` (`UPDATE_GOLDEN=1 cargo test -p 
 regenerates them).
 
 `cargo xtask screens` retakes every picture above from the invented script in
-[examples/field-station.fountain](examples/field-station.fountain): it drives the real app over
-the control channel, in light and dark, and gives the same pixels every run. It needs a desktop
-session and Chrome (for the terminal picture), and is a release step rather than a CI gate.
+[examples/field-station.fountain](examples/field-station.fountain), in light and dark, with the
+same pixels every run. The app is drawn offscreen (nothing opens on screen); the terminal picture
+needs Chrome. It is a release step rather than a CI gate.
 
 Method Storyteller builds on [craft-libs](https://github.com/storytold/craft-libs) (PDF writing,
 atomic saves, settings, macOS quit) and follows the conventions of the storytold Craft apps.
