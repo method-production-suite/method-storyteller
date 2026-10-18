@@ -364,11 +364,18 @@ impl StorytellerApp {
         for action in actions {
             match action {
                 EditAction::SetText { index, mut text, mut caret } => {
-                    if self.prefs.get().general.smart_quotes {
+                    // Smart quotes in prose only: capitalised elements (headings, cues, transitions)
+                    // keep straight apostrophes, so O'BRIEN and CONT'D match as typed.
+                    let prose = self.session.element(index).is_some_and(|e| !e.kind.is_caps());
+                    if self.prefs.get().general.smart_quotes && prose {
                         let old = self.session.element(index).map(|e| e.text.clone()).unwrap_or_default();
                         if let Some((curled, at)) = storyteller_engine::flow::smart_quote(&old, &text, caret) {
                             text = curled;
                             caret = at;
+                            self.editor.pending_focus = Some((index, caret));
+                        }
+                        if let Some(fixed) = storyteller_engine::flow::fix_leading_apostrophe(&text, caret) {
+                            text = fixed;
                             self.editor.pending_focus = Some((index, caret));
                         }
                     }

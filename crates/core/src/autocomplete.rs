@@ -10,7 +10,7 @@ use crate::model::{ElementKind, Script, character_name};
 pub const MAX_SUGGESTIONS: usize = 10;
 
 pub const SCENE_PREFIXES: [&str; 6] = ["INT.", "EXT.", "INT./EXT.", "EXT./INT.", "I/E", "EST."];
-/// Times of day, in the order Final Draft's SmartType offers them.
+/// Times of day, in the order Final Draft's autocomplete offers them.
 pub const TIMES_OF_DAY: [&str; 14] = [
     "DAY",
     "NIGHT",

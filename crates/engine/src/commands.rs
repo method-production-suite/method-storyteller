@@ -244,7 +244,11 @@ pub fn set_text(session: &mut Session, index: usize, text: &str, typing: bool) -
     session.checkpoint(if typing { EditKind::Typing(index) } else { EditKind::Other });
     if let Some(element) = session.script.elements.get_mut(index) {
         element.text = text;
-        if becomes_heading {
+    }
+    if becomes_heading {
+        // Its own undo step, so one Undo turns it back into the action just typed.
+        session.checkpoint(EditKind::Other);
+        if let Some(element) = session.script.elements.get_mut(index) {
             element.kind = ElementKind::SceneHeading;
             element.normalize();
         }
@@ -432,6 +436,14 @@ macro_rules! kind_command {
         }
     };
 }
+
+/// The change-to shortcuts: ⌘⌥1–7 on macOS; Ctrl+Shift+1–7 elsewhere, where Ctrl+Alt is AltGr
+/// and would swallow characters typed on many keyboard layouts.
+const CONVERT_KEYS: [&str; 7] = if cfg!(target_os = "macos") {
+    ["Cmd+Alt+1", "Cmd+Alt+2", "Cmd+Alt+3", "Cmd+Alt+4", "Cmd+Alt+5", "Cmd+Alt+6", "Cmd+Alt+7"]
+} else {
+    ["Cmd+Shift+1", "Cmd+Shift+2", "Cmd+Shift+3", "Cmd+Shift+4", "Cmd+Shift+5", "Cmd+Shift+6", "Cmd+Shift+7"]
+};
 
 /// ⌘⌥1–⌘⌥7: change the current element's type in place.
 macro_rules! convert_command {
@@ -693,21 +705,21 @@ fn all_commands() -> Vec<Command> {
             "convert.scene_heading",
             "Change to Scene Heading",
             "Format/Change to Scene Heading",
-            "Cmd+Alt+1",
+            CONVERT_KEYS[0],
             ElementKind::SceneHeading
         ),
-        convert_command!("convert.action", "Change to Action", "Format/Change to Action", "Cmd+Alt+2", ElementKind::Action),
-        convert_command!("convert.character", "Change to Character", "Format/Change to Character", "Cmd+Alt+3", ElementKind::Character),
+        convert_command!("convert.action", "Change to Action", "Format/Change to Action", CONVERT_KEYS[1], ElementKind::Action),
+        convert_command!("convert.character", "Change to Character", "Format/Change to Character", CONVERT_KEYS[2], ElementKind::Character),
         convert_command!(
             "convert.parenthetical",
             "Change to Parenthetical",
             "Format/Change to Parenthetical",
-            "Cmd+Alt+4",
+            CONVERT_KEYS[3],
             ElementKind::Parenthetical
         ),
-        convert_command!("convert.dialogue", "Change to Dialogue", "Format/Change to Dialogue", "Cmd+Alt+5", ElementKind::Dialogue),
-        convert_command!("convert.transition", "Change to Transition", "Format/Change to Transition", "Cmd+Alt+6", ElementKind::Transition),
-        convert_command!("convert.shot", "Change to Shot", "Format/Change to Shot", "Cmd+Alt+7", ElementKind::Shot),
+        convert_command!("convert.dialogue", "Change to Dialogue", "Format/Change to Dialogue", CONVERT_KEYS[4], ElementKind::Dialogue),
+        convert_command!("convert.transition", "Change to Transition", "Format/Change to Transition", CONVERT_KEYS[5], ElementKind::Transition),
+        convert_command!("convert.shot", "Change to Shot", "Format/Change to Shot", CONVERT_KEYS[6], ElementKind::Shot),
         Command {
             id: "flow.enter",
             label: "New Element (Enter)",

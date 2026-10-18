@@ -75,14 +75,17 @@ engine (`flow.rs`) holds every rule, so they can become a preference later.
 - **⌘1–⌘7** (Ctrl on Windows and Linux) start a new element of that type after the current one:
   1 Scene heading, 2 Action, 3 Character, 4 Parenthetical, 5 Dialogue, 6 Transition, 7 Shot. On
   an empty element they change its type instead. **⌘⌥1–⌘⌥7** change the current element's type
-  in place. Parentheticals get their brackets automatically.
-- Typing `int.`, `ext.`, `int./ext.`, `i/e` or `est.` at the start of action turns it into a
-  scene heading.
+  in place (Ctrl+Shift+1–7 on Windows and Linux, where Ctrl+Alt is AltGr). Parentheticals get
+  their brackets automatically.
+- Typing `int.` or `ext.` at the start of action turns it into a scene heading (its own undo
+  step).
 - Scene headings, character cues and transitions display and save in capitals.
 - The status bar always shows what Tab and Enter will do next.
-- Smart quotes (Format > Smart Quotes, on by default) curl `"` and `'` as they are typed.
+- Smart quotes (Format > Smart Quotes, on by default) curl `"` and `'` as they are typed in action,
+  dialogue, parentheticals and lyrics; capitalised elements (headings, cues, transitions) keep
+  straight ones. A leading apostrophe (`'90s`, `'til`) curls the right way.
 
-### 4.2 Autocomplete (SmartType)
+### 4.2 Autocomplete
 
 - **Character:** names already used in the script, most frequent first. Extensions are offered
   after `(`: `V.O.`, `O.S.`, `O.C.`, `CONT'D`. An empty cue in a two-hander offers the speaker
@@ -96,7 +99,7 @@ engine (`flow.rs`) holds every rule, so they can become a preference later.
   `SMASH CUT TO:`, `MATCH CUT TO:`, `JUMP CUT TO:`, `BACK TO:`, plus any used.
 
 A popup shows matches under the caret. Up/Down choose, Enter or Tab accept, and Esc dismisses.
-SmartType lists stored in the document, and editing them, come later.
+Autocomplete lists stored in the document, and editing them, come later.
 
 ### 4.3 Undo
 

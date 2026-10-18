@@ -174,6 +174,10 @@ fn tab_starts_the_next_element_and_shortcuts_insert() {
     run(&registry, &mut s, "element.set_kind", json!({ "kind": "action" }));
     run(&registry, &mut s, "element.set_text", json!({ "text": "ext.", "typing": true }));
     assert_eq!((s.current().unwrap().kind, s.current().unwrap().text.as_str()), (K::SceneHeading, "EXT."), "typing ext. in action makes a heading");
+    run(&registry, &mut s, "edit.undo", json!({}));
+    assert_eq!((s.current().unwrap().kind, s.current().unwrap().text.as_str()), (K::Action, "ext."), "one undo turns it back into action");
+    run(&registry, &mut s, "element.set_text", json!({ "text": "Est.", "typing": true }));
+    assert_eq!(s.current().unwrap().kind, K::Action, "Est. stays action");
 
     let mut s = Session::default();
     run(&registry, &mut s, "element.set_kind", json!({ "kind": "character" }));

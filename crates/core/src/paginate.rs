@@ -231,7 +231,9 @@ impl Group {
 pub fn auto_contd_at(script: &Script, index: usize) -> bool {
     let Some(element) = script.elements.get(index).filter(|e| e.kind == ElementKind::Character) else { return false };
     let name = crate::model::character_name(&element.text).to_uppercase();
-    if name.is_empty() || element.dual || element.text.to_uppercase().contains("CONT") {
+    // A cue that already carries a continued extension, such as `(CONT'D)` or `(cont’d)`.
+    let marked = element.text.to_uppercase().replace(' ', "").contains("(CONT");
+    if name.is_empty() || element.dual || marked {
         return false;
     }
     let next_cue =

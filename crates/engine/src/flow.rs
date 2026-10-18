@@ -98,10 +98,10 @@ pub fn convert_text(text: &str, from: K, to: K) -> (String, isize) {
     (text, 0)
 }
 
-/// Whether action text is just a scene-heading intro being typed (`int.`, `ext.`, `i/e`,
-/// `int./ext.`, `est.`), which turns the paragraph into a scene heading.
+/// Whether action text is just `int.` or `ext.` being typed, which turns the paragraph into a
+/// scene heading (Final Draft's behaviour; `Est. 1962` and the like stay action).
 pub fn is_heading_start(text: &str) -> bool {
-    matches!(text.trim_start().to_ascii_lowercase().as_str(), "int." | "ext." | "i/e" | "int./ext." | "ext./int." | "est.")
+    matches!(text.trim_start().to_ascii_lowercase().as_str(), "int." | "ext.")
 }
 
 /// Smart quotes: when `new` is `old` with one straight quote typed before byte `caret`, the
@@ -130,6 +130,35 @@ pub fn smart_quote(old: &str, new: &str, caret: usize) -> Option<(String, usize)
     Some((text, caret - 1 + curly.len_utf8()))
 }
 
+/// Words that start with an apostrophe standing for missing letters ('til, 'em, 'cause …).
+const ELISIONS: [&str; 9] = ["til", "em", "cause", "round", "tis", "twas", "n", "bout", "nother"];
+
+/// A leading apostrophe typed as an opening quote, put right: `‘90s` → `’90s` as soon as the digit
+/// is typed, and `‘til` → `’til` once the word ends. Returns the corrected text (same length).
+pub fn fix_leading_apostrophe(text: &str, caret: usize) -> Option<String> {
+    let before = text.get(..caret)?;
+    let last = before.chars().next_back()?;
+    let swap = |at: usize| Some(format!("{}\u{2019}{}", text.get(..at)?, text.get(at + '\u{2018}'.len_utf8()..)?));
+    let opening_at = |end: usize| {
+        let head = before.get(..end)?;
+        let quote = head.strip_suffix('\u{2018}')?;
+        quote.chars().next_back().is_none_or(char::is_whitespace).then_some(quote.len())
+    };
+    if last.is_ascii_digit() {
+        return opening_at(before.len() - last.len_utf8()).and_then(swap);
+    }
+    if last.is_alphanumeric() {
+        return None;
+    }
+    let word_end = before.len() - last.len_utf8();
+    let head = before.get(..word_end)?;
+    let word: String = head.chars().rev().take_while(|c| c.is_alphabetic()).collect::<Vec<_>>().into_iter().rev().collect();
+    if word.is_empty() || !ELISIONS.contains(&word.to_lowercase().as_str()) {
+        return None;
+    }
+    opening_at(word_end - word.len()).and_then(swap)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -145,9 +174,17 @@ mod tests {
     }
 
     #[test]
+    fn leading_apostrophes_point_the_right_way() {
+        assert_eq!(fix_leading_apostrophe("the \u{2018}9", 8).as_deref(), Some("the \u{2019}9"));
+        assert_eq!(fix_leading_apostrophe("wait \u{2018}til ", 12).as_deref(), Some("wait \u{2019}til "));
+        assert_eq!(fix_leading_apostrophe("\u{2018}tilde ", 9), None, "not an elision");
+        assert_eq!(fix_leading_apostrophe("say \u{2018}hi ", 10), None, "an opening quote stays one");
+    }
+
+    #[test]
     fn heading_intros() {
-        assert!(is_heading_start("int.") && is_heading_start("EXT.") && is_heading_start("i/e"));
-        assert!(!is_heading_start("int. kitchen") && !is_heading_start("interior"));
+        assert!(is_heading_start("int.") && is_heading_start("EXT."));
+        assert!(!is_heading_start("int. kitchen") && !is_heading_start("interior") && !is_heading_start("Est."));
     }
 
     #[test]

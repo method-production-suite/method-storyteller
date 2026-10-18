@@ -63,7 +63,7 @@ stderr) and will be removed in a future release.
 | Enter on an empty element | Open the element picker: S, A, C, P, D, T, H … or the arrows |
 | Tab | On an empty element, change its type (Action → Character, Character → Transition …); after text, start the next one (a parenthetical after a cue or a speech) |
 | ⌘1 … ⌘7 | Start a Scene heading, Action, Character, Parenthetical, Dialogue, Transition or Shot |
-| ⌘⌥1 … ⌘⌥7 | Change the current element to that type |
+| ⌘⌥1 … ⌘⌥7 (Ctrl+Shift on Windows and Linux) | Change the current element to that type |
 | Shift-Enter | Line break inside an action or dialogue paragraph |
 | Backspace at the start | Join with the previous element |
 
