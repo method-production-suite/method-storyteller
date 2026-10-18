@@ -17,7 +17,9 @@ craft-libs (https://github.com/storytold/craft-libs), Copyright (c) 2026 ArtCraf
 
 Clean-room statement
 
-Final Draft (FDX) support was written from the publicly known structure of the XML format and
-from files this project creates. No Final Draft software, binaries or templates were read or
+.fdx support was written from the publicly known structure of the XML format and from files
+this project creates. No third-party screenwriting software, binaries or templates were read or
 disassembled. Fountain support follows the open specification at https://fountain.io. No GPL,
 LGPL or AGPL code is included.
+
+Not affiliated with or endorsed by the makers of other screenwriting software.

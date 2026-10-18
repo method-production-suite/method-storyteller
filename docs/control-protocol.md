@@ -36,7 +36,7 @@ offsets are UTF-8 byte offsets.
 | `ui.key` | `key` (egui key name such as `Enter`, `Tab`, `S`), `modifiers` (`cmd`, `shift`, `alt`, `ctrl`) | Presses and releases a key |
 | `ui.focus` | `element`, optional `offset` | Puts the caret in a script element |
 | `ui.command` | `id` | Runs a command the way its menu item does (including file dialogs) |
-| `ui.state` | | Focused element, autocomplete suggestions, dialogs, zoom, status and error |
+| `ui.state` | | Focused element, autocomplete suggestions, dialogs, open Help windows (`help_windows`), zoom, status and error |
 | `ui.screenshot` | `path` | Saves a PNG of the window; replies with its path and size |
 
 Synthetic input is delivered over the next frames; the app holds later requests until it has
@@ -44,7 +44,14 @@ been delivered, so a `ui.state` after `ui.type` sees the result.
 
 Widget ids: `menu.file`, `menu.item.<command id>`, `editor.element.<n>`, `navigator.scene.<n>`,
 `autocomplete.item.<n>`, `status.element_kind`, `status.page`, `dialog.title_page.<field>`,
-`dialog.title_page.ok`, `prompt.save`, `prompt.discard`, `prompt.cancel`.
+`dialog.title_page.ok`, `prompt.save`, `prompt.discard`, `prompt.cancel`, and for the Help windows
+`dialog.about.website`, `dialog.about.suite`, `dialog.about.licenses`, `dialog.licenses.tab.<n>`
+and `dialog.<window>.close` (`about`, `shortcuts`, `whats_new`, `licenses`).
+
+The Help menu's commands (`help.about`, `help.user_guide`, `help.shortcuts`, `help.whats_new`,
+`help.check_updates`, `prefs.check_updates_automatically`, `help.report_bug`, `help.licenses`,
+`help.website`) belong to the app, so they run through `ui.command`, not `command.run`.
+`help.user_guide`, `help.report_bug` and `help.website` open the browser.
 
 ## Example
 
