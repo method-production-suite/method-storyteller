@@ -14,6 +14,10 @@ Dependencies
 craft-libs (https://github.com/storytold/craft-libs), Copyright (c) 2026 ArtCraft Team and the
   craft-libs contributors, MIT OR Apache-2.0, used as a git dependency. Its vendored
   third-party code (Krilla and others) keeps the licences listed in its NOTICE.
+method-libs (https://github.com/method-production-suite/method-libs), Copyright (c) 2026 Method
+  Production Suite Team and the method-libs contributors, MIT OR Apache-2.0, used as a git
+  dependency for the updater (method-update). Through it, webpki-roots carries the Mozilla root
+  certificate list as data, under the Community Data License Agreement Permissive 2.0.
 
 Clean-room statement
 

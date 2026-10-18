@@ -64,9 +64,6 @@ const APP_COMMANDS: [AppCommand; 19] = [
     AppCommand { id: "help.website", label: "methodproduction.com", menu: "Help/methodproduction.com", shortcut: None },
 ];
 
-/// App commands that cannot run yet: the updater arrives with the first release.
-const INACTIVE: [&str; 1] = ["help.check_updates"];
-
 /// Commands handled by the flow keys inside the editor, not as global shortcuts.
 const EDITOR_KEYS: [&str; 3] = ["Enter", "Tab", "Shift+Tab"];
 
@@ -115,6 +112,7 @@ pub struct StorytellerApp {
     /// The macOS menu bar; `None` elsewhere, or if it could not be installed (the window menu shows).
     #[cfg(target_os = "macos")]
     native: Option<crate::native_menu::NativeMenu>,
+    updates: crate::updates::Updates,
 }
 
 /// One menu entry: command id, label, shortcut text and whether it can run now.
@@ -130,6 +128,7 @@ impl StorytellerApp {
         editor::install_fonts(&cc.egui_ctx);
         theme::apply(&cc.egui_ctx);
         let (prefs, report) = SettingsStore::<Prefs>::open(Location::Auto);
+        let prefs_automatic = prefs.get().updates.check_automatically;
         let registry = Registry::new();
         let mut shortcuts = Vec::new();
         for command in registry.iter() {
@@ -167,6 +166,11 @@ impl StorytellerApp {
             shortcuts,
             #[cfg(target_os = "macos")]
             native: None,
+            updates: crate::updates::Updates::start(
+                &cc.egui_ctx,
+                craft_settings::paths::data_dir(crate::prefs::APP_ID).map(|d| d.join("updates.json")),
+                prefs_automatic,
+            ),
         };
         app.install_menu(&cc.egui_ctx);
         let last_seen = app.prefs.get().general.last_seen_version.clone();
@@ -265,9 +269,20 @@ impl StorytellerApp {
                 let url = help::new_issue_url(help::VERSION, &help::os_label());
                 self.open_link(&url, "Opened a new bug report in your browser. Nothing is sent until you submit it.");
             }
-            "help.check_updates" => self.status = format!("{}.", help::UPDATES_LATER),
+            "help.check_updates" => match self.updates.unavailable() {
+                Some(why) => self.status = format!("{why}."),
+                None => {
+                    self.status = "Checking for updates…".into();
+                    self.updates.check(ctx);
+                }
+            },
+            "help.restart_to_update" => self.restart_to_update(),
             "prefs.check_updates_automatically" => {
-                self.prefs.update(|p| p.updates.check_automatically = !p.updates.check_automatically);
+                let on = !self.updates.automatic();
+                if let Err(error) = self.updates.set_automatic(on) {
+                    self.error = Some(format!("Could not save the update setting: {error}"));
+                }
+                self.prefs.update(|p| p.updates.check_automatically = on);
             }
             "view.scene_numbers" => {
                 self.run(id, Map::new());
@@ -597,7 +612,7 @@ impl StorytellerApp {
             })
             .collect();
         for command in APP_COMMANDS.iter().filter(|c| c.menu.starts_with(&prefix)) {
-            let enabled = !INACTIVE.contains(&command.id);
+            let enabled = command.id != "help.check_updates" || self.updates.unavailable().is_none();
             items.push(MenuEntry { id: command.id.to_string(), label: command.label.to_string(), shortcut: command.shortcut, enabled });
         }
         items
@@ -612,7 +627,7 @@ impl StorytellerApp {
             "prefs.new_fountain" => Some(self.prefs.get().general.new_script_format != "osf"),
             "prefs.new_osf" => Some(self.prefs.get().general.new_script_format == "osf"),
             "prefs.smart_quotes" => Some(self.prefs.get().general.smart_quotes),
-            "prefs.check_updates_automatically" => Some(self.prefs.get().updates.check_automatically),
+            "prefs.check_updates_automatically" => Some(self.updates.automatic()),
             _ => None,
         }
     }
@@ -707,8 +722,10 @@ impl StorytellerApp {
                             Some(on) => ui.add_enabled(*enabled, egui::Button::selectable(on, label.as_str())),
                             None => ui.add_enabled(*enabled, button),
                         };
-                        if id == "help.check_updates" {
-                            response = response.on_disabled_hover_text(help::UPDATES_LATER);
+                        if id == "help.check_updates"
+                            && let Some(why) = self.updates.unavailable()
+                        {
+                            response = response.on_disabled_hover_text(why);
                         }
                         self.automation.add(format!("menu.item.{id}"), "menuitem", label.clone(), &response);
                         if response.clicked() {
@@ -898,12 +915,42 @@ impl StorytellerApp {
             let hint_label = ui.label(egui::RichText::new(&hint).weak());
             self.automation.add("status.hint", "text", hint, &hint_label);
             ui.separator();
+            let update = self.updates.status();
+            if let Some(line) = crate::updates::status_line(&update) {
+                self.status = line;
+            }
+            if update.phase == "ready" {
+                let restart = ui.button("Restart to Update");
+                self.automation.add("status.restart_to_update", "button", "Restart to Update", &restart);
+                if restart.clicked() {
+                    self.queued.push("help.restart_to_update".into());
+                }
+            }
             if let Some(error) = &self.error {
                 ui.colored_label(ui.visuals().error_fg_color, error);
             } else {
                 ui.weak(&self.status);
             }
         });
+    }
+
+    /// "Restart to Update": the script is saved first; an untitled script must be saved by
+    /// the writer before the app restarts.
+    fn restart_to_update(&mut self) {
+        if self.session.dirty {
+            if self.session.path.is_none() {
+                self.status = "Save the script, then restart to update.".into();
+                return;
+            }
+            if !self.save(false) {
+                return;
+            }
+        }
+        let _ = self.prefs.flush();
+        match self.updates.install_and_relaunch() {
+            Ok(()) => std::process::exit(0),
+            Err(error) => self.error = Some(format!("The update could not be installed: {error}. It is still ready to try again.")),
+        }
     }
 
     fn title_page_dialog(&mut self, ctx: &egui::Context) {
