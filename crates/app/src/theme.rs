@@ -6,6 +6,8 @@ use egui::{Color32, CornerRadius, Stroke, Theme};
 /// The accent in light mode (#AE3D56) and in dark mode (#EE8DA2).
 pub const ACCENT: Color32 = Color32::from_rgb(0xAE, 0x3D, 0x56);
 pub const ACCENT_DARK: Color32 = Color32::from_rgb(0xEE, 0x8D, 0xA2);
+/// A find match on the page, which is always white paper: the accent as a light wash.
+pub const FIND_MARK: Color32 = Color32::from_rgb(0xEB, 0xBC, 0xC8);
 
 /// Height of the bar along the top of the window (the title bar on macOS).
 pub const TOP_BAR_HEIGHT: f32 = 38.0;

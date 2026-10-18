@@ -66,7 +66,7 @@ fn draw(file: &Path, theme: egui::Theme, shot: &Shot) -> (u32, u32, Vec<u8>) {
         .with_pixels_per_point(PIXELS_PER_POINT)
         .with_theme(theme)
         .with_max_steps(64)
-        .build_eframe(|cc| StorytellerApp::without_menu(cc, Some(file), None));
+        .build_eframe(|cc| StorytellerApp::without_menu(cc, Some(file), None, craft_settings::Location::Memory));
     for each in [egui::Theme::Light, egui::Theme::Dark] {
         harness.ctx.style_mut_of(each, |style| style.visuals.text_cursor.blink = false);
     }
