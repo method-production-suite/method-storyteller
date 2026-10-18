@@ -274,3 +274,36 @@ fn find_and_replace() {
     assert_eq!(s.script.elements[1].text, before);
     assert_eq!(s.script.elements[3].text, "The glass is still.");
 }
+
+/// Rename a character: cues keep their extensions; with `everywhere`, mentions follow in their
+/// own case; one Undo puts it all back.
+#[test]
+fn rename_character() {
+    let registry = Registry::new();
+    let script = "INT. HUT - DAY\n\nNORA taps the glass. Nora's hands shake.\n\nNORA\nHello.\n\nNORA (V.O.)\nStill here.\n\nEMMETT\nNora?\n\nNORAH\nWrong one.\n";
+    let mut s = Session::new(storyteller_core::fountain::parse(script).unwrap());
+    let original = s.script.clone();
+    let cues = run(&registry, &mut s, "character.rename", json!({ "from": "nora", "to": "Emma" }));
+    assert_eq!(cues["value"]["cues"], json!(2));
+    let texts: Vec<&str> = s.script.elements.iter().map(|e| e.text.as_str()).collect();
+    assert_eq!(texts[2], "EMMA");
+    assert_eq!(texts[4], "EMMA (V.O.)");
+    assert_eq!(texts[1], "NORA taps the glass. Nora's hands shake.", "cues only by default");
+    assert_eq!(texts[8], "NORAH");
+    run(&registry, &mut s, "edit.undo", json!({}));
+    assert_eq!(s.script, original);
+
+    let all = run(&registry, &mut s, "character.rename", json!({ "from": "NORA", "to": "Emma", "everywhere": true }));
+    assert_eq!((all["value"]["cues"].clone(), all["value"]["mentions"].clone()), (json!(2), json!(3)));
+    let texts: Vec<&str> = s.script.elements.iter().map(|e| e.text.as_str()).collect();
+    assert_eq!(texts[1], "EMMA taps the glass. Emma's hands shake.");
+    assert_eq!(texts[7], "Emma?");
+    assert_eq!(texts[8], "NORAH", "a different name is left alone");
+    run(&registry, &mut s, "edit.undo", json!({}));
+    assert_eq!(s.script, original, "one Undo reverses the rename");
+
+    let names = run(&registry, &mut s, "character.list", json!({}));
+    assert_eq!(names["value"][0], json!(["NORA", 2]));
+    let params: Map<String, Value> = json!({ "from": "NOBODY", "to": "X" }).as_object().cloned().unwrap();
+    assert!(registry.run("character.rename", &mut s, &params).is_err());
+}

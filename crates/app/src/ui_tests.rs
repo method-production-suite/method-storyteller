@@ -109,3 +109,35 @@ fn replace_one_then_all_and_undo_all_at_once() {
     assert_eq!(script.elements[1].text, "Emma taps the glass. Nora waits.", "one Undo reverses Replace All");
     assert_eq!(script.elements[2].text, "NORA");
 }
+
+#[test]
+fn rename_character_from_the_dialog() {
+    let (mut harness, _file) = harness(FIND_SCRIPT);
+    // The caret in the cue picks that character.
+    harness.state_mut().session.caret = storyteller_engine::Caret { element: 2, offset: 0 };
+    harness.state_mut().queued.push("app.rename_character".into());
+    harness.run_steps(3);
+    assert_eq!(harness.state().rename.as_ref().map(|d| d.from.as_str()), Some("NORA"));
+    if let Some(draft) = harness.state_mut().rename.as_mut() {
+        draft.to = "Emma".into();
+        draft.everywhere = true;
+    }
+    harness.get_by_label("Rename").click();
+    harness.run_steps(3);
+    let state = harness.state();
+    assert!(state.rename.is_none(), "the dialog closes");
+    assert_eq!(state.session.script.elements[2].text, "EMMA");
+    assert_eq!(state.session.script.elements[1].text, "Emma taps the glass. Emma waits.");
+    assert_eq!(state.status, "Renamed NORA in 1 cue and 2 mentions");
+}
+
+#[test]
+fn rename_character_explains_an_empty_name() {
+    let (mut harness, _file) = harness(FIND_SCRIPT);
+    harness.state_mut().queued.push("app.rename_character".into());
+    harness.run_steps(3);
+    harness.get_by_label("Rename").click();
+    harness.run_steps(3);
+    let error = harness.state().rename.as_ref().and_then(|d| d.error.clone());
+    assert_eq!(error.as_deref(), Some("The new name is empty."));
+}

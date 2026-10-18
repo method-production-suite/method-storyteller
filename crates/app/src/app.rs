@@ -39,7 +39,7 @@ const GO_TO_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Alt+G" } else { "Cmd
 const FIND_NEXT_KEY: &str = if cfg!(target_os = "macos") { "Cmd+G" } else { "F3" };
 const FIND_PREVIOUS_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Shift+G" } else { "Shift+F3" };
 
-const APP_COMMANDS: [AppCommand; 23] = [
+const APP_COMMANDS: [AppCommand; 24] = [
     AppCommand { id: "app.title_page", label: "Title Page…", menu: "File/Title Page…", shortcut: Some("Cmd+Shift+T") },
     AppCommand { id: "prefs.new_fountain", label: "Save New Scripts as Fountain", menu: "File/Save New Scripts as Fountain", shortcut: None },
     AppCommand {
@@ -52,6 +52,7 @@ const APP_COMMANDS: [AppCommand; 23] = [
     AppCommand { id: "app.find", label: "Find…", menu: "Edit/Find…", shortcut: Some("Cmd+F") },
     AppCommand { id: "app.find_next", label: "Find Next", menu: "Edit/Find Next", shortcut: Some(FIND_NEXT_KEY) },
     AppCommand { id: "app.find_previous", label: "Find Previous", menu: "Edit/Find Previous", shortcut: Some(FIND_PREVIOUS_KEY) },
+    AppCommand { id: "app.rename_character", label: "Rename Character…", menu: "Production/Rename Character…", shortcut: None },
     AppCommand { id: "app.go_to", label: "Go To…", menu: "Edit/Go To…", shortcut: Some(GO_TO_KEY) },
     AppCommand { id: "prefs.smart_quotes", label: "Smart Quotes", menu: "Format/Smart Quotes", shortcut: None },
     AppCommand { id: "view.navigator", label: "Scene Navigator", menu: "View/Scene Navigator", shortcut: Some("Cmd+Shift+N") },
@@ -105,6 +106,17 @@ struct TitleDraft {
     fields: Vec<(String, String)>,
 }
 
+/// The Rename Character dialog.
+#[derive(Default)]
+struct RenameDraft {
+    names: Vec<String>,
+    from: String,
+    to: String,
+    everywhere: bool,
+    error: Option<String>,
+    focused: bool,
+}
+
 /// The Go To dialog: a scene number or a page.
 #[derive(Default)]
 struct GoToDraft {
@@ -127,6 +139,7 @@ pub struct StorytellerApp {
     discard_confirmed: bool,
     title_dialog: Option<TitleDraft>,
     go_to: Option<GoToDraft>,
+    rename: Option<RenameDraft>,
     find: Option<find_bar::FindBar>,
     help: HelpWindows,
     status: String,
@@ -193,6 +206,7 @@ impl StorytellerApp {
             discard_confirmed: false,
             title_dialog: None,
             go_to: None,
+            rename: None,
             find: None,
             help: HelpWindows::default(),
             status: String::new(),
@@ -265,6 +279,17 @@ impl StorytellerApp {
                 self.title_dialog = Some(TitleDraft { fields });
             }
             "app.go_to" => self.go_to = Some(GoToDraft::default()),
+            "app.rename_character" => {
+                let names: Vec<String> = storyteller_engine::commands::character_names(&self.session.script).into_iter().map(|(n, _)| n).collect();
+                // The cue the caret is in, if any, else the character with the most speeches.
+                let here = self.session.current().filter(|e| e.kind == ElementKind::Character).map(|e| e.character_name().to_uppercase());
+                let from = here.filter(|n| names.contains(n)).or_else(|| names.first().cloned()).unwrap_or_default();
+                if names.is_empty() {
+                    self.status = "There are no characters to rename yet.".into();
+                } else {
+                    self.rename = Some(RenameDraft { names, from, ..RenameDraft::default() });
+                }
+            }
             "app.find" => match &mut self.find {
                 Some(bar) => bar.focus(),
                 None => self.find = Some(find_bar::FindBar::open()),
@@ -990,11 +1015,79 @@ impl StorytellerApp {
         }
     }
 
+    fn rename_dialog(&mut self, ctx: &egui::Context) {
+        let Some(draft) = &mut self.rename else { return };
+        let mut go = false;
+        let mut close = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+        egui::Window::new("Rename Character").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_TOP, [0.0, 120.0]).show(ctx, |ui| {
+            egui::Grid::new("storyteller.rename_grid").num_columns(2).spacing([12.0, 8.0]).show(ui, |ui| {
+                ui.label("Character");
+                let combo =
+                    egui::ComboBox::from_id_salt("storyteller.rename_from").selected_text(draft.from.as_str()).width(240.0).show_ui(ui, |ui| {
+                        for name in &draft.names {
+                            ui.selectable_value(&mut draft.from, name.clone(), name.as_str());
+                        }
+                    });
+                self.automation.add("dialog.rename.from", "combobox", "Character", &combo.response);
+                ui.end_row();
+                ui.label("New name");
+                let to = ui.add(egui::TextEdit::singleline(&mut draft.to).desired_width(240.0));
+                self.automation.add("dialog.rename.to", "textbox", "New name", &to);
+                if !draft.focused {
+                    to.request_focus();
+                    draft.focused = true;
+                }
+                if to.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    go = true;
+                }
+                ui.end_row();
+            });
+            let everywhere = ui.checkbox(&mut draft.everywhere, "Also in action, dialogue and other text");
+            self.automation.add("dialog.rename.everywhere", "checkbox", "Also in other text", &everywhere);
+            if let Some(error) = &draft.error {
+                ui.colored_label(ui.visuals().error_fg_color, error);
+            }
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                let ok = ui.button("Rename");
+                self.automation.add("dialog.rename.ok", "button", "Rename", &ok);
+                let cancel = ui.button("Cancel");
+                self.automation.add("dialog.rename.cancel", "button", "Cancel", &cancel);
+                go |= ok.clicked();
+                close |= cancel.clicked();
+            });
+        });
+        if close {
+            self.rename = None;
+            self.refocus();
+            return;
+        }
+        if !go {
+            return;
+        }
+        let request = params(&[("from", json!(draft.from)), ("to", json!(draft.to)), ("everywhere", json!(draft.everywhere))]);
+        match self.registry.run("character.rename", &mut self.session, &request) {
+            Ok(outcome) => {
+                self.rename = None;
+                self.status = outcome.message.unwrap_or_default();
+                self.refocus();
+            }
+            Err(error) => {
+                if let Some(draft) = &mut self.rename {
+                    draft.error = Some(match error {
+                        storyteller_engine::CommandError::Invalid { reason, .. } => capitalise(&reason),
+                        other => other.to_string(),
+                    });
+                }
+            }
+        }
+    }
+
     fn go_to_dialog(&mut self, ctx: &egui::Context) {
         let Some(draft) = &mut self.go_to else { return };
         let mut go = false;
         let mut close = ctx.input(|i| i.key_pressed(egui::Key::Escape));
-        egui::Window::new("Go To").collapsible(false).resizable(false).show(ctx, |ui| {
+        egui::Window::new("Go To").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_TOP, [0.0, 120.0]).show(ctx, |ui| {
             ui.horizontal(|ui| {
                 let scene = ui.selectable_value(&mut draft.page, false, "Scene");
                 self.automation.add("dialog.go_to.scene", "radio", "Scene", &scene);
@@ -1129,6 +1222,7 @@ impl StorytellerApp {
         self.apply(actions);
         self.title_page_dialog(&ctx);
         self.go_to_dialog(&ctx);
+        self.rename_dialog(&ctx);
         self.help_windows(&ctx);
         self.unsaved_prompt(&ctx);
         for id in std::mem::take(&mut self.queued) {
@@ -1234,7 +1328,7 @@ impl eframe::App for StorytellerApp {
         self.handle_screenshot(ctx);
         self.handle_control(ctx);
         self.sync_native_menu();
-        if self.prompt.is_none() && self.title_dialog.is_none() && self.go_to.is_none() {
+        if self.prompt.is_none() && self.title_dialog.is_none() && self.go_to.is_none() && self.rename.is_none() {
             for (shortcut, id) in self.shortcuts.clone() {
                 if self.menu_owns_shortcut(id) {
                     continue;

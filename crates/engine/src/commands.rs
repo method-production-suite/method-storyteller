@@ -153,6 +153,27 @@ impl Registry {
     }
 }
 
+fn plural(count: usize, one: &'static str, many: &'static str) -> &'static str {
+    if count == 1 { one } else { many }
+}
+
+/// Every character name in the script, by number of speeches, most first, then by name.
+pub fn character_names(script: &Script) -> Vec<(String, usize)> {
+    let mut counts: Vec<(String, usize)> = Vec::new();
+    for element in script.elements.iter().filter(|e| e.kind == ElementKind::Character) {
+        let name = element.character_name().to_uppercase();
+        if name.is_empty() {
+            continue;
+        }
+        match counts.iter_mut().find(|(n, _)| *n == name) {
+            Some((_, count)) => *count += 1,
+            None => counts.push((name, 1)),
+        }
+    }
+    counts.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    counts
+}
+
 /// The find parameters shared by `find.*`.
 fn find_query(params: &Params) -> Result<find::Query, CommandError> {
     let text = string(params, "text")?;
@@ -781,6 +802,75 @@ fn all_commands() -> Vec<Command> {
                     value: json!({ "count": count }),
                 })
             },
+        },
+        Command {
+            id: "character.rename",
+            label: "Rename Character",
+            menu: "",
+            shortcut: None,
+            params: const {
+                &[
+                    param("from", String, true, "The character's current name"),
+                    param("to", String, true, "The new name"),
+                    param("everywhere", Bool, false, "Also rename the name as a whole word in action, dialogue and other text"),
+                ]
+            },
+            enabled: always,
+            run: |s, p| {
+                let from = string(p, "from")?.trim().to_uppercase();
+                let to = string(p, "to")?.trim().to_string();
+                if to.is_empty() {
+                    return Err(CommandError::Invalid { name: "to", reason: "the new name is empty".into() });
+                }
+                let everywhere = opt_bool(p, "everywhere")?.unwrap_or(false);
+                let is_cue = |e: &Element| e.kind == ElementKind::Character && e.character_name().to_uppercase() == from;
+                if !s.script.elements.iter().any(is_cue) {
+                    return Err(CommandError::Invalid { name: "from", reason: format!("no character is called {from}") });
+                }
+                let mention = find::Query { text: from.clone(), case: false, whole_word: true, kind: None };
+                // One undo step for every cue and mention.
+                s.checkpoint(EditKind::Other);
+                let (mut cues, mut mentions) = (0, 0);
+                for element in &mut s.script.elements {
+                    if is_cue(element) {
+                        // Keep the extensions: `NORA (V.O.)` becomes `EMMA (V.O.)`.
+                        let name_len = element.character_name().len();
+                        let start = element.text.len() - element.text.trim_start().len();
+                        let rest = element.text.get(start + name_len..).unwrap_or("").to_string();
+                        element.text = format!("{}{rest}", to.to_uppercase());
+                        cues += 1;
+                    } else if everywhere && element.kind != ElementKind::Character {
+                        let hits = find::find_in(&element.text, &mention);
+                        for &(start, end) in hits.iter().rev() {
+                            let found = element.text.get(start..end).unwrap_or("");
+                            // A name written in capitals stays in capitals (a character's first appearance).
+                            let name =
+                                if found.chars().any(char::is_alphabetic) && found == found.to_uppercase() { to.to_uppercase() } else { to.clone() };
+                            element.text.replace_range(start..end, &name);
+                        }
+                        if element.kind.is_caps() {
+                            element.text = element.text.to_uppercase();
+                        }
+                        mentions += hits.len();
+                    }
+                }
+                s.clamp_caret();
+                let message = if everywhere {
+                    format!("Renamed {from} in {cues} {} and {mentions} {}", plural(cues, "cue", "cues"), plural(mentions, "mention", "mentions"))
+                } else {
+                    format!("Renamed {from} in {cues} {}", plural(cues, "cue", "cues"))
+                };
+                Ok(Outcome { message: Some(message), value: json!({ "cues": cues, "mentions": mentions }) })
+            },
+        },
+        Command {
+            id: "character.list",
+            label: "List Characters",
+            menu: "",
+            shortcut: None,
+            params: &[],
+            enabled: always,
+            run: |s, _| Ok(Outcome::value(json!(character_names(&s.script)))),
         },
         Command {
             id: "element.set_text",

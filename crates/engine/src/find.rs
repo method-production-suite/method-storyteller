@@ -11,7 +11,8 @@ pub struct Query {
     pub text: String,
     /// Match case exactly; otherwise letters match in either case.
     pub case: bool,
-    /// Only whole words: no letter, digit or apostrophe on either side.
+    /// Only whole words: no letter or digit on either side. An apostrophe ends a word, so
+    /// `NORA` is found in `Nora's`.
     pub whole_word: bool,
     /// Only elements of this type.
     pub kind: Option<ElementKind>,
@@ -26,7 +27,7 @@ pub struct Hit {
 }
 
 fn is_word(c: char) -> bool {
-    c.is_alphanumeric() || c == '\'' || c == '’'
+    c.is_alphanumeric()
 }
 
 fn same(a: char, b: char, case: bool) -> bool {
@@ -96,7 +97,7 @@ mod tests {
         assert_eq!(find_in("Nora, NORA and nora's", &q("nora")), vec![(0, 4), (6, 10), (15, 19)]);
         assert_eq!(find_in("Nora, NORA", &Query { case: true, ..q("NORA") }), vec![(6, 10)]);
         let whole = Query { whole_word: true, ..q("cut") };
-        assert_eq!(find_in("cut, cutting, the cut's end, cut", &whole), vec![(0, 3), (29, 32)]);
+        assert_eq!(find_in("cut, cutting, the cut's end, cut", &whole), vec![(0, 3), (18, 21), (29, 32)]);
     }
 
     #[test]
