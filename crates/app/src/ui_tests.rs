@@ -109,3 +109,49 @@ fn replace_one_then_all_and_undo_all_at_once() {
     assert_eq!(script.elements[1].text, "Emma taps the glass. Nora waits.", "one Undo reverses Replace All");
     assert_eq!(script.elements[2].text, "NORA");
 }
+
+#[test]
+fn escape_closes_the_find_bar() {
+    let (mut harness, _file) = harness(FIND_SCRIPT);
+    harness.state_mut().queued.push("app.find".into());
+    harness.run_steps(3);
+    if let Some(bar) = harness.state_mut().find.as_mut() {
+        bar.text = "glass".into();
+    }
+    harness.run_steps(3);
+    assert!(harness.state().editor.highlight.is_some());
+    harness.key_press(egui::Key::Escape);
+    harness.run_steps(3);
+    assert!(harness.state().find.is_none(), "Escape in the find field closes the bar");
+    assert!(harness.state().editor.highlight.is_none());
+}
+
+#[test]
+fn an_edit_or_undo_drops_a_stale_highlight() {
+    let (mut harness, _file) = harness(FIND_SCRIPT);
+    harness.state_mut().queued.push("app.find".into());
+    harness.run_steps(3);
+    if let Some(bar) = harness.state_mut().find.as_mut() {
+        bar.text = "glass".into();
+        bar.replacement = "window".into();
+    }
+    harness.run_steps(3);
+    assert_eq!(harness.state().editor.highlight, Some((1, 14, 19)));
+    // Replace All leaves no match, and Undo brings the text back; neither keeps an old highlight.
+    harness.get_by_label("Replace All").click();
+    harness.run_steps(3);
+    assert!(harness.state().editor.highlight.is_none());
+    harness.state_mut().queued.push("edit.undo".into());
+    harness.run_steps(3);
+    assert!(harness.state().editor.highlight.is_none());
+    // An edit under the match.
+    harness.get_by_label("›").click();
+    harness.run_steps(3);
+    let Some((element, ..)) = harness.state().editor.highlight else { panic!("Next finds a match again after Undo") };
+    let params: serde_json::Map<String, serde_json::Value> =
+        serde_json::json!({ "index": element, "text": "No match here now." }).as_object().cloned().unwrap_or_default();
+    let state = harness.state_mut();
+    let _ = state.registry.run("element.set_text", &mut state.session, &params);
+    harness.run_steps(3);
+    assert!(harness.state().editor.highlight.is_none(), "an edit under the match drops it");
+}

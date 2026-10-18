@@ -46,6 +46,7 @@ pub(super) enum Step {
 
 impl StorytellerApp {
     pub(super) fn find_bar(&mut self, ui: &mut egui::Ui) {
+        self.drop_stale_match();
         let Some(bar) = &mut self.find else { return };
         let mut step = None;
         let mut replace = false;
@@ -64,7 +65,8 @@ impl StorytellerApp {
                 step = Some(if ui.input(|i| i.modifiers.shift) { Step::Previous } else { Step::Next });
                 find.request_focus();
             }
-            if find.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            // egui drops focus on Escape before the field sees the key.
+            if find.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 close = true;
             }
             let with = ui.add(egui::TextEdit::singleline(&mut bar.replacement).hint_text("Replace with").desired_width(180.0));
@@ -109,6 +111,20 @@ impl StorytellerApp {
             self.replace_current();
         } else if let Some(step) = step {
             self.find_step(step);
+        }
+    }
+
+    /// An edit, Undo or Redo can move the text under the highlighted match: forget it once the
+    /// text there no longer matches.
+    fn drop_stale_match(&mut self) {
+        let Some(bar) = &mut self.find else { return };
+        let Some((element, start, end)) = bar.current else { return };
+        let query = storyteller_engine::find::Query { text: bar.text.clone(), case: bar.case, whole_word: bar.whole_word, kind: None };
+        let still = self.session.element(element).is_some_and(|e| storyteller_engine::find::find_in(&e.text, &query).contains(&(start, end)));
+        if !still {
+            bar.current = None;
+            bar.status.clear();
+            self.editor.highlight = None;
         }
     }
 
