@@ -318,11 +318,11 @@ fn rename_character() {
     // Only capitalised mentions: a name that is also a word leaves the word alone.
     let words = "INT. HUT - DAY\n\nWill says he will. Don't.\n\nWILL\nI will.\n\nDON\nWe don't.\n";
     let mut w = Session::new(storyteller_core::fountain::parse(words).unwrap());
-    run(&registry, &mut w, "character.rename", json!({ "from": "WILL", "to": "Sam", "everywhere": true }));
-    assert_eq!(w.script.elements[1].text, "Sam says he will. Don't.");
+    run(&registry, &mut w, "character.rename", json!({ "from": "WILL", "to": "Theo", "everywhere": true }));
+    assert_eq!(w.script.elements[1].text, "Theo says he will. Don't.");
     assert_eq!(w.script.elements[3].text, "I will.");
     run(&registry, &mut w, "character.rename", json!({ "from": "DON", "to": "Ray", "everywhere": true }));
-    assert_eq!(w.script.elements[1].text, "Sam says he will. Don't.", "DON is not in Don't");
+    assert_eq!(w.script.elements[1].text, "Theo says he will. Don't.", "DON is not in Don't");
 
     // Renaming onto another character's name asks first; brackets and ^ are refused.
     let refuse = |s: &mut Session, params: Value| {
