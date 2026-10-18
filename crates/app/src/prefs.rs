@@ -21,6 +21,7 @@ pub const MAX_RECENT: usize = 10;
 pub struct Prefs {
     pub general: General,
     pub view: View,
+    pub updates: Updates,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -31,11 +32,27 @@ pub struct General {
     pub new_script_format: String,
     /// Curl straight quotes as they are typed.
     pub smart_quotes: bool,
+    /// The version that last ran, so What's New opens once after an update.
+    pub last_seen_version: String,
 }
 
 impl Default for General {
     fn default() -> Self {
-        General { recent: Vec::new(), new_script_format: "fountain".into(), smart_quotes: true }
+        General { recent: Vec::new(), new_script_format: "fountain".into(), smart_quotes: true, last_seen_version: String::new() }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Updates {
+    /// Help > Check for Updates Automatically. Kept for the updater, which arrives with the
+    /// first release; nothing checks yet.
+    pub check_automatically: bool,
+}
+
+impl Default for Updates {
+    fn default() -> Self {
+        Updates { check_automatically: true }
     }
 }
 

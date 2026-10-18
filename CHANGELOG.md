@@ -1,0 +1,26 @@
+# Changelog
+
+What changed in each version of Method Storyteller, newest first. The app shows the section
+for its own version in Help > What's New, once after an update.
+
+## 0.1.0 (not released yet)
+
+### New
+
+- Write a screenplay with Enter and Tab moving between scene heading, action, character,
+  parenthetical, dialogue and transition, and ⌘1 to ⌘7 to pick an element directly.
+- Character, location and time-of-day autocomplete.
+- Pages laid out the way scripts print: Courier Prime 12 pt, standard margins, `(MORE)` and
+  `(CONT'D)` at page breaks.
+- Save in Fountain or Open Screenplay Format, and choose which one new scripts use
+  (File > Save New Scripts as).
+- Open and save `.fdx` and `.fadein` files; export PDF.
+- Title page, scene navigator, scene numbers, page view and draft view, zoom.
+- A Help menu: user guide, keyboard shortcuts, this list, bug reports and licences.
+- A command line tool, `method-storyteller`, that converts, paginates and exports without a
+  window, and a control channel that drives the app from scripts.
+
+### Known gaps
+
+- No installers yet, and no automatic updates until the first release.
+- No printing, revision mode or side-by-side editing of dual dialogue yet.
