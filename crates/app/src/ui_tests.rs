@@ -114,7 +114,8 @@ fn replace_one_then_all_and_undo_all_at_once() {
 fn rename_character_from_the_dialog() {
     let (mut harness, _file) = harness(FIND_SCRIPT);
     // The caret in the cue picks that character.
-    harness.state_mut().session.caret = storyteller_engine::Caret { element: 2, offset: 0 };
+    harness.state_mut().editor.pending_focus = Some((2, 0));
+    harness.run_steps(3);
     harness.state_mut().queued.push("app.rename_character".into());
     harness.run_steps(3);
     assert_eq!(harness.state().rename.as_ref().map(|d| d.from.as_str()), Some("NORA"));
@@ -140,7 +141,9 @@ fn rename_character_explains_an_empty_name() {
     harness.run_steps(3);
     let error = harness.state().rename.as_ref().and_then(|d| d.error.clone());
     assert_eq!(error.as_deref(), Some("The new name is empty."));
+}
 
+#[test]
 fn escape_closes_the_find_bar() {
     let (mut harness, _file) = harness(FIND_SCRIPT);
     harness.state_mut().queued.push("app.find".into());
@@ -184,4 +187,26 @@ fn an_edit_or_undo_drops_a_stale_highlight() {
     let _ = state.registry.run("element.set_text", &mut state.session, &params);
     harness.run_steps(3);
     assert!(harness.state().editor.highlight.is_none(), "an edit under the match drops it");
+}
+
+#[test]
+fn rename_onto_another_character_asks_to_merge() {
+    let script = "INT. HUT - DAY\n\nNORA\nHello.\n\nEMMETT\nHi.\n";
+    let (mut harness, _file) = harness(script);
+    harness.state_mut().editor.pending_focus = Some((1, 0));
+    harness.run_steps(3);
+    harness.state_mut().queued.push("app.rename_character".into());
+    harness.run_steps(3);
+    if let Some(draft) = harness.state_mut().rename.as_mut() {
+        draft.to = "Emmett".into();
+    }
+    harness.get_by_label("Rename").click();
+    harness.run_steps(3);
+    let error = harness.state().rename.as_ref().and_then(|d| d.error.clone());
+    assert_eq!(error.as_deref(), Some("EMMETT is already a character. Merge NORA into EMMETT?"));
+    assert_eq!(harness.state().session.script.elements[1].text, "NORA", "nothing changes before the writer agrees");
+    harness.get_by_label("Merge").click();
+    harness.run_steps(3);
+    assert!(harness.state().rename.is_none());
+    assert_eq!(harness.state().session.script.elements[1].text, "EMMETT");
 }

@@ -11,8 +11,8 @@ pub struct Query {
     pub text: String,
     /// Match case exactly; otherwise letters match in either case.
     pub case: bool,
-    /// Only whole words: no letter or digit on either side. An apostrophe ends a word, so
-    /// `NORA` is found in `Nora's`.
+    /// Only whole words: no letter, digit or apostrophe on either side, except that a
+    /// possessive `'s` may follow, so `NORA` is found in `Nora's` but `DON` is not in `don't`.
     pub whole_word: bool,
     /// Only elements of this type.
     pub kind: Option<ElementKind>,
@@ -26,8 +26,22 @@ pub struct Hit {
     pub end: usize,
 }
 
+fn is_apostrophe(c: char) -> bool {
+    c == '\'' || c == '’'
+}
+
 fn is_word(c: char) -> bool {
-    c.is_alphanumeric()
+    c.is_alphanumeric() || is_apostrophe(c)
+}
+
+/// Whether the text after a match ends the word: no word character, or a possessive `'s`.
+fn ends_word(rest: &[(usize, char)]) -> bool {
+    match rest {
+        [] => true,
+        [(_, c), ..] if !is_word(*c) => true,
+        [(_, a), (_, s), tail @ ..] if is_apostrophe(*a) && (*s == 's' || *s == 'S') => tail.first().is_none_or(|(_, c)| !is_word(*c)),
+        _ => false,
+    }
 }
 
 fn same(a: char, b: char, case: bool) -> bool {
@@ -48,8 +62,7 @@ pub fn find_in(text: &str, query: &Query) -> Vec<(usize, usize)> {
         let start = chars.get(i).map_or(text.len(), |c| c.0);
         let end = chars.get(i + wanted.len()).map_or(text.len(), |c| c.0);
         let bounded = !query.whole_word
-            || (i.checked_sub(1).and_then(|j| chars.get(j)).is_none_or(|c| !is_word(c.1))
-                && chars.get(i + wanted.len()).is_none_or(|c| !is_word(c.1)));
+            || (i.checked_sub(1).and_then(|j| chars.get(j)).is_none_or(|c| !is_word(c.1)) && ends_word(chars.get(i + wanted.len()..).unwrap_or(&[])));
         if matched && bounded {
             hits.push((start, end));
             i += wanted.len();
@@ -98,6 +111,12 @@ mod tests {
         assert_eq!(find_in("Nora, NORA", &Query { case: true, ..q("NORA") }), vec![(6, 10)]);
         let whole = Query { whole_word: true, ..q("cut") };
         assert_eq!(find_in("cut, cutting, the cut's end, cut", &whole), vec![(0, 3), (18, 21), (29, 32)]);
+        // Only a possessive 's ends a word at an apostrophe, straight or curly.
+        let nora = Query { whole_word: true, ..q("nora") };
+        assert_eq!(find_in("Nora's hat, Nora’s coat, Nora'd go", &nora), vec![(0, 4), (12, 16)]);
+        assert_eq!(find_in("O'Brien and O’Brien", &Query { whole_word: true, ..q("o") }), vec![]);
+        assert_eq!(find_in("don't, can’t", &Query { whole_word: true, ..q("don") }), vec![]);
+        assert_eq!(find_in("Nora's", &Query { whole_word: true, ..q("nora's") }), vec![(0, 6)]);
     }
 
     #[test]

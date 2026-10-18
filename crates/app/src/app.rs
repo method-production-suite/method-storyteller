@@ -114,6 +114,8 @@ struct RenameDraft {
     to: String,
     everywhere: bool,
     error: Option<String>,
+    /// The new name belongs to another character and the writer has been asked about merging.
+    merge: bool,
     focused: bool,
 }
 
@@ -1042,15 +1044,16 @@ impl StorytellerApp {
                 }
                 ui.end_row();
             });
-            let everywhere = ui.checkbox(&mut draft.everywhere, "Also in action, dialogue and other text");
+            let everywhere = ui.checkbox(&mut draft.everywhere, "Also where the name is capitalised in action, dialogue and other text");
             self.automation.add("dialog.rename.everywhere", "checkbox", "Also in other text", &everywhere);
             if let Some(error) = &draft.error {
                 ui.colored_label(ui.visuals().error_fg_color, error);
             }
             ui.add_space(6.0);
             ui.horizontal(|ui| {
-                let ok = ui.button("Rename");
-                self.automation.add("dialog.rename.ok", "button", "Rename", &ok);
+                let label = if draft.merge { "Merge" } else { "Rename" };
+                let ok = ui.button(label);
+                self.automation.add("dialog.rename.ok", "button", label, &ok);
                 let cancel = ui.button("Cancel");
                 self.automation.add("dialog.rename.cancel", "button", "Cancel", &cancel);
                 go |= ok.clicked();
@@ -1065,7 +1068,16 @@ impl StorytellerApp {
         if !go {
             return;
         }
-        let request = params(&[("from", json!(draft.from)), ("to", json!(draft.to)), ("everywhere", json!(draft.everywhere))]);
+        // Renaming onto another character merges the two: ask once, then the button says Merge.
+        let new_name = draft.to.trim().to_uppercase();
+        if !draft.merge && new_name != draft.from && draft.names.contains(&new_name) {
+            draft.merge = true;
+            draft.error = Some(format!("{new_name} is already a character. Merge {} into {new_name}?", draft.from));
+            return;
+        }
+        let merge = draft.merge && draft.names.contains(&new_name);
+        let request =
+            params(&[("from", json!(draft.from)), ("to", json!(draft.to)), ("everywhere", json!(draft.everywhere)), ("merge", json!(merge))]);
         match self.registry.run("character.rename", &mut self.session, &request) {
             Ok(outcome) => {
                 self.rename = None;

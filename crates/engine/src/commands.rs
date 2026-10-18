@@ -153,6 +153,20 @@ impl Registry {
     }
 }
 
+/// The new name in the case of the mention it replaces: `NORA` → `EMMA`, `Nora` → `Emma`.
+/// A mixed-case new name such as `McCLANE` is kept as typed for a capitalised mention.
+fn name_like(found: &str, to: &str) -> std::string::String {
+    let all_caps = |t: &str| t.chars().any(char::is_alphabetic) && t.chars().all(|c| !c.is_lowercase());
+    if all_caps(found) && found.chars().filter(|c| c.is_alphabetic()).count() > 1 {
+        return to.to_uppercase();
+    }
+    if !all_caps(to) && to.chars().any(char::is_uppercase) {
+        return to.to_string();
+    }
+    let mut chars = to.chars();
+    chars.next().map(|c| c.to_uppercase().chain(chars.flat_map(char::to_lowercase)).collect()).unwrap_or_default()
+}
+
 fn plural(count: usize, one: &'static str, many: &'static str) -> &'static str {
     if count == 1 { one } else { many }
 }
@@ -824,7 +838,8 @@ fn all_commands() -> Vec<Command> {
                 &[
                     param("from", String, true, "The character's current name"),
                     param("to", String, true, "The new name"),
-                    param("everywhere", Bool, false, "Also rename the name as a whole word in action, dialogue and other text"),
+                    param("everywhere", Bool, false, "Also rename capitalised whole-word mentions in action, dialogue and other text"),
+                    param("merge", Bool, false, "Allow renaming onto a name another character already has, merging the two"),
                 ]
             },
             enabled: always,
@@ -833,6 +848,20 @@ fn all_commands() -> Vec<Command> {
                 let to = string(p, "to")?.trim().to_string();
                 if to.is_empty() {
                     return Err(CommandError::Invalid { name: "to", reason: "the new name is empty".into() });
+                }
+                if to.contains(['(', ')', '^']) {
+                    return Err(CommandError::Invalid {
+                        name: "to",
+                        reason: "a name cannot contain ( ) or ^; extensions such as (V.O.) are kept as they are".into(),
+                    });
+                }
+                let new_name = to.to_uppercase();
+                let merge = opt_bool(p, "merge")?.unwrap_or(false);
+                if new_name != from && !merge && character_names(&s.script).iter().any(|(n, _)| *n == new_name) {
+                    return Err(CommandError::Invalid {
+                        name: "to",
+                        reason: format!("{new_name} is already a character; renaming would merge the two"),
+                    });
                 }
                 let everywhere = opt_bool(p, "everywhere")?.unwrap_or(false);
                 let is_cue = |e: &Element| e.kind == ElementKind::Character && e.character_name().to_uppercase() == from;
@@ -849,15 +878,17 @@ fn all_commands() -> Vec<Command> {
                         let name_len = element.character_name().len();
                         let start = element.text.len() - element.text.trim_start().len();
                         let rest = element.text.get(start + name_len..).unwrap_or("").to_string();
-                        element.text = format!("{}{rest}", to.to_uppercase());
+                        element.text = format!("{new_name}{rest}");
                         cues += 1;
                     } else if everywhere && element.kind != ElementKind::Character {
-                        let hits = find::find_in(&element.text, &mention);
+                        // Names in prose are capitalised, so `will` is not WILL and `may` is not MAY.
+                        let hits: Vec<(usize, usize)> = find::find_in(&element.text, &mention)
+                            .into_iter()
+                            .filter(|&(start, _)| element.text.get(start..).and_then(|t| t.chars().next()).is_some_and(char::is_uppercase))
+                            .collect();
                         for &(start, end) in hits.iter().rev() {
                             let found = element.text.get(start..end).unwrap_or("");
-                            // A name written in capitals stays in capitals (a character's first appearance).
-                            let name =
-                                if found.chars().any(char::is_alphabetic) && found == found.to_uppercase() { to.to_uppercase() } else { to.clone() };
+                            let name = name_like(found, &to);
                             element.text.replace_range(start..end, &name);
                         }
                         if element.kind.is_caps() {

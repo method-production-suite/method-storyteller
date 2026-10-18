@@ -310,6 +310,33 @@ fn rename_character() {
     run(&registry, &mut s, "edit.undo", json!({}));
     assert_eq!(s.script, original, "one Undo reverses the rename");
 
+    // The new name typed in capitals still takes each mention's own case.
+    run(&registry, &mut s, "character.rename", json!({ "from": "NORA", "to": "EMMA", "everywhere": true }));
+    assert_eq!(s.script.elements[1].text, "EMMA taps the glass. Emma's hands shake.");
+    run(&registry, &mut s, "edit.undo", json!({}));
+
+    // Only capitalised mentions: a name that is also a word leaves the word alone.
+    let words = "INT. HUT - DAY\n\nWill says he will. Don't.\n\nWILL\nI will.\n\nDON\nWe don't.\n";
+    let mut w = Session::new(storyteller_core::fountain::parse(words).unwrap());
+    run(&registry, &mut w, "character.rename", json!({ "from": "WILL", "to": "Sam", "everywhere": true }));
+    assert_eq!(w.script.elements[1].text, "Sam says he will. Don't.");
+    assert_eq!(w.script.elements[3].text, "I will.");
+    run(&registry, &mut w, "character.rename", json!({ "from": "DON", "to": "Ray", "everywhere": true }));
+    assert_eq!(w.script.elements[1].text, "Sam says he will. Don't.", "DON is not in Don't");
+
+    // Renaming onto another character's name asks first; brackets and ^ are refused.
+    let refuse = |s: &mut Session, params: Value| {
+        let params: Map<String, Value> = params.as_object().cloned().unwrap_or_default();
+        registry.run("character.rename", s, &params).err().map(|e| e.to_string())
+    };
+    let merge = refuse(&mut s, json!({ "from": "NORA", "to": "Emmett" })).unwrap_or_default();
+    assert!(merge.contains("EMMETT is already a character"), "{merge}");
+    assert!(refuse(&mut s, json!({ "from": "NORA", "to": "Emma (V.O.)" })).is_some());
+    assert!(refuse(&mut s, json!({ "from": "NORA", "to": "Emma^" })).is_some());
+    let merged = run(&registry, &mut s, "character.rename", json!({ "from": "NORA", "to": "Emmett", "merge": true }));
+    assert_eq!(merged["value"]["cues"], json!(2));
+    run(&registry, &mut s, "edit.undo", json!({}));
+
     let names = run(&registry, &mut s, "character.list", json!({}));
     assert_eq!(names["value"][0], json!(["NORA", 2]));
     let params: Map<String, Value> = json!({ "from": "NOBODY", "to": "X" }).as_object().cloned().unwrap();
