@@ -8,11 +8,15 @@ Looks up each locked crates.io version's publish date (one request per second, p
 crates.io's crawler policy) and lists any younger than the cooldown. A package from
 anywhere else (a git repository, another registry) has no publish date to check, so it
 fails the check too: fail closed. The one exception is a git repository passed with
---allow-git, and only when the lock pins it to an exact revision (reviewed once, by rev). With --only-changed REF, only packages added or bumped
+--allow-git, and only when the lock pins it to an exact revision (reviewed once, by rev).
+
+This copy converges on the suite's shared crate-age script (SUITE-STANDARDS.md §6, with an
+allow-list file) once method-libs carries it. With --only-changed REF, only packages added or bumped
 since that git ref are checked. Stdlib only, so it runs anywhere Python 3 does.
 """
 
 import argparse
+import re
 import datetime as dt
 import json
 import subprocess
@@ -25,6 +29,7 @@ UA = "method-storyteller cooldown check (https://github.com/method-production-su
 
 
 CRATES_IO = "registry+https://github.com/rust-lang/crates.io-index"
+PINNED_GIT = re.compile(r"^git\+(https://[^?#]+)\?rev=([0-9a-f]{40})#\2$")
 
 
 def external_packages(lock_text):
@@ -64,11 +69,10 @@ def main():
     bad = []
 
     def reviewed(source):
-        # git+URL?rev=FULLSHA#FULLSHA: a pinned revision of a repository on the allow list.
-        if not source.startswith("git+"):
-            return False
-        url, _, rest = source[4:].partition("?")
-        return url in args.allow_git and rest.startswith("rev=") and len(rest.split("#")[0]) == 44
+        # git+URL?rev=SHA#SHA, the same full 40-hex revision twice: a pinned revision of a
+        # repository on the allow list (the pattern Method Reader uses).
+        match = PINNED_GIT.match(source)
+        return bool(match) and match.group(1) in args.allow_git
 
     for name, version, source in sorted(p for p in pkgs if p[2] != CRATES_IO and reviewed(p[2])):
         print(f"{name:40} {version:16}  pinned git revision, reviewed ({source.split('?')[0]})")
