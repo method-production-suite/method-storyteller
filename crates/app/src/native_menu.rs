@@ -45,6 +45,7 @@ pub fn accelerator(text: &str) -> Option<Accelerator> {
             "Alt" => modifiers |= Modifiers::ALT,
             "Equals" => code = Some(Code::Equal),
             "Minus" => code = Some(Code::Minus),
+            "Semicolon" => code = Some(Code::Semicolon),
             key => {
                 let mut chars = key.chars();
                 let (Some(c), None) = (chars.next(), chars.next()) else { return None };
