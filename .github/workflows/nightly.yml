@@ -81,7 +81,7 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libgl1-mesa-dev libwayland-dev
       - run: cargo xtask ci
-      # The nightly is where the macOS and Windows caches are saved (pull requests only
+      # The nightly is where every system's cache is saved, Linux included (pull requests only
       # restore); it saves on main only, and only when the key missed.
       - if: github.ref == 'refs/heads/main' && steps.cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

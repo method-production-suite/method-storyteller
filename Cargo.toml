@@ -13,6 +13,7 @@ repository = "https://github.com/method-production-suite/method-storyteller"
 storyteller-core = { path = "crates/core" }
 storyteller-pdf = { path = "crates/pdf" }
 storyteller-engine = { path = "crates/engine" }
+storyteller-macos-open = { path = "crates/macos-open" }
 
 # craft-libs: every crate and the krilla patch below pin the same full revision.
 craft-pdf = { git = "https://github.com/storytold/craft-libs", rev = "8f5a2831614e632f91ad367f7af2a6e5b61b9529", version = "=0.1.0", default-features = false, features = ["write", "write-simple-text"] }

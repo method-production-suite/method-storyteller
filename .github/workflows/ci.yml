@@ -1,26 +1,36 @@
 name: ci
-# Pushes to main, and pull requests: a feature branch with a PR runs once, not twice
-# (the free plan runs few jobs at a time across the whole org; SUITE-STANDARDS.md §6).
-# A pull request opens as a draft and builds nothing; `gh pr ready` (ready_for_review) starts it,
-# and later pushes to a ready pull request run again (SUITE-STANDARDS.md §6).
+# Lean CI (SUITE-STANDARDS.md §6, 2026-10-18; the free plan runs few jobs at a time across the
+# whole org):
+# - a pull request opens as a draft and runs nothing; `gh pr ready` (ready_for_review) starts it,
+#   and later pushes to a ready pull request run again. It runs the Linux gates (skipped for a
+#   docs-only change), the crate-age check on the lock entries it changes, and cargo deny;
+# - a push to main runs the whole-lock crate-age check and cargo deny only: the gates ran on the
+#   pull request, and the full build on macOS, Windows and Linux runs nightly (nightly.yml) and
+#   for every release (release.yml);
+# - weekly, Mondays 06:00 UTC: the whole-lock crate-age check and cargo deny again (new
+#   advisories, and versions that have aged out of the exceptions list).
 on:
   push:
     branches: [main]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-# A new push to a pull request cancels its stale run; runs on main always finish.
+  schedule:
+    - cron: "0 6 * * 1"
+# A newer run of the same branch cancels an older one, main included: main's checks only need
+# its latest commit.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
-  # What changed: docs-only changes (Markdown, docs/, site/, the README pictures) skip the Rust
-  # build. Files the build compiles in or checks still build: CHANGELOG.md (What's New),
-  # ATTRIBUTION.md, the licences and NOTICE (the Licenses window), docs/releases/ (the updater). The build jobs are skipped with `if:`, not
-  # `paths-ignore`, so their required checks still report. Drafts run nothing at all.
+  # What a pull request changed: docs-only changes (Markdown, docs/, site/, the README pictures)
+  # skip the Rust build. Files the build compiles in or checks still build: CHANGELOG.md (What's
+  # New), ATTRIBUTION.md, the licences and NOTICE (the Licenses window), docs/releases/ (the
+  # updater). The gates are skipped with `if:`, not `paths-ignore`, so the required check still
+  # reports.
   changes:
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    if: github.event_name == 'pull_request' && !github.event.pull_request.draft
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -32,23 +42,16 @@ jobs:
           persist-credentials: false
       - id: diff
         env:
-          EVENT: ${{ github.event_name }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
-          BEFORE: ${{ github.event.before }}
         run: |
           set -euo pipefail
-          if [ "$EVENT" = pull_request ]; then
-            base="$PR_BASE"
-          else
-            base="${BEFORE:-}"
-          fi
-          # With nothing to compare with (a new branch, a schedule), build.
-          if [ -z "$base" ] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+          # With nothing to compare with, build.
+          if [ -z "$PR_BASE" ] || ! git cat-file -e "${PR_BASE}^{commit}" 2>/dev/null; then
             echo "rust=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           # On its own line, so a failing diff stops the job instead of reading as docs-only.
-          files="$(git diff --name-only "$base" HEAD)"
+          files="$(git diff --name-only "$PR_BASE" HEAD)"
           others="$(printf '%s\n' "$files" | grep -Ev '(\.md$|^docs/|^site/|^assets/screens/)' || true)"
           built="$(printf '%s\n' "$files" | grep -E '^(CHANGELOG\.md|ATTRIBUTION\.md|docs/releases/)' || true)"
           others="$others$built"
@@ -58,12 +61,12 @@ jobs:
             echo "Docs-only change: the Rust build is skipped."
             echo "rust=false" >> "$GITHUB_OUTPUT"
           fi
-  # Lean CI (SUITE-STANDARDS.md §6, 2026-10-18): pull requests and main run the Linux gates
-  # only; macOS and Windows run every night and on every release (nightly.yml, release.yml).
-  # A named job rather than a one-entry matrix: a matrix skipped by a job-level `if:` reports
-  # one check named `gates`, not the required one (actions/runner#952). No incremental state and
-  # line-tables-only debug info keep target, and so the cache, small; only main saves the cache,
-  # so pull requests restore main's and the repository stays under GitHub's 10 GB.
+
+  # The Linux gates, on pull requests: a named job rather than a one-entry matrix, since a matrix
+  # skipped by a job-level `if:` reports one check named `gates` instead of the required one
+  # (actions/runner#952). No incremental state and line-tables-only debug info keep target, and
+  # so the cache, small. The cache is only restored here: the nightly saves it on main, so the
+  # repository stays under GitHub's 10 GB.
   gates-linux:
     name: gates (ubuntu-latest)
     needs: changes
@@ -78,8 +81,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - id: cache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -90,17 +92,12 @@ jobs:
       - name: Linux packages for eframe
         run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libgl1-mesa-dev libwayland-dev
       - run: cargo xtask ci
-      - if: github.ref == 'refs/heads/main' && steps.cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: gates-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+
   cooldown:
+    # Crates published less than 14 days ago fail (scripts/check-crate-ages.py, SUITE-STANDARDS
+    # §6): a pull request checks the entries it adds or bumps; every push to main and the weekly
+    # run check the whole lock.
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
-    # Fails a change that adds crates published less than 14 days ago (scripts/check-crate-ages.py).
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -111,31 +108,19 @@ jobs:
       - name: Check crate ages
         env:
           EVENT: ${{ github.event_name }}
-          BEFORE: ${{ github.event.before }}
         run: |
           set -euo pipefail
-          # Compare with what the branch had before: main for a pull request, the pushed-over
-          # commit for a push, main for a new branch. With nothing to compare with, every crate
-          # is checked.
-          if [ "$EVENT" = pull_request ]; then
-            base=origin/main
-          elif [ -n "${BEFORE:-}" ] && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
-            base="$BEFORE"
-          elif [ "$GITHUB_REF" != refs/heads/main ]; then
-            base=origin/main
-          else
-            base=""
-          fi
           # craft-libs and method-libs are pinned to one reviewed revision each (Cargo.toml).
           allow=(--allow-git https://github.com/storytold/craft-libs --allow-git https://github.com/method-production-suite/method-libs)
-          if [ -n "$base" ]; then
-            python3 scripts/check-crate-ages.py --only-changed "$base" "${allow[@]}"
+          if [ "$EVENT" = pull_request ]; then
+            python3 scripts/check-crate-ages.py --only-changed origin/main "${allow[@]}"
           else
             python3 scripts/check-crate-ages.py "${allow[@]}"
           fi
+
   deny:
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     # deny.toml: known advisories, licences compatible with MIT OR Apache-2.0, known sources.
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
