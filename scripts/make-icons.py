@@ -27,7 +27,6 @@ scripts/make-brand.py's, loaded, so the icons cannot drift from the mark.
 from __future__ import annotations
 
 import importlib.util
-import struct
 import subprocess
 import sys
 import tempfile
@@ -147,16 +146,22 @@ def render(jobs: list[tuple[str, Path, int]]) -> None:
         subprocess.run(["swift", str(OUT / "render-svg.swift"), *args], check=True)
 
 
-def icns(pngs: dict[str, bytes]) -> bytes:
-    body = b""
-    for kind, data in pngs.items():
-        body += kind.encode() + struct.pack(">I", len(data) + 8) + data
-    return b"icns" + struct.pack(">I", len(body) + 8) + body
+def icns(png_of) -> bytes:
+    """An .icns built by iconutil from an iconset: `png_of(pixels)` gives each picture."""
+    with tempfile.TemporaryDirectory() as tmp:
+        iconset = Path(tmp) / "icon.iconset"
+        iconset.mkdir()
+        for name, px in ICONSET:
+            (iconset / f"icon_{name}.png").write_bytes(png_of(px))
+        out = Path(tmp) / "icon.icns"
+        subprocess.run(["iconutil", "-c", "icns", str(iconset), "-o", str(out)], check=True)
+        return out.read_bytes()
 
 
-# The .icns slots: (type, pixels).
-ICNS = [("icp4", 16), ("icp5", 32), ("ic11", 32), ("ic12", 64), ("ic07", 128), ("ic13", 256),
-        ("ic08", 256), ("ic14", 512), ("ic09", 512), ("ic10", 1024)]
+# The iconset's pictures: (name, pixels).
+ICONSET = [("16x16", 16), ("16x16@2x", 32), ("32x32", 32), ("32x32@2x", 64), ("128x128", 128),
+           ("128x128@2x", 256), ("256x256", 256), ("256x256@2x", 512), ("512x512", 512),
+           ("512x512@2x", 1024)]
 ICO = [16, 24, 32, 48, 64, 256]
 
 
@@ -169,7 +174,7 @@ def main() -> int:
         (source / f"document-{ext}.svg").write_text(document_svg(ext, small=False))
         (source / f"document-{ext}-small.svg").write_text(document_svg(ext, small=True))
 
-    sizes = sorted({px for _, px in ICNS} | set(ICO))
+    sizes = sorted({px for _, px in ICONSET} | set(ICO))
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         jobs = [(app_icon_svg(px), tmp / f"app-{px}.png", px) for px in sizes]
@@ -184,12 +189,12 @@ def main() -> int:
             "icon-1024.png": read("app-1024.png"),
             "icon-512.png": read("app-512.png"),
             "icon-256.png": read("app-256.png"),
-            "icon.icns": icns({kind: read(f"app-{px}.png") for kind, px in ICNS}),
+            "icon.icns": icns(lambda px: read(f"app-{px}.png")),
             "icon.ico": ico([(px, read(f"app-{px}.png")) for px in ICO]),
         }
         for ext in DOCUMENTS:
             files[f"document-{ext}-512.png"] = read(f"{ext}-512.png")
-            files[f"document-{ext}.icns"] = icns({kind: read(f"{ext}-{px}.png") for kind, px in ICNS})
+            files[f"document-{ext}.icns"] = icns(lambda px, ext=ext: read(f"{ext}-{px}.png"))
             files[f"document-{ext}.ico"] = ico([(px, read(f"{ext}-{px}.png")) for px in ICO])
     for name, data in files.items():
         (OUT / name).write_bytes(data)
