@@ -21,13 +21,16 @@ const fn rule(kind: K, enter: K, tab_empty: K, tab_next: K, shift_tab: K) -> Flo
 }
 
 /// The default flow table.
-pub const RULES: [FlowRule; 7] = [
+pub const RULES: [FlowRule; 9] = [
     rule(K::SceneHeading, K::Action, K::Action, K::Action, K::Action),
     rule(K::Action, K::Action, K::Character, K::Character, K::SceneHeading),
     rule(K::Character, K::Dialogue, K::Transition, K::Parenthetical, K::Action),
     rule(K::Parenthetical, K::Dialogue, K::Dialogue, K::Dialogue, K::Dialogue),
     rule(K::Dialogue, K::Action, K::Parenthetical, K::Parenthetical, K::Character),
     rule(K::Transition, K::SceneHeading, K::SceneHeading, K::SceneHeading, K::Action),
+    // A new act opens on a scene; the end of an act is followed by the next act.
+    rule(K::NewAct, K::SceneHeading, K::SceneHeading, K::SceneHeading, K::Action),
+    rule(K::EndOfAct, K::NewAct, K::NewAct, K::NewAct, K::Action),
     rule(K::Shot, K::Action, K::Action, K::Action, K::Action),
 ];
 
@@ -59,7 +62,7 @@ pub fn hint(kind: K, text: &str) -> String {
 }
 
 /// The element picker: what Enter on an empty element offers, with each choice's key.
-pub const PICKER: [(char, K); 9] = [
+pub const PICKER: [(char, K); 11] = [
     ('S', K::SceneHeading),
     ('A', K::Action),
     ('C', K::Character),
@@ -69,6 +72,8 @@ pub const PICKER: [(char, K); 9] = [
     ('H', K::Shot),
     ('N', K::Centered),
     ('L', K::Lyrics),
+    ('B', K::NewAct),
+    ('E', K::EndOfAct),
 ];
 
 /// Element types reachable by ⌘1–⌘7.

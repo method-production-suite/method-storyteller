@@ -42,8 +42,7 @@
       <text>Later.</text>
     </para>
     <para page_number="1A">
-      <style basestylename="Action" pagebreakbefore="1"/>
-      <method_storyteller fdx_type="New Act"/>
+      <style basestylename="New Act" pagebreakbefore="1"/>
       <text>ACT TWO</text>
     </para>
   </paragraphs>

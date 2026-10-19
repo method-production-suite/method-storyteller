@@ -1248,6 +1248,32 @@ fn all_commands() -> Vec<Command> {
         convert_command!("convert.transition", "Change to Transition", "Format/Change to Transition", CONVERT_KEYS[5], ElementKind::Transition),
         convert_command!("convert.shot", "Change to Shot", "Format/Change to Shot", CONVERT_KEYS[6], ElementKind::Shot),
         Command {
+            id: "convert.new_act",
+            label: "Change to New Act",
+            menu: "Format/Change to New Act",
+            shortcut: None,
+            params: const { &[INDEX] },
+            enabled: always,
+            run: |s, p| {
+                let index = element_index(s, p)?;
+                set_kind(s, index, ElementKind::NewAct)?;
+                Ok(Outcome::done())
+            },
+        },
+        Command {
+            id: "convert.end_of_act",
+            label: "Change to End of Act",
+            menu: "Format/Change to End of Act",
+            shortcut: None,
+            params: const { &[INDEX] },
+            enabled: always,
+            run: |s, p| {
+                let index = element_index(s, p)?;
+                set_kind(s, index, ElementKind::EndOfAct)?;
+                Ok(Outcome::done())
+            },
+        },
+        Command {
             id: "flow.enter",
             label: "New Element (Enter)",
             menu: "",

@@ -59,6 +59,8 @@ pub(crate) fn fdx_type(element: &Element) -> String {
         ElementKind::Lyrics => "Lyrics".into(),
         ElementKind::Section => format!("Outline {}", element.level.clamp(1, 4)),
         ElementKind::Synopsis => "Summary".into(),
+        ElementKind::NewAct => "New Act".into(),
+        ElementKind::EndOfAct => "End of Act".into(),
     }
 }
 
@@ -77,6 +79,8 @@ fn kind_from_fdx(name: &str) -> (ElementKind, Option<u8>) {
         "Transition" => ElementKind::Transition,
         "Shot" => ElementKind::Shot,
         "Lyrics" => ElementKind::Lyrics,
+        "New Act" => ElementKind::NewAct,
+        "End of Act" => ElementKind::EndOfAct,
         // Files from earlier Method Storyteller builds.
         "Section" => ElementKind::Section,
         "Synopsis" | "Summary" | "Outline Body" => ElementKind::Synopsis,

@@ -74,7 +74,8 @@ fn only_script_paragraphs_become_elements() {
     let kinds: Vec<K> = script.elements.iter().map(|e| e.kind).collect();
     assert_eq!(
         kinds,
-        [K::Section, K::Synopsis, K::SceneHeading, K::Action, K::SceneHeading, K::Action, K::Synopsis, K::Action],
+        // New Act is an act line; General prints like action.
+        [K::Section, K::Synopsis, K::SceneHeading, K::Action, K::SceneHeading, K::NewAct, K::Synopsis, K::Action],
         "{:#?}",
         script.elements
     );

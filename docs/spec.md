@@ -41,6 +41,8 @@ writer can save to Fountain or FDX, export a PDF, and open those files again wit
 | Shot | `CLOSE ON`, `ANGLE ON` etc. (FDX "Shot"; Fountain writes it as forced action-style heading) |
 | Centered | Fountain `>TEXT<` |
 | Lyrics | Fountain `~` |
+| New Act | A television act's opening line (`TEASER`, `COLD OPEN`, `ACT ONE`, `TAG`): capitals, centred, and it starts a new page. `.fdx` New Act, OSF style "New Act"; Fountain has no act element, so it writes a centred line (`> ACT ONE <`), and a centred line that reads as an act opens one when read back. Element picker B; Enter goes on to a scene heading |
+| End of Act | The line closing an act (`END OF ACT ONE`): capitals, centred. `.fdx` End of Act, OSF style "End of Act", a centred `END OF …` line in Fountain. Element picker E; Enter goes on to the next New Act |
 | Section / Synopsis | Fountain `#` / `=`; outline only, not printed |
 | Page break | Fountain `===`; forced break |
 
