@@ -16,6 +16,9 @@
 //! (Version 5 and later: character offsets into the script, each paragraph break counting one),
 //! and the older top-level `UnanchoredScriptNotes`. All three become [`ScriptNote`]s on their
 //! paragraph and are written back in the form they came in.
+//!
+//! `LockedPages` entries (`PageNumber`, `Position`) become [`PageStart`]s on the paragraph each
+//! page starts in. `Position` counts like `ScriptNotes@Range`.
 
 use quick_xml::XmlVersion;
 use quick_xml::events::{BytesRef, BytesStart, Event};
@@ -23,8 +26,8 @@ use quick_xml::events::{BytesRef, BytesStart, Event};
 use crate::inline::{self, Run, Style};
 use crate::layout::{Align, ElementStyle, Layout, chars_per_line};
 use crate::model::{
-    Element, ElementKind, FdxDocument, FdxNote, FdxNoteForm, FdxParagraph, FdxSection, Revised, RevisionSet, Revisions, Script, ScriptNote,
-    TitleField, TitlePage, mark_revised,
+    Element, ElementKind, FdxDocument, FdxNote, FdxNoteForm, FdxParagraph, FdxSection, PageStart, Revised, RevisionSet, Revisions, Script,
+    ScriptNote, TitleField, TitlePage, mark_revised,
 };
 use crate::paginate;
 use crate::{CoreError, MAX_ELEMENTS, MAX_INPUT_BYTES};
@@ -360,7 +363,10 @@ pub fn write_with_layout(script: &Script, layout: &Layout) -> String {
     let ranged_same =
         ranged.len() == read_ranged.len() && ranged.iter().zip(read_ranged).all(|((s, e, n), (rs, re, rn))| s == rs && e == re && *n == rn);
     let unanchored_same = unanchored.len() == read_unanchored.len() && unanchored.iter().zip(read_unanchored).all(|(n, r)| *n == r);
-    let (mut ranged_written, mut unanchored_written, mut revisions_written) = (false, false, false);
+    let (mut ranged_written, mut unanchored_written, mut revisions_written, mut locks_written) = (false, false, false, false);
+    let locks = locked_pages(elements);
+    let read_locks = script.fdx.as_deref().map(|d| d.locked_pages.as_slice()).unwrap_or_default();
+    let locks_same = locks.len() == read_locks.len() && locks.iter().zip(read_locks).all(|((p, s), (rp, rs))| p == rp && *s == rs);
     let mut title_written = false;
     for section in sections {
         match section {
@@ -383,6 +389,17 @@ pub fn write_with_layout(script: &Script, layout: &Layout) -> String {
                     write_revisions(&script.revisions, &mut out);
                 }
                 revisions_written = true;
+            }
+            FdxSection::Raw(xml) if section_is(xml, "LockedPages") && !locks_written => {
+                if locks_same {
+                    out.push_str("  ");
+                    out.push_str(xml);
+                    out.push('\n');
+                } else {
+                    let root = tags(xml).into_iter().next().map(|(_, a)| a).unwrap_or_default();
+                    write_locked_pages(&root, &locks, &mut out);
+                }
+                locks_written = true;
             }
             FdxSection::Raw(xml) if section_is(xml, "UnanchoredScriptNotes") => {
                 if unanchored_same {
@@ -415,6 +432,9 @@ pub fn write_with_layout(script: &Script, layout: &Layout) -> String {
     }
     if !title_written {
         write_title_page(&script.title_page, &mut out);
+    }
+    if !locks_written && !locks.is_empty() {
+        write_locked_pages(&[], &locks, &mut out);
     }
     if !revisions_written && !script.revisions.is_empty() {
         write_revisions(&script.revisions, &mut out);
@@ -815,6 +835,38 @@ impl Importer {
         Ok(())
     }
 
+    /// Reads the `LockedPages` list onto the paragraphs each page starts in.
+    fn place_locked_pages(&mut self) {
+        let Some(xml) = self.document.sections.iter().find_map(|s| match s {
+            FdxSection::Raw(xml) if section_is(xml, "LockedPages") => Some(xml.clone()),
+            _ => None,
+        }) else {
+            return;
+        };
+        let starts: Vec<(usize, u32)> = self.starts.iter().enumerate().filter_map(|(i, s)| s.map(|s| (i, s))).collect();
+        for (_, attributes) in tags(&xml).into_iter().skip(1).filter(|(name, _)| name == "LockedPage").take(MAX_ELEMENTS) {
+            let position = number(get(&attributes, "Position")).unwrap_or(0);
+            let mut kept = attributes.clone();
+            for (key, value) in &mut kept {
+                if key == "Position" {
+                    value.clear();
+                }
+            }
+            let after = starts.partition_point(|(_, s)| *s <= position);
+            let Some(&(index, start)) = starts.get(after.saturating_sub(1)) else { continue };
+            let page = PageStart {
+                at: position.saturating_sub(start),
+                label: get(&attributes, "PageNumber").unwrap_or_default().to_string(),
+                fdx_attributes: kept,
+            };
+            self.document.locked_pages.push((position, page.clone()));
+            if let Some(element) = self.elements.get_mut(index) {
+                element.page_starts.push(page);
+            }
+        }
+        self.document.locked_pages.sort_by_key(|(position, _)| *position);
+    }
+
     /// Reads the top-level note lists onto the paragraphs they belong to.
     fn place_listed_notes(&mut self) {
         let mut ranged = Vec::new();
@@ -864,6 +916,7 @@ impl Importer {
             _ => None,
         });
         self.document.revisions = revisions.clone();
+        self.place_locked_pages();
         apply_hidden_types(&mut self.elements, &self.document.sections);
         let title_page = self
             .document
@@ -1466,6 +1519,53 @@ fn write_revisions(revisions: &Revisions, out: &mut String) {
         out.push_str("/>\n");
     }
     out.push_str("  </Revisions>\n");
+}
+
+// ---------------------------------------------------------------------------------------------
+// Locked pages
+
+/// Every page start with its `Position` in the script, in order.
+fn locked_pages(elements: &[Element]) -> Vec<(u32, &PageStart)> {
+    let mut out: Vec<(u32, &PageStart)> = elements
+        .iter()
+        .zip(text_starts(elements))
+        .filter_map(|(element, start)| start.map(|start| element.page_starts.iter().map(move |p| (start.saturating_add(p.at), p))))
+        .flatten()
+        .collect();
+    out.sort_by_key(|(position, _)| *position);
+    out
+}
+
+/// The `LockedPage` attributes for a page start: the ones it came with, brought up to date.
+/// `position` is its place in the whole script (`None` leaves a place holder).
+pub(crate) fn locked_page_attributes(page: &PageStart, position: Option<u32>) -> Vec<(String, String)> {
+    let mut attributes = page.fdx_attributes.clone();
+    keep_or_set(&mut attributes, "PageNumber", Some(page.label.clone()), |v| v == page.label);
+    set_or_remove(&mut attributes, "Position", Some(position.map(|p| p.to_string()).unwrap_or_default()));
+    if page.fdx_attributes.is_empty() {
+        attributes.sort();
+    }
+    attributes
+}
+
+fn write_locked_pages(root: &[(String, String)], pages: &[(u32, &PageStart)], out: &mut String) {
+    out.push_str("  <LockedPages");
+    for (key, value) in root {
+        write_attr(key, value, out);
+    }
+    if pages.is_empty() {
+        out.push_str("/>\n");
+        return;
+    }
+    out.push_str(">\n");
+    for (position, page) in pages {
+        out.push_str("    <LockedPage");
+        for (key, value) in locked_page_attributes(page, Some(*position)) {
+            write_attr(&key, &value, out);
+        }
+        out.push_str("/>\n");
+    }
+    out.push_str("  </LockedPages>\n");
 }
 
 // ---------------------------------------------------------------------------------------------
