@@ -240,8 +240,9 @@ def main():
             bad.append(f"{name} {version} (yanked)")
         print(f"{name:40} {version:16} {age:5} days{flag}")
 
-    # A listed version that is old enough now, or no longer locked, is only a reminder.
-    for name, version in sorted(allowed_young - still_young):
+    # A listed version that is old enough now, or no longer locked, is only a reminder. With
+    # --only-changed the run sees only the changed entries, so it cannot tell; it says nothing.
+    for name, version in sorted(allowed_young - still_young if not args.only_changed else set()):
         where = "now 14 days old" if (name, version) in pkgs else "not in the lock"
         print(f"note: {name} {version} is {where}; remove its line from {EXCEPTIONS.name}")
     print(f"\nchecked {len(pkgs)} crates.io crates; {len(bad)} problem(s)")
