@@ -140,8 +140,12 @@ fn assets() -> Result<(), String> {
     }
 }
 
-/// Script and PDF files may only be tracked in test fixture folders: real scripts used for
-/// measuring (`cargo xtask corpus`) must never be committed.
+/// Script files the repository may track outside test fixtures: the invented Field Station
+/// sample, written for the Method suite (examples/README.md).
+const INVENTED_SAMPLES: [&str; 2] = ["examples/field-station.fdx", "examples/field-station.pdf"];
+
+/// Script and PDF files may only be tracked in test fixture folders (and as the invented
+/// samples above): real scripts used for measuring (`cargo xtask corpus`) must never be committed.
 fn privacy() -> Result<(), String> {
     let output = Command::new("git").args(["ls-files", "-z"]).current_dir(root()).output().map_err(|e| e.to_string())?;
     if !output.status.success() {
@@ -155,6 +159,8 @@ fn privacy() -> Result<(), String> {
             [".fdx", ".fdr", ".pdf", ".celtx"].iter().any(|ext| lower.ends_with(ext))
         })
         .filter(|path| !(path.starts_with("crates/") && (path.contains("/tests/fixtures/") || path.contains("/tests/golden/"))))
+        // The suite's invented sample, Field Station, in every format the other apps take it in.
+        .filter(|path| !INVENTED_SAMPLES.contains(path))
         .collect();
     if problems.is_empty() {
         println!("privacy: ok");
