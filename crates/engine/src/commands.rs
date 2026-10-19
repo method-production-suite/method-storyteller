@@ -916,6 +916,86 @@ fn all_commands() -> Vec<Command> {
             run: |s, _| Ok(Outcome::value(json!(character_names(&s.script)))),
         },
         Command {
+            id: "spell.next",
+            label: "Next Misspelling",
+            menu: "",
+            shortcut: None,
+            params: const { &[param("backwards", Bool, false, "Find the previous one instead"), INDEX, OFFSET] },
+            enabled: always,
+            run: |s, p| {
+                let misses = crate::spell::misspelled(&s.script, &s.spelling);
+                let element = opt_index(p, "index")?.unwrap_or(s.caret.element);
+                let offset = opt_index(p, "offset")?.unwrap_or(s.caret.offset);
+                let backwards = opt_bool(p, "backwards")?.unwrap_or(false);
+                let hits: Vec<find::Hit> = misses.iter().map(|m| find::Hit { element: m.element, start: m.start, end: m.end }).collect();
+                let Some((number, hit)) = find::find_next(&hits, element, offset, backwards) else {
+                    return Ok(Outcome { message: Some("No misspellings".into()), value: json!({ "total": 0 }) });
+                };
+                let word = misses.get(number).map(|m| m.word.clone()).unwrap_or_default();
+                s.caret = Caret { element: hit.element, offset: if backwards { hit.start } else { hit.end } };
+                s.break_typing();
+                Ok(Outcome::value(json!({
+                    "element": hit.element, "start": hit.start, "end": hit.end, "word": word,
+                    "suggestions": crate::spell::suggestions(&word, 6), "number": number + 1, "total": hits.len(),
+                })))
+            },
+        },
+        Command {
+            id: "spell.ignore",
+            label: "Ignore Spelling",
+            menu: "",
+            shortcut: None,
+            params: const { &[param("word", String, true, "The word to accept for this session")] },
+            enabled: always,
+            run: |s, p| {
+                let word = string(p, "word")?;
+                s.spelling.ignored.insert(word.to_lowercase());
+                Ok(Outcome::message(format!("Ignoring “{word}” in this session")))
+            },
+        },
+        Command {
+            id: "spell.learn",
+            label: "Learn Spelling",
+            menu: "",
+            shortcut: None,
+            params: const { &[param("word", String, true, "The word to add to the writer's dictionary")] },
+            enabled: always,
+            run: |s, p| {
+                let word = string(p, "word")?;
+                s.spelling.learned.insert(word.to_lowercase());
+                Ok(Outcome { message: Some(format!("Added “{word}” to your dictionary")), value: json!({ "learned": word.to_lowercase() }) })
+            },
+        },
+        Command {
+            id: "spell.change",
+            label: "Change Spelling",
+            menu: "",
+            shortcut: None,
+            params: const {
+                &[
+                    INDEX,
+                    param("start", Integer, true, "Byte offset where the word starts"),
+                    param("word", String, true, "The word as it is now (nothing changes if the text there differs)"),
+                    param("replacement", String, true, "The new spelling"),
+                ]
+            },
+            enabled: always,
+            run: |s, p| {
+                let index = element_index(s, p)?;
+                let start = opt_index(p, "start")?.ok_or(CommandError::Missing("start"))?;
+                let word = string(p, "word")?;
+                let replacement = string(p, "replacement")?;
+                let text = s.script.elements.get(index).map(|e| e.text.clone()).unwrap_or_default();
+                if text.get(start..start + word.len()) != Some(word.as_str()) {
+                    return Ok(Outcome { message: Some("The word has changed since".into()), value: json!({ "changed": false }) });
+                }
+                let new_text = format!("{}{replacement}{}", text.get(..start).unwrap_or(""), text.get(start + word.len()..).unwrap_or(""));
+                set_text(s, index, &new_text, false)?;
+                s.caret = Caret { element: index, offset: (start + replacement.len()).min(s.script.elements.get(index).map_or(0, |e| e.text.len())) };
+                Ok(Outcome::value(json!({ "changed": true })))
+            },
+        },
+        Command {
             id: "element.set_text",
             label: "Set Text",
             menu: "",
