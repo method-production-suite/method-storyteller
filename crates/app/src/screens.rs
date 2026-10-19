@@ -71,7 +71,12 @@ fn draw(file: &Path, theme: egui::Theme, shot: &Shot) -> (u32, u32, Vec<u8>) {
     }
     {
         let app = harness.state_mut();
-        app.prefs.update(|p| p.view.page_view = shot.page_view);
+        // No spelling underlines in the pictures: Field Station's invented names and British
+        // spellings are not in the US dictionary.
+        app.prefs.update(|p| {
+            p.view.page_view = shot.page_view;
+            p.view.check_spelling = false;
+        });
         app.status.clear();
         app.pictures = true;
     }
@@ -138,6 +143,7 @@ fn gallery() {
                 harness.ctx.style_mut_of(each, |style| style.visuals.text_cursor.blink = false);
             }
             harness.state_mut().status.clear();
+            harness.state_mut().prefs.update(|p| p.view.check_spelling = false);
             harness.run_steps(4);
             harness.state_mut().editor.pending_focus = Some((6, 0));
             harness.run_steps(6);
