@@ -157,6 +157,8 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
     let ink = crate::theme::PAGE_INK;
     let faint = crate::theme::PAGE_MUTED;
     let count = session.script.elements.len();
+    // A script with nothing in it yet says how to start, on its one empty line.
+    let empty_script = matches!(session.script.elements.as_slice(), [only] if only.text.is_empty());
     let automatic = if layout.auto_contd { paginate::auto_contd(&session.script) } else { Vec::new() };
     // egui drops focus on Esc before any widget sees it; Esc closes popups here, so give the
     // caret back to the element it was in.
@@ -283,7 +285,11 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                                     .lock_focus(true)
                                     .font(box_font.clone())
                                     .horizontal_align(text_align)
-                                    .hint_text(egui::RichText::new(kind.label()).color(crate::theme::PAGE_MUTED).font(font.clone()))
+                                    .hint_text(
+                                        egui::RichText::new(if empty_script { crate::messages::EMPTY_SCRIPT_HINT } else { kind.label() })
+                                            .color(crate::theme::PAGE_MUTED)
+                                            .font(font.clone()),
+                                    )
                                     .layouter(&mut layouter)
                                     .show(ui)
                             })

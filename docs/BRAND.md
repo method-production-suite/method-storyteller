@@ -37,6 +37,26 @@ reads the code.
   file format (`.fdx`, `.fadein`) is fine.
 - Examples use invented scripts and invented people only.
 
+### Empty and error states
+
+Say what happened and what to do next, with the file's name; never blame the writer, never
+apologize at length. The words live in
+[crates/app/src/messages.rs](../crates/app/src/messages.rs), whose tests hold them to this
+voice.
+
+| State | What it says |
+|---|---|
+| No script (a new, empty one) | On the first line: "Scene Heading: start with INT. or EXT." |
+| No scenes | "No scenes yet. Start a line with INT. or EXT. and it appears here as a scene." |
+| Nothing found | "No matches for “lighthouse”" |
+| A file that will not open | "“Field Station.fdx” did not open. The file is not there any more; it may have been moved or renamed." (or: not allowed to read it; a PDF is a printed script; too large; not a script it can read) |
+| A failed save | "“Field Station.fountain” was not saved. The folder does not allow changes. Your changes are still here: use Save As to save them somewhere else." |
+| A failed update check | "Could not check for updates (offline). Help > Check for Updates tries again." |
+| An update that would not install | "The update did not install. It is still ready: Restart to Update tries again." |
+
+Errors show in the status bar in the error color; empty states are a short title and one
+muted line, centered where the content would be.
+
 ## The mark
 
 A screenplay page. The page is at full strength, with two brads down its left edge. The

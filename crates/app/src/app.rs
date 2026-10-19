@@ -440,7 +440,9 @@ impl StorytellerApp {
         let mut params = Map::new();
         params.insert("path".into(), json!(path.display().to_string()));
         self.run("file.open", params);
-        if self.error.is_none() {
+        if let Some(detail) = self.error.take() {
+            self.error = Some(crate::messages::open_failed(path, &detail));
+        } else {
             let shown = path.display().to_string();
             self.prefs.update(|p| p.push_recent(&shown));
         }
@@ -488,6 +490,9 @@ impl StorytellerApp {
         let mut params = Map::new();
         params.insert("path".into(), json!(path.display().to_string()));
         self.run("file.save_as", params);
+        if let Some(detail) = self.error.take() {
+            self.error = Some(crate::messages::save_failed(&path, &detail));
+        }
         let saved = self.error.is_none() && !self.session.dirty;
         if saved {
             let shown = path.display().to_string();
@@ -923,14 +928,16 @@ impl StorytellerApp {
         ui.label(egui::RichText::new("SCENES").small().strong().color(ui.visuals().weak_text_color()));
         ui.add_space(theme::SPACE_1);
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-            if scenes.is_empty() {
-                ui.weak("No scenes yet. Start a line with INT. or EXT.");
+            // A new script's one empty heading is not a scene yet.
+            let blank = matches!(self.session.script.elements.as_slice(), [only] if only.text.trim().is_empty());
+            if scenes.is_empty() || blank {
+                theme::empty_state(ui, crate::messages::NO_SCENES_TITLE, crate::messages::NO_SCENES_BODY);
             }
             let weak = ui.visuals().weak_text_color();
             let text = ui.visuals().text_color();
             let selected_fill = ui.visuals().selection.bg_fill;
             let hover_fill = ui.visuals().widgets.hovered.weak_bg_fill;
-            for (n, scene) in scenes.iter().enumerate() {
+            for (n, scene) in scenes.iter().enumerate().filter(|_| !blank) {
                 let number = scene.number.as_deref().unwrap_or("");
                 let heading = if scene.heading.trim().is_empty() { "(untitled scene)" } else { scene.heading.as_str() };
                 let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), theme::NAV_ROW_HEIGHT), egui::Sense::click());
@@ -1043,7 +1050,7 @@ impl StorytellerApp {
         let _ = self.prefs.flush();
         match self.updates.install_and_relaunch() {
             Ok(()) => std::process::exit(0),
-            Err(error) => self.error = Some(format!("The update could not be installed: {error}. It is still ready to try again.")),
+            Err(error) => self.error = Some(crate::messages::update_install_failed(Some(&error.to_string()))),
         }
     }
 
