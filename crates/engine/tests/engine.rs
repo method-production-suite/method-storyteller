@@ -464,6 +464,8 @@ fn fountain_save_warns_about_revisions_and_notes() {
     let fountain = save_warnings(&s, FileFormat::Fountain);
     assert!(fountain.iter().any(|w| w.starts_with("1 revised passage will lose")), "{fountain:?}");
     assert!(fountain.iter().any(|w| w.starts_with("1 script note with a colour")), "{fountain:?}");
+    s.elements[0].page_starts.push(storyteller_core::model::PageStart { at: 0, label: "1".into(), ..Default::default() });
+    assert!(save_warnings(&s, FileFormat::Fountain).iter().any(|w| w.starts_with("the locked pages will be unlocked")));
     s.spelling_ignored = vec!["seismograf".into(), "zorbly".into()];
     let fountain = save_warnings(&s, FileFormat::Fountain);
     assert!(

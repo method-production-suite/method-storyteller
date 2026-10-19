@@ -17,6 +17,10 @@
 //! an `.fdx`) are written into `note` as well, and also as `<method_storyteller_note …/>` children
 //! carrying the rest, so our own round trip is exact while other apps read the plain note.
 //!
+//! Locked pages are `settings@pages_locked` with each paragraph's `page_number`; a page that
+//! starts inside a paragraph, or carries Final Draft data, also has a
+//! `<method_storyteller_page at="…" label="…"/>` child.
+//!
 //! Sections and synopses have no OSF equivalent of their own. A synopsis rides on the
 //! paragraph before it (`synopsis`); otherwise both are written as paragraphs carrying a
 //! `<method_storyteller kind="…"/>` child, which other apps ignore.
@@ -26,12 +30,12 @@ use std::collections::HashMap;
 use quick_xml::XmlVersion;
 use quick_xml::events::Event;
 
-use crate::fdx::{all_attrs, default_note_form, escape, note_attributes, revision_set_attributes, revisions_attributes};
+use crate::fdx::{all_attrs, default_note_form, escape, locked_page_attributes, note_attributes, revision_set_attributes, revisions_attributes};
 use crate::inline::{self, Run, Style};
 use crate::layout::{Align, ElementStyle, Layout, chars_per_line};
 use crate::model::{
-    Element, ElementKind, FdxNote, FdxNoteForm, OsfDocument, OsfParagraph, OsfSection, Revised, RevisionSet, Revisions, Script, ScriptNote,
-    TitleField, TitlePage, mark_revised,
+    Element, ElementKind, FdxNote, FdxNoteForm, OsfDocument, OsfParagraph, OsfSection, PageStart, Revised, RevisionSet, Revisions, Script,
+    ScriptNote, TitleField, TitlePage, mark_revised,
 };
 use crate::{CoreError, MAX_ELEMENTS, MAX_INPUT_BYTES};
 
@@ -41,6 +45,8 @@ const MAX_DEPTH: usize = 128;
 const MARKER: &str = "method_storyteller";
 /// Our element for a script note's colour, author, range and Final Draft data.
 const NOTE_MARKER: &str = "method_storyteller_note";
+/// Our element for a locked page that starts inside a paragraph, or carries Final Draft data.
+const PAGE_MARKER: &str = "method_storyteller_page";
 
 /// The element name a raw section starts with, compared loosely.
 fn top_name(raw: &str) -> String {
@@ -406,7 +412,13 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
     let version = get(&root, "version").unwrap_or("30").to_string();
     let styles = Styles::read(&top);
     let revisions = read_revisions(&top);
-    let mut document = OsfDocument { version, sections: Vec::new(), archive_entries: Vec::new(), revisions: Some(revisions.clone()) };
+    let pages_locked = top
+        .iter()
+        .filter(|s| s.name.eq_ignore_ascii_case("settings"))
+        .any(|s| tags(&s.raw).first().is_some_and(|(_, a)| truthy(get(a, "pages_locked"))));
+    let mut document = OsfDocument { version, sections: Vec::new(), archive_entries: Vec::new(), revisions: Some(revisions.clone()), pages_locked };
+    // The page the paragraphs read so far end on, while pages are locked.
+    let mut page: Option<Option<String>> = pages_locked.then_some(None);
     let mut elements: Vec<Element> = Vec::new();
     let mut title_page = TitlePage::default();
     let mut dual_next = false;
@@ -415,7 +427,7 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
         if section.name.eq_ignore_ascii_case("paragraphs") {
             document.sections.push(OsfSection::Paragraphs);
             for para in paras(&section.raw)? {
-                read_para(para, &styles, &mut elements, &mut dual_next)?;
+                read_para(para, &styles, &mut elements, &mut dual_next, &mut page)?;
             }
         } else if section.name.eq_ignore_ascii_case("titlepage") {
             let parsed = read_title_page(&paras(&section.raw)?);
@@ -428,7 +440,13 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
     Ok(Script { title_page, elements, revisions, osf: Some(Box::new(document)), ..Script::default() })
 }
 
-fn read_para(para: Para, styles: &Styles, elements: &mut Vec<Element>, dual_next: &mut bool) -> Result<(), CoreError> {
+fn read_para(
+    para: Para,
+    styles: &Styles,
+    elements: &mut Vec<Element>,
+    dual_next: &mut bool,
+    page: &mut Option<Option<String>>,
+) -> Result<(), CoreError> {
     if elements.len() >= MAX_ELEMENTS {
         return Err(CoreError::TooManyElements);
     }
@@ -485,7 +503,22 @@ fn read_para(para: Para, styles: &Styles, elements: &mut Vec<Element>, dual_next
     }
     // Children other than our own go back as they came.
     let children = strip_ours(&para.children);
-    let attributes: Vec<(String, String)> = para.attributes.iter().filter(|(k, _)| !modelled_para_attribute(k)).cloned().collect();
+    // Locked pages: a page starts with the paragraph whose page number changes, unless our own
+    // page elements say exactly which pages start in it.
+    if let Some(current) = page.as_mut() {
+        let label = get(&para.attributes, "page_number").map(str::to_string);
+        let ours: Vec<PageStart> = tags(&para.children).into_iter().filter(|(tag, _)| tag == PAGE_MARKER).map(|(_, a)| page_from(&a)).collect();
+        if ours.len() > MAX_ELEMENTS {
+            return Err(CoreError::TooManyElements);
+        }
+        if label.is_some() && label != *current && ours.is_empty() {
+            element.page_starts.push(PageStart { at: 0, label: label.clone().unwrap_or_default(), fdx_attributes: Vec::new() });
+        }
+        element.page_starts.extend(ours);
+        *current = element.page_starts.last().map(|p| p.label.clone()).or(label).or(current.take());
+    }
+    let attributes: Vec<(String, String)> =
+        para.attributes.iter().filter(|(k, _)| !(modelled_para_attribute(k) || (page.is_some() && key(k) == "pagenumber"))).cloned().collect();
     let mut style_attributes: Vec<(String, String)> = para.style.iter().filter(|(k, _)| !modelled_style_attribute(k)).cloned().collect();
     if kind == ElementKind::Centered {
         style_attributes.retain(|(k, _)| key(k) != "align");
@@ -514,7 +547,10 @@ fn strip_ours(children: &str) -> String {
         match event {
             Event::Start(_) => depth += 1,
             Event::End(_) => depth = depth.saturating_sub(1),
-            Event::Empty(start) if depth == 0 && matches!(start.local_name().as_ref(), b"method_storyteller" | b"method_storyteller_note") => {
+            Event::Empty(start)
+                if depth == 0
+                    && matches!(start.local_name().as_ref(), b"method_storyteller" | b"method_storyteller_note" | b"method_storyteller_page") =>
+            {
                 out.push_str(children.get(from..before).unwrap_or_default());
                 from = after;
             }
@@ -953,6 +989,51 @@ fn with_active_revision(settings: &str, active: Option<u32>) -> String {
     with_setting(settings, "revision", active.map(|a| a.to_string()), |v| v.and_then(|r| r.trim().parse::<u32>().ok()) == active)
 }
 
+/// A `<settings>` tag with `pages_locked` saying whether pages are locked.
+fn with_pages_locked(settings: &str, locked: bool) -> String {
+    with_setting(settings, "pages_locked", Some(if locked { "1" } else { "0" }.to_string()), |v| truthy(v) == locked)
+}
+
+/// A locked page from one of our `method_storyteller_page` elements.
+fn page_from(attributes: &[(String, String)]) -> PageStart {
+    PageStart {
+        at: get(attributes, "at").and_then(|a| a.trim().parse().ok()).unwrap_or(0),
+        label: get(attributes, "label").unwrap_or_default().to_string(),
+        fdx_attributes: unprefixed("fdx_", attributes),
+    }
+}
+
+/// Our element for a page start that `page_number` alone cannot say: one inside the paragraph,
+/// or one with Final Draft data writing `.fdx` would not make anyway.
+fn has_fdx_extras(page: &PageStart) -> bool {
+    let bare = PageStart { fdx_attributes: Vec::new(), ..page.clone() };
+    !page.fdx_attributes.is_empty() && page.fdx_attributes != locked_page_attributes(&bare, None)
+}
+
+/// Whether `page_number` alone says which pages start in a paragraph: one page, starting with
+/// it, numbered differently from the page before, and nothing more to carry.
+fn page_number_says_it(starts: &[PageStart], before: Option<&str>) -> bool {
+    match starts {
+        [] => true,
+        [only] => only.at == 0 && Some(only.label.as_str()) != before && !has_fdx_extras(only),
+        _ => false,
+    }
+}
+
+fn page_element(page: &PageStart) -> String {
+    let extras = has_fdx_extras(page);
+    let mut out = format!("<{PAGE_MARKER}");
+    write_attr("at", &page.at.to_string(), &mut out);
+    write_attr("label", &page.label, &mut out);
+    if extras {
+        for (k, v) in prefixed("fdx_", &page.fdx_attributes) {
+            write_attr(&k, &v, &mut out);
+        }
+    }
+    out.push_str("/>");
+    out
+}
+
 // ---------------------------------------------------------------------------------------------
 // Writing
 
@@ -1051,6 +1132,10 @@ struct ParaExtras {
     page_break: bool,
     dual_first: bool,
     synopsis: Option<String>,
+    /// The locked page the paragraph starts on.
+    page_number: Option<String>,
+    /// Write every page that starts in the paragraph as one of our elements.
+    page_elements: bool,
 }
 
 fn write_para(element: &Element, extras: &ParaExtras, spelling: Spelling, styles_known: bool, out: &mut String) {
@@ -1062,6 +1147,9 @@ fn write_para(element: &Element, extras: &ParaExtras, spelling: Spelling, styles
     out.push_str("    <para");
     if let Some(number) = element.scene_number.as_deref().filter(|_| element.kind == ElementKind::SceneHeading) {
         write_attr(spelling.scene_number(), number, out);
+    }
+    if let Some(page) = &extras.page_number {
+        write_attr("page_number", page, out);
     }
     if !notes.is_empty() {
         write_attr("note", &notes.join(" / "), out);
@@ -1109,6 +1197,11 @@ fn write_para(element: &Element, extras: &ParaExtras, spelling: Spelling, styles
         out.push_str(&marker);
         out.push('\n');
     }
+    for page in element.page_starts.iter().filter(|_| extras.page_elements) {
+        out.push_str("      ");
+        out.push_str(&page_element(page));
+        out.push('\n');
+    }
     if !element.notes.is_empty() {
         for text in runs.iter().filter(|r| r.note).map(|r| r.text.as_str()) {
             out.push_str(&format!("      <{NOTE_MARKER}"));
@@ -1132,6 +1225,8 @@ fn write_para(element: &Element, extras: &ParaExtras, spelling: Spelling, styles
 
 fn write_paragraphs(script: &Script, spelling: Spelling, styles_known: bool, out: &mut String) {
     out.push_str("  <paragraphs>\n");
+    let locked = script.pages_locked();
+    let mut page: Option<String> = None;
     let elements = &script.elements;
     let mut page_break = false;
     let mut index = 0;
@@ -1161,7 +1256,21 @@ fn write_paragraphs(script: &Script, spelling: Spelling, styles_known: bool, out
             }
             elements.get(end).is_some_and(|e| e.kind == ElementKind::Character && e.dual)
         };
-        write_para(element, &ParaExtras { page_break: std::mem::take(&mut page_break), dual_first, synopsis }, spelling, styles_known, out);
+        let page_elements = locked && !page_number_says_it(&element.page_starts, page.as_deref());
+        if let Some(last) = element.page_starts.iter().rfind(|p| p.at == 0) {
+            page = Some(last.label.clone());
+        }
+        let page_number = if locked { page.clone() } else { None };
+        write_para(
+            element,
+            &ParaExtras { page_break: std::mem::take(&mut page_break), dual_first, synopsis, page_number, page_elements },
+            spelling,
+            styles_known,
+            out,
+        );
+        if let Some(last) = element.page_starts.last() {
+            page = Some(last.label.clone());
+        }
         index += 1;
     }
     out.push_str("  </paragraphs>\n");
@@ -1239,7 +1348,10 @@ pub fn write(script: &Script) -> String {
                                 lists_written = true;
                                 with_revision_colors(raw, &script.revisions, spelling)
                             }
-                            "settings" if !revisions_same => with_active_revision(raw, script.revisions.active),
+                            "settings" => {
+                                let raw = if revisions_same { raw.to_string() } else { with_active_revision(raw, script.revisions.active) };
+                                if script.pages_locked() == document.pages_locked { raw } else { with_pages_locked(&raw, script.pages_locked()) }
+                            }
                             _ => raw.to_string(),
                         };
                         out.push_str("  ");
@@ -1260,7 +1372,8 @@ pub fn write(script: &Script) -> String {
         }
         None => {
             out.push_str("<document type=\"Open Screenplay Format document\" version=\"30\">\n");
-            out.push_str(&with_active_revision(DEFAULT_SETTINGS, script.revisions.active));
+            let settings = with_active_revision(DEFAULT_SETTINGS, script.revisions.active);
+            out.push_str(&if script.pages_locked() { with_pages_locked(&settings, true) } else { settings });
             out.push('\n');
             out.push_str(DEFAULT_STYLES);
             out.push('\n');

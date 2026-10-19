@@ -37,6 +37,21 @@ struct FileResult {
     /// Revised spans: (read, the same after `.fdx` to OSF to `.fdx`), and whether the revision sets were.
     revised: (usize, usize),
     sets_kept: Option<bool>,
+    /// Locked pages: (read, the same after `.fdx` to OSF to `.fdx`), and scene headings whose
+    /// recorded page matches the locked page they sit on: (headings, matching).
+    locks: (usize, usize),
+    lock_pages: (usize, usize),
+}
+
+/// Every locked page start, after writing and reading `.fdx` again.
+fn locks(script: &Script) -> Vec<String> {
+    let reread = fdx::parse(&fdx::write(script)).unwrap_or_default();
+    reread
+        .elements
+        .iter()
+        .enumerate()
+        .flat_map(|(i, e)| e.page_starts.iter().map(move |p| format!("{i} {} {:?} {:?}", p.at, p.label, p.fdx_attributes)))
+        .collect()
 }
 
 /// Revised spans of every paragraph, after writing and reading `.fdx` again.
@@ -120,6 +135,27 @@ fn measure(fdx_path: &Path, pdf: Option<&Path>) -> Result<FileResult, String> {
         result.revised = (spans.len(), spans.iter().zip(&after).filter(|(a, b)| a == b).count());
         result.sets_kept = Some(sets == after_sets);
     }
+    if script.pages_locked() {
+        let read = locks(&script);
+        let after = osf::parse(&osf::write(&script)).map(|s| locks(&s)).unwrap_or_default();
+        result.locks = (read.len(), read.iter().zip(&after).filter(|(a, b)| a == b).count());
+        // The page each heading starts on, by the locks, against the page Final Draft recorded.
+        let mut label: Option<u32> = None;
+        for element in &script.elements {
+            if let Some(first) = element.page_starts.iter().find(|p| p.at == 0) {
+                label = page_number(&first.label);
+            }
+            if element.kind == ElementKind::SceneHeading
+                && let Some(expected) = element.fdx.as_ref().and_then(|f| cached_page(&f.children))
+            {
+                result.lock_pages.0 += 1;
+                result.lock_pages.1 += usize::from(label == Some(expected));
+            }
+            if let Some(last) = element.page_starts.last() {
+                label = page_number(&last.label);
+            }
+        }
+    }
     let before = notes(&script);
     if !before.is_empty() {
         let after = osf::parse(&osf::write(&script)).map(|s| notes(&s)).unwrap_or_default();
@@ -187,6 +223,7 @@ pub fn run(root: &Path) -> Result<(), String> {
     let mut lengths = (0usize, 0usize);
     let mut notes = (0usize, 0usize);
     let (mut revised, mut sets) = ((0usize, 0usize), (0usize, 0usize));
+    let (mut locked, mut lock_pages, mut locked_files) = ((0usize, 0usize), (0usize, 0usize), 0usize);
     for (n, (fdx_path, pdf)) in entries.iter().enumerate() {
         let n = n + 1;
         if inside(fdx_path, root) || pdf.as_deref().is_some_and(|p| inside(p, root)) {
@@ -206,6 +243,13 @@ pub fn run(root: &Path) -> Result<(), String> {
                 notes.1 += r.notes.1;
                 revised.0 += r.revised.0;
                 revised.1 += r.revised.1;
+                if r.locks.0 > 0 {
+                    locked_files += 1;
+                }
+                locked.0 += r.locks.0;
+                locked.1 += r.locks.1;
+                lock_pages.0 += r.lock_pages.0;
+                lock_pages.1 += r.lock_pages.1;
                 if let Some(kept) = r.sets_kept {
                     sets.0 += 1;
                     sets.1 += usize::from(kept);
@@ -234,6 +278,10 @@ pub fn run(root: &Path) -> Result<(), String> {
         }
     }
     println!("notes: {} read, {} the same after .fdx to OSF to .fdx", notes.0, notes.1);
+    println!(
+        "locked pages: {locked_files} files, {} pages read, {} the same after .fdx to OSF to .fdx; scene headings on the locked page Final Draft recorded {}/{}",
+        locked.0, locked.1, lock_pages.1, lock_pages.0
+    );
     println!(
         "revisions: {} revised spans read, {} the same after .fdx to OSF to .fdx; revision sets the same in {}/{} files",
         revised.0, revised.1, sets.1, sets.0
