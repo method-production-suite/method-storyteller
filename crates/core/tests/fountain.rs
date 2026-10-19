@@ -152,3 +152,96 @@ fn spec_examples() {
     let script = fountain::parse("DEALER\nTen.\n  \nJack.").unwrap();
     assert_eq!(script.elements[1].text, "Ten.\n\nJack.");
 }
+
+/// The source with every `/* … */` cut out, as the parser has always read it.
+fn without_boneyard(source: &str) -> String {
+    let mut out = String::new();
+    let mut rest = source;
+    while let Some(start) = rest.find("/*") {
+        let Some(len) = rest[start + 2..].find("*/") else { break };
+        out.push_str(&rest[..start]);
+        rest = &rest[start + 2 + len + 2..];
+    }
+    out.push_str(rest);
+    out
+}
+
+fn shape(script: &Script) -> Vec<(K, String, Option<String>, bool)> {
+    script.elements.iter().map(|e| (e.kind, e.text.clone(), e.scene_number.clone(), e.dual)).collect()
+}
+
+/// The boneyard never changes how a script parses, is never printed, and is written back so
+/// the script reads the same again.
+#[test]
+fn boneyard_is_kept_without_changing_the_parse() {
+    let cases = [
+        "INT. HUT - DAY\n\n/* A cut line.\n\nTwo paragraphs of it. */\n\nNora taps the glass.\n",
+        "/* before a heading */\nINT. HUT - DAY\n\nx\n",
+        "x\n\n/* before a speaker */\nNORA\nHello.\n",
+        "NORA\n(quietly)\n/* a cut beat */\nOkay.\n",
+        "x\n\n/* before a transition */\nCUT TO:\n\nEXT. FLATS - NIGHT\n",
+        "x\n\nCUT TO: /* trailing */\n\nEXT. FLATS - NIGHT\n",
+        "She waits./* inline aside */ And waits.\n",
+        "INT. HUT - DAY\n\nThe end.\n\n/* the old ending */\n",
+        "Title: PROBE /* working title */\n\nINT. A - DAY\n\nx\n",
+        "Text with \u{E000}7\u{E001} private-use characters stays.\n\n/* and a block */\n\nMore.\n",
+        "Unclosed /* is just text.\n",
+    ];
+    for source in cases {
+        let script = fountain::parse(source).unwrap();
+        let reference = fountain::parse(&without_boneyard(source)).unwrap();
+        assert_eq!(shape(&script), shape(&reference), "parsed as if the blocks were not there: {source:?}");
+        assert_eq!(script.title_page, reference.title_page, "{source:?}");
+        let blocks: usize = script.elements.iter().map(|e| e.boneyard.len()).sum::<usize>() + script.boneyard_end.len();
+        assert_eq!(blocks, source.matches("*/").count(), "every block is kept: {source:?}");
+        let written = fountain::write(&script);
+        let again = fountain::parse(&written).unwrap();
+        assert_eq!(shape(&again), shape(&script), "written back, it reads the same: {source:?} -> {written:?}");
+        assert_eq!(fountain::write(&again), written, "and writes the same again: {source:?}");
+        let pages = storyteller_core::paginate::paginate(&script, &storyteller_core::layout::Layout::default());
+        let printed: Vec<String> = pages.pages.iter().flat_map(|p| p.lines.iter().map(|l| l.text())).collect();
+        let kept: Vec<&String> = script.elements.iter().flat_map(|e| e.boneyard.iter()).chain(script.boneyard_end.iter()).collect();
+        for block in kept {
+            assert!(printed.iter().all(|l| !l.contains(block.as_str())), "nothing of it prints: {source:?}");
+        }
+    }
+}
+
+#[test]
+fn boneyard_goes_with_the_paragraph_it_stands_before() {
+    let script = fountain::parse("NORA\n(quietly)\nOkay./* a cut beat */\nStill.\n\nINT. A - DAY\n\nx\n\n/* at the end */\n").unwrap();
+    let with: Vec<(K, &[String])> = script.elements.iter().map(|e| (e.kind, e.boneyard.as_slice())).collect();
+    // A block inside a speech's line goes with the next paragraph, and the speech is unchanged.
+    assert_eq!(script.elements[2].text, "Okay.\nStill.");
+    assert_eq!(with[3], (K::SceneHeading, &["/* a cut beat */".to_string()][..]));
+    assert_eq!(script.boneyard_end, ["/* at the end */"]);
+}
+
+/// A literal, unclosed `/*` in the text is kept: written escaped, it never pairs with a later
+/// block's `*/` on reopening.
+#[test]
+fn a_lone_comment_opener_survives_a_later_block() {
+    for text in ["50/*50.", "a/*b"] {
+        let mut script = fountain::parse(&format!("INT. A - DAY\n\n{text}\n\nLater.\n")).unwrap();
+        assert_eq!(script.elements[1].text, text);
+        script.elements[2].boneyard.push("/* set aside */".into());
+        let reopened = fountain::parse(&fountain::write(&script)).unwrap();
+        assert_eq!(reopened.elements[1].text, text, "{:?}", fountain::write(&script));
+        assert_eq!(reopened.elements[2].boneyard, ["/* set aside */"]);
+        assert_eq!(reopened, script);
+    }
+}
+
+/// Placing blocks is one pass over the source, not a parse per block.
+#[test]
+fn many_blocks_are_placed_quickly() {
+    let mut source = String::from("INT. A - DAY\n\n");
+    for n in 0..3000 {
+        source.push_str(&format!("/* {n} */Line {n}.\n\n"));
+    }
+    let started = std::time::Instant::now();
+    let script = fountain::parse(&source).unwrap();
+    assert!(started.elapsed() < std::time::Duration::from_millis(500), "{:?}", started.elapsed());
+    assert_eq!(script.elements[1].boneyard, ["/* 0 */"]);
+    assert_eq!(script.elements[3000].boneyard, ["/* 2999 */"]);
+}

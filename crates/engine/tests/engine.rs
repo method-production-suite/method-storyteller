@@ -172,12 +172,28 @@ fn tab_starts_the_next_element_and_shortcuts_insert() {
     run(&registry, &mut s, "element.set_text", json!({ "text": "int.", "typing": true }));
     assert_eq!(s.current().unwrap().kind, K::SceneHeading, "a scene heading stays one");
     run(&registry, &mut s, "element.set_kind", json!({ "kind": "action" }));
+    // Turned back into action, it stays action as the writer types on; cleared and retyped, it
+    // becomes a heading again.
+    run(&registry, &mut s, "element.set_text", json!({ "text": "INT. ", "typing": true }));
+    assert_eq!(s.current().unwrap().kind, K::Action, "a heading turned back into action stays action");
+    run(&registry, &mut s, "element.set_text", json!({ "text": "", "typing": true }));
     run(&registry, &mut s, "element.set_text", json!({ "text": "ext.", "typing": true }));
     assert_eq!((s.current().unwrap().kind, s.current().unwrap().text.as_str()), (K::SceneHeading, "EXT."), "typing ext. in action makes a heading");
     run(&registry, &mut s, "edit.undo", json!({}));
     assert_eq!((s.current().unwrap().kind, s.current().unwrap().text.as_str()), (K::Action, "ext."), "one undo turns it back into action");
     run(&registry, &mut s, "element.set_text", json!({ "text": "Est.", "typing": true }));
     assert_eq!(s.current().unwrap().kind, K::Action, "Est. stays action");
+
+    // A whole heading arriving at once (fast keys, a paste) after a speech becomes a heading,
+    // and the next speech by the same character starts afresh, without (CONT'D).
+    let mut s = Session::new(storyteller_core::fountain::parse("INT. HUT - DAY\n\nNORA\nHello.\n\nShe waits.\n").unwrap());
+    let action = s.script.elements.len() - 1;
+    run(&registry, &mut s, "element.set_text", json!({ "index": action, "text": "", "typing": true }));
+    run(&registry, &mut s, "element.set_text", json!({ "index": action, "text": "EXT. RIDGE - DAWN", "typing": true }));
+    assert_eq!(s.script.elements[action].kind, K::SceneHeading, "EXT. RIDGE - DAWN typed in one go");
+    s.script.elements.push(storyteller_core::Element::new(K::Character, "NORA"));
+    s.script.elements.push(storyteller_core::Element::new(K::Dialogue, "Again."));
+    assert!(!storyteller_core::paginate::auto_contd_at(&s.script, s.script.elements.len() - 2), "no (CONT'D) across a scene heading");
 
     let mut s = Session::default();
     run(&registry, &mut s, "element.set_kind", json!({ "kind": "character" }));
@@ -360,6 +376,31 @@ fn scene_lengths_follow_edits() {
     assert!(after > before[0].1, "{after} should be longer than {}", before[0].1);
 }
 
+/// File errors carry their kind from the error's type, so the app can word them without
+/// reading the operating system's text.
+#[test]
+fn file_errors_carry_their_kind() {
+    use storyteller_engine::files::FileProblem;
+    let registry = Registry::new();
+    let dir = tempfile::tempdir().expect("temp dir");
+    let problem = |session: &mut Session, id: &str, path: std::path::PathBuf| {
+        let mut params = Map::new();
+        params.insert("path".into(), json!(path.display().to_string()));
+        registry.run(id, session, &params).err().and_then(|e| e.file_problem())
+    };
+    let mut session = Session::default();
+    assert_eq!(problem(&mut session, "file.open", dir.path().join("missing.fountain")), Some(FileProblem::NotFound));
+    let pdf = dir.path().join("draft.pdf");
+    std::fs::write(&pdf, b"%PDF-1.7\n").expect("write");
+    assert_eq!(problem(&mut session, "file.open", pdf), Some(FileProblem::Pdf));
+    let not_text = dir.path().join("binary.fountain");
+    std::fs::write(&not_text, [0xFF, 0xFE, 0xFD, 0x00, 0xC3]).expect("write");
+    assert_eq!(problem(&mut session, "file.open", not_text), Some(FileProblem::NotAScript));
+    assert_eq!(problem(&mut session, "file.save_as", dir.path().join("no folder/x.fountain")), Some(FileProblem::NotFound));
+    // Other commands' errors are not file errors.
+    assert_eq!(registry.run("app.nothing", &mut session, &Map::new()).err().and_then(|e| e.file_problem()), None);
+}
+
 /// Spell check steps through misspellings with suggestions; Ignore, Learn and Change.
 #[test]
 fn spell_check_steps_ignores_learns_and_changes() {
@@ -378,8 +419,8 @@ fn spell_check_steps_ignores_learns_and_changes() {
     // Ignore for the session; learn for good.
     s.dirty = false;
     run(&registry, &mut s, "spell.ignore", json!({ "word": "seismograf" }));
-    assert_eq!(s.script.spelling_ignored, ["seismograf"], "ignored words stay with the script");
-    assert!(s.dirty, "so the file has something new to save");
+    assert_eq!(s.script.spelling_ignored, ["seismograf"], "ignored on the script, for this session");
+    assert!(!s.dirty, "no file format saves the list yet, so nothing new to save");
     let learned = run(&registry, &mut s, "spell.learn", json!({ "word": "Zorbly" }));
     assert_eq!(learned["value"]["learned"], "zorbly");
     assert_eq!(next(&mut s)["total"], 0, "nothing left");
@@ -412,7 +453,7 @@ fn save_warnings_name_what_a_format_drops() {
     assert_eq!(saved_message("Saved", std::path::Path::new("a.osf"), &plain, FileFormat::Osf), "Saved a.osf");
 }
 
-/// Saving as Fountain says that revisions and script notes do not go with it.
+/// Saving as Fountain says that revisions, script notes and ignored words do not go with it.
 #[test]
 fn fountain_save_warns_about_revisions_and_notes() {
     use storyteller_core::model::{Revised, ScriptNote};
@@ -423,6 +464,12 @@ fn fountain_save_warns_about_revisions_and_notes() {
     let fountain = save_warnings(&s, FileFormat::Fountain);
     assert!(fountain.iter().any(|w| w.starts_with("1 revised passage will lose")), "{fountain:?}");
     assert!(fountain.iter().any(|w| w.starts_with("1 script note with a colour")), "{fountain:?}");
+    s.spelling_ignored = vec!["seismograf".into(), "zorbly".into()];
+    let fountain = save_warnings(&s, FileFormat::Fountain);
+    assert!(
+        fountain.iter().any(|w| w == "2 words ignored by spell check will be checked again next time (Fountain has no ignore list)"),
+        "{fountain:?}"
+    );
     assert!(save_warnings(&s, FileFormat::Osf).is_empty() && save_warnings(&s, FileFormat::Fdx).is_empty());
 }
 

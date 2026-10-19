@@ -254,3 +254,64 @@ fn edit_cut_from_the_window_menu_cuts_the_selection() {
     let id = egui::Id::new(("storyteller.element", 1));
     assert!(harness.ctx.memory(|m| m.has_focus(id)), "and the paragraph has the keyboard again");
 }
+
+const SPELL_SCRIPT: &str = "INT. HUT - DAY\n\nNora taps the glsas. The seismograf is still.\n\nNORA\nOkay.\n";
+
+#[test]
+fn misspelled_words_are_underlined() {
+    let (harness, _file) = harness(SPELL_SCRIPT);
+    let marks = harness.state().editor.misspelled.get(&1).cloned().unwrap_or_default();
+    let text = &harness.state().session.script.elements[1].text;
+    let words: Vec<&str> = marks.iter().map(|&(s, e)| &text[s..e]).collect();
+    assert_eq!(words, ["glsas", "seismograf"]);
+    assert!(!harness.state().editor.misspelled.contains_key(&2), "a cue's name is known");
+}
+
+#[test]
+fn the_spelling_dialog_changes_ignores_and_learns() {
+    let (mut harness, _file) = harness(SPELL_SCRIPT);
+    harness.state_mut().queued.push("app.spelling".into());
+    harness.run_steps(3);
+    let current = harness.state().spelling.as_ref().and_then(|d| d.current.clone()).map(|c| c.3);
+    assert_eq!(current.as_deref(), Some("glsas"));
+    assert_eq!(harness.state().spelling.as_ref().map(|d| d.change_to.clone()).as_deref(), Some("glass"));
+    harness.get_by_label("Change").click();
+    harness.run_steps(3);
+    assert_eq!(harness.state().session.script.elements[1].text, "Nora taps the glass. The seismograf is still.");
+    assert_eq!(harness.state().spelling.as_ref().and_then(|d| d.current.clone()).map(|c| c.3).as_deref(), Some("seismograf"));
+    harness.get_by_label("Learn").click();
+    harness.run_steps(3);
+    assert_eq!(harness.state().prefs.get().general.learned_words, ["seismograf"], "learned words are kept in settings");
+    assert_eq!(harness.state().spelling.as_ref().map(|d| d.status.clone()).as_deref(), Some("No misspellings."));
+    assert!(harness.state().editor.misspelled.is_empty(), "nothing left to underline");
+}
+
+#[test]
+fn enter_in_change_to_changes_and_ignore_leaves_the_script_unedited() {
+    let (mut harness, _file) = harness(SPELL_SCRIPT);
+    harness.state_mut().queued.push("app.spelling".into());
+    harness.run_steps(3);
+    // The dialog takes the keyboard: Enter in Change to is Change.
+    harness.key_press(egui::Key::Enter);
+    harness.run_steps(3);
+    assert_eq!(harness.state().session.script.elements[1].text, "Nora taps the glass. The seismograf is still.");
+    let dirty_after_change = harness.state().session.dirty;
+    assert!(dirty_after_change, "Change edits the script");
+    harness.state_mut().session.dirty = false;
+    harness.get_by_label("Ignore").click();
+    harness.run_steps(3);
+    assert!(!harness.state().session.dirty, "Ignore lasts the session and edits nothing");
+    assert_eq!(harness.state().spelling.as_ref().map(|d| d.status.clone()).as_deref(), Some("No misspellings."));
+}
+
+#[test]
+fn the_word_being_typed_is_not_underlined_yet() {
+    let (mut harness, _file) = harness(SPELL_SCRIPT);
+    let end = SPELL_SCRIPT.lines().nth(2).map(|l| l.find("glsas").unwrap_or(0) + "glsas".len()).unwrap_or(0);
+    harness.state_mut().session.caret = storyteller_engine::Caret { element: 1, offset: end };
+    harness.run_steps(1);
+    let marks = harness.state().editor.misspelled.get(&1).cloned().unwrap_or_default();
+    let text = &harness.state().session.script.elements[1].text;
+    let words: Vec<&str> = marks.iter().map(|&(s, e)| &text[s..e]).collect();
+    assert_eq!(words, ["seismograf"], "the caret is at the end of glsas");
+}

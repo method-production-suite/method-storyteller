@@ -39,7 +39,7 @@ const GO_TO_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Alt+G" } else { "Cmd
 const FIND_NEXT_KEY: &str = if cfg!(target_os = "macos") { "Cmd+G" } else { "F3" };
 const FIND_PREVIOUS_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Shift+G" } else { "Shift+F3" };
 
-const APP_COMMANDS: [AppCommand; 28] = [
+const APP_COMMANDS: [AppCommand; 30] = [
     AppCommand { id: "app.title_page", label: "Title Page…", menu: "File/Title Page…", shortcut: Some("Cmd+Shift+T") },
     AppCommand { id: "prefs.new_fountain", label: "Save New Scripts as Fountain", menu: "File/Save New Scripts as Fountain", shortcut: None },
     AppCommand {
@@ -55,6 +55,8 @@ const APP_COMMANDS: [AppCommand; 28] = [
     AppCommand { id: "app.copy", label: "Copy", menu: "Edit/Copy", shortcut: None },
     AppCommand { id: "app.paste", label: "Paste", menu: "Edit/Paste", shortcut: None },
     AppCommand { id: "app.select_all", label: "Select All", menu: "Edit/Select All", shortcut: None },
+    AppCommand { id: "app.spelling", label: "Spelling…", menu: "Edit/Spelling…", shortcut: Some("Cmd+Semicolon") },
+    AppCommand { id: "prefs.check_spelling", label: "Check Spelling While Typing", menu: "View/Check Spelling While Typing", shortcut: None },
     AppCommand { id: "app.find", label: "Find…", menu: "Edit/Find…", shortcut: Some("Cmd+F") },
     AppCommand { id: "app.find_next", label: "Find Next", menu: "Edit/Find Next", shortcut: Some(FIND_NEXT_KEY) },
     AppCommand { id: "app.find_previous", label: "Find Previous", menu: "Edit/Find Previous", shortcut: Some(FIND_PREVIOUS_KEY) },
@@ -146,6 +148,8 @@ pub struct StorytellerApp {
     go_to: Option<GoToDraft>,
     rename: Option<RenameDraft>,
     find: Option<find_bar::FindBar>,
+    spelling: Option<spelling::SpellDialog>,
+    spell_cache: spelling::SpellCache,
     help: HelpWindows,
     status: String,
     error: Option<String>,
@@ -221,6 +225,8 @@ impl StorytellerApp {
             go_to: None,
             rename: None,
             find: None,
+            spelling: None,
+            spell_cache: spelling::SpellCache::default(),
             help: HelpWindows::default(),
             status: String::new(),
             error: report.has_problems().then(|| "Settings could not be fully loaded; defaults are in use.".to_string()),
@@ -245,6 +251,10 @@ impl StorytellerApp {
             app.prefs.update(|p| p.general.last_seen_version = help::VERSION.to_string());
         }
         app.session.layout.show_scene_numbers = app.prefs.get().view.scene_numbers;
+        // A file opened from the Finder to launch the app arrives before the first frame.
+        let file = file.or_else(|| app.first_from_finder());
+        let ctx = cc.egui_ctx.clone();
+        storyteller_macos_open::set_wake(move || ctx.request_repaint());
         if let Some(path) = file {
             app.open_path(&path);
         }
@@ -266,15 +276,19 @@ impl StorytellerApp {
     // Commands
 
     fn run(&mut self, id: &str, params: Map<String, Value>) {
-        match self.registry.run(id, &mut self.session, &params) {
-            Ok(outcome) => {
-                if let Some(message) = outcome.message {
-                    self.status = message;
-                }
-                self.error = None;
-            }
-            Err(error) => self.error = Some(error.to_string()),
+        if let Err(error) = self.try_run(id, params) {
+            self.error = Some(error.to_string());
         }
+    }
+
+    /// Runs a command, shows its message, and hands back the error for the caller to word.
+    fn try_run(&mut self, id: &str, params: Map<String, Value>) -> Result<(), storyteller_engine::CommandError> {
+        let outcome = self.registry.run(id, &mut self.session, &params)?;
+        if let Some(message) = outcome.message {
+            self.status = message;
+        }
+        self.error = None;
+        Ok(())
     }
 
     fn run_command(&mut self, ctx: &egui::Context, id: &str) {
@@ -326,9 +340,16 @@ impl StorytellerApp {
                     self.rename = Some(RenameDraft { names, from, ..RenameDraft::default() });
                 }
             }
+            "app.spelling" => self.open_spelling(),
+            "prefs.check_spelling" => {
+                self.prefs.update(|p| p.view.check_spelling = !p.view.check_spelling);
+            }
             "app.find" => match &mut self.find {
                 Some(bar) => bar.focus(),
-                None => self.find = Some(find_bar::FindBar::open()),
+                None => {
+                    self.spelling = None;
+                    self.find = Some(find_bar::FindBar::open());
+                }
             },
             "app.find_next" | "app.find_previous" => {
                 if self.find.is_none() {
@@ -489,9 +510,8 @@ impl StorytellerApp {
     fn open_path(&mut self, path: &Path) {
         let mut params = Map::new();
         params.insert("path".into(), json!(path.display().to_string()));
-        self.run("file.open", params);
-        if let Some(detail) = self.error.take() {
-            self.error = Some(crate::messages::open_failed(path, &detail));
+        if let Err(error) = self.try_run("file.open", params) {
+            self.error = Some(crate::messages::open_failed(path, error.file_problem(), &error.to_string()));
         } else {
             let shown = path.display().to_string();
             self.prefs.update(|p| p.push_recent(&shown));
@@ -539,9 +559,8 @@ impl StorytellerApp {
         }
         let mut params = Map::new();
         params.insert("path".into(), json!(path.display().to_string()));
-        self.run("file.save_as", params);
-        if let Some(detail) = self.error.take() {
-            self.error = Some(crate::messages::save_failed(&path, &detail));
+        if let Err(error) = self.try_run("file.save_as", params) {
+            self.error = Some(crate::messages::save_failed(&path, error.file_problem(), &error.to_string()));
         }
         let saved = self.error.is_none() && !self.session.dirty;
         if saved {
@@ -549,6 +568,30 @@ impl StorytellerApp {
             self.prefs.update(|p| p.push_recent(&shown));
         }
         saved
+    }
+
+    /// A file opened from the Finder while the app runs, after asking about unsaved changes.
+    /// Waits while a question is already on screen.
+    fn open_from_finder(&mut self, ctx: &egui::Context) {
+        if self.prompt.is_some() {
+            return;
+        }
+        if let Some(path) = self.first_from_finder() {
+            self.guard_unsaved(ctx, Pending::Open(Some(path)));
+        }
+    }
+
+    /// The first of the files opened from the Finder. The window holds one script, so any
+    /// others are named in the status line rather than dropped silently.
+    fn first_from_finder(&mut self) -> Option<PathBuf> {
+        let mut paths = storyteller_macos_open::take().into_iter();
+        let first = paths.next()?;
+        let others: Vec<String> =
+            paths.map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| p.display().to_string())).collect();
+        if !others.is_empty() {
+            self.status = format!("One script at a time: opened the first. Not opened: {}.", others.join(", "));
+        }
+        Some(first)
     }
 
     /// The extension new scripts are saved with: the writer's choice of working format.
@@ -761,6 +804,7 @@ impl StorytellerApp {
             "prefs.new_fountain" => Some(self.prefs.get().general.new_script_format != "osf"),
             "prefs.new_osf" => Some(self.prefs.get().general.new_script_format == "osf"),
             "prefs.smart_quotes" => Some(self.prefs.get().general.smart_quotes),
+            "prefs.check_spelling" => Some(self.prefs.get().view.check_spelling),
             "prefs.check_updates_automatically" => Some(self.updates.automatic()),
             _ => None,
         }
@@ -1357,6 +1401,7 @@ impl StorytellerApp {
         }
         let zoom = self.prefs.get().zoom();
         let pages = self.prefs.get().view.page_view;
+        self.update_spelling_marks();
         let actions = egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(ui.visuals().extreme_bg_color))
             .show(ui, |ui| editor::show(ui, &mut self.session, &mut self.editor, &mut self.automation, zoom, pages))
@@ -1364,6 +1409,7 @@ impl StorytellerApp {
         self.apply(actions);
         self.title_page_dialog(&ctx);
         self.go_to_dialog(&ctx);
+        self.spelling_dialog(&ctx);
         self.rename_dialog(&ctx);
         self.help_windows(&ctx);
         self.unsaved_prompt(&ctx);
@@ -1476,7 +1522,8 @@ impl eframe::App for StorytellerApp {
         self.handle_screenshot(ctx);
         self.handle_control(ctx);
         self.sync_native_menu();
-        if self.prompt.is_none() && self.title_dialog.is_none() && self.go_to.is_none() && self.rename.is_none() {
+        self.open_from_finder(ctx);
+        if self.prompt.is_none() && self.title_dialog.is_none() && self.go_to.is_none() && self.rename.is_none() && self.spelling.is_none() {
             for (shortcut, id) in self.shortcuts.clone() {
                 if self.menu_owns_shortcut(id) {
                     continue;
@@ -1526,6 +1573,9 @@ fn capitalise(text: &str) -> String {
 
 #[path = "find_bar.rs"]
 mod find_bar;
+
+#[path = "spelling.rs"]
+mod spelling;
 
 #[cfg(test)]
 #[path = "screens.rs"]
