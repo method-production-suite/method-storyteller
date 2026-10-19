@@ -147,6 +147,20 @@ pub fn save_warnings(script: &Script, format: FileFormat) -> Vec<String> {
                     plural(joined, "speech", "speeches")
                 ));
             }
+            let revised = script.elements.iter().map(|e| e.revised.len()).sum::<usize>();
+            if revised > 0 || !script.revisions.sets.is_empty() {
+                warnings.push(format!(
+                    "{} will lose their revision marks (Fountain has no revisions)",
+                    plural(revised, "revised passage", "revised passages")
+                ));
+            }
+            let notes = script.elements.iter().map(|e| e.notes.len()).sum::<usize>();
+            if notes > 0 {
+                warnings.push(format!(
+                    "{} with a colour, author or range will be left out (Fountain keeps only plain [[notes]])",
+                    plural(notes, "script note", "script notes")
+                ));
+            }
         }
         FileFormat::Osf | FileFormat::FadeIn => {
             let sections = script.elements.iter().filter(|e| e.kind == K::Section).count();

@@ -152,3 +152,50 @@ fn a_new_script_writes_its_sets() {
         assert_eq!(model(&back), model(&script));
     }
 }
+
+#[test]
+fn settings_are_rebuilt_from_their_attributes() {
+    // Single quotes and a `>` inside another attribute.
+    let doc = OSF.replace(
+        r#"<settings page_width="2159" page_height="2794" revision="1"/>"#,
+        r#"<settings page_header='p.#>' revision='1' page_width="2159"/>"#,
+    );
+    let mut script = osf::parse(&doc).unwrap();
+    script.revisions.active = Some(2);
+    let xml = osf::write(&script);
+    assert!(xml.contains(r##"<settings page_header="p.#&gt;" revision="2" page_width="2159"/>"##), "{xml}");
+    assert_eq!(osf::parse(&xml).unwrap().revisions.active, Some(2));
+    script.revisions.active = None;
+    let xml = osf::write(&script);
+    assert!(xml.contains(r##"<settings page_header="p.#&gt;" page_width="2159"/>"##), "no active set clears it: {xml}");
+}
+
+#[test]
+fn camel_case_lists_are_replaced_not_doubled() {
+    let doc = OSF
+        .replace(r#"version="30""#, r#"version="21""#)
+        .replace("revision_colors", "revisionColors")
+        .replace("revision_color ", "revisionColor ")
+        .replace("color_name", "colorName")
+        .replace("color_index", "colorIndex");
+    let mut script = osf::parse(&doc).unwrap();
+    assert_eq!(script.revisions.sets.len(), 2);
+    script.revisions.sets[1].name = "Blue Rev.".into();
+    let once = osf::write(&script);
+    let twice = osf::write(&osf::parse(&once).unwrap());
+    assert_eq!(once.matches("<revisionColors>").count(), 1, "{once}");
+    assert!(!once.contains("revision_colors"), "{once}");
+    assert_eq!(osf::parse(&twice).unwrap().revisions.sets.len(), 2);
+}
+
+#[test]
+fn many_revised_runs_write_quickly() {
+    let mut script = fountain::parse(&format!("{}\n", "ab".repeat(40_000))).unwrap();
+    script.elements[0].revised = (0..40_000).map(|i| Revised { from: i * 2, to: i * 2 + 1, set: 1 + i % 2 }).collect();
+    let started = std::time::Instant::now();
+    let xml = fdx::write(&script);
+    let back = fdx::parse(&xml).unwrap();
+    let osf_xml = osf::write(&back);
+    assert_eq!(osf::parse(&osf_xml).unwrap().elements[0].revised.len(), 40_000);
+    assert!(started.elapsed().as_secs() < 10, "took {:?}", started.elapsed());
+}

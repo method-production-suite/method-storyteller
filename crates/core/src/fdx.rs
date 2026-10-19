@@ -162,6 +162,7 @@ fn write_body(element: &Element, indent: &str, out: &mut String) {
     let mut pending = notes.into_iter().peekable();
     let mut at: u32 = 0;
     let mut wrote_text = false;
+    let mut revisions = element.revision_cursor();
     for run in inline::parse(&element.text) {
         if run.note {
             out.push_str(indent);
@@ -179,10 +180,10 @@ fn write_body(element: &Element, indent: &str, out: &mut String) {
                 out.push('\n');
             }
             let here = at.saturating_add(from);
-            let edge = [pending.peek().map(|(pos, _)| *pos), element.next_revision_edge(here)].into_iter().flatten().min();
+            let edge = [pending.peek().map(|(pos, _)| *pos), revisions.next_edge(here)].into_iter().flatten().min();
             let to = edge.map(|edge| edge.saturating_sub(at)).filter(|end| *end < len).unwrap_or(len);
-            let piece: String = chars.iter().skip(from as usize).take(to.saturating_sub(from) as usize).collect();
-            write_run(&piece, run.style, element.revision_at(here), indent, out);
+            let piece: String = chars.get(from as usize..to as usize).unwrap_or_default().iter().collect();
+            write_run(&piece, run.style, revisions.set_at(here), indent, out);
             wrote_text = true;
             from = to;
             if from >= len {
@@ -476,6 +477,8 @@ struct ParagraphState {
     runs: Vec<Run>,
     notes: Vec<ScriptNote>,
     revised: Vec<Revised>,
+    /// Characters of printed text read so far.
+    chars: u32,
     has_text: bool,
     /// The paragraph wraps a dual-dialogue block; it is not an element itself.
     wraps_dual: bool,
@@ -484,8 +487,7 @@ struct ParagraphState {
 impl ParagraphState {
     /// Characters of printed text read so far.
     fn printed_chars(&self) -> u32 {
-        let count: usize = self.runs.iter().filter(|r| !r.note).map(|r| r.text.chars().count()).sum();
-        u32::try_from(count).unwrap_or(u32::MAX)
+        self.chars
     }
 }
 
@@ -661,6 +663,7 @@ impl Importer {
                 runs: Vec::new(),
                 notes: Vec::new(),
                 revised: Vec::new(),
+                chars: 0,
                 has_text: false,
                 wraps_dual: false,
             });
@@ -695,8 +698,10 @@ impl Importer {
         let Some(run) = self.run else { return };
         let Some(paragraph) = self.paragraphs.last_mut() else { return };
         let text = if run.all_caps { text.to_uppercase() } else { text.to_string() };
-        let at = paragraph.printed_chars();
-        mark_revised(&mut paragraph.revised, at, u32::try_from(text.chars().count()).unwrap_or(u32::MAX), run.revision);
+        let at = paragraph.chars;
+        let len = u32::try_from(text.chars().count()).unwrap_or(u32::MAX);
+        paragraph.chars = at.saturating_add(len);
+        mark_revised(&mut paragraph.revised, at, len, run.revision);
         match paragraph.runs.last_mut() {
             Some(last) if last.style == run.style && !last.note => last.text.push_str(&text),
             _ => paragraph.runs.push(Run { text, style: run.style, note: false }),

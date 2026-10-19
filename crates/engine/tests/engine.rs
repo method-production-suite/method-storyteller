@@ -384,3 +384,37 @@ fn save_warnings_name_what_a_format_drops() {
     let plain = storyteller_core::fountain::parse("INT. A - DAY\n\nx\n").unwrap();
     assert_eq!(saved_message("Saved", std::path::Path::new("a.osf"), &plain, FileFormat::Osf), "Saved a.osf");
 }
+
+/// Saving as Fountain says that revisions and script notes do not go with it.
+#[test]
+fn fountain_save_warns_about_revisions_and_notes() {
+    use storyteller_core::model::{Revised, ScriptNote};
+    use storyteller_engine::files::{FileFormat, save_warnings};
+    let mut s = storyteller_core::fountain::parse("INT. A - DAY\n\nThe pump stops.\n").unwrap();
+    s.elements[1].revised.push(Revised { from: 9, to: 14, set: 1 });
+    s.elements[1].notes.push(ScriptNote { text: "Louder.".into(), color: Some("#FF0000".into()), ..ScriptNote::default() });
+    let fountain = save_warnings(&s, FileFormat::Fountain);
+    assert!(fountain.iter().any(|w| w.starts_with("1 revised passage will lose")), "{fountain:?}");
+    assert!(fountain.iter().any(|w| w.starts_with("1 script note with a colour")), "{fountain:?}");
+    assert!(save_warnings(&s, FileFormat::Osf).is_empty() && save_warnings(&s, FileFormat::Fdx).is_empty());
+}
+
+/// Typing, Enter and Backspace keep revised text and notes on the words they mark.
+#[test]
+fn edits_keep_revisions_and_notes_on_their_text() {
+    use storyteller_core::model::{Revised, ScriptNote};
+    let mut session = storyteller_engine::session::Session::new(storyteller_core::fountain::parse("The pump stops dead.\n").unwrap());
+    session.script.elements[0].revised.push(Revised { from: 9, to: 14, set: 1 });
+    session.script.elements[0].notes.push(ScriptNote { text: "Why?".into(), range: Some((15, 19)), ..ScriptNote::default() });
+    // Text typed before the revised word moves it along.
+    storyteller_engine::commands::set_text(&mut session, 0, "The old pump stops dead.", true).unwrap();
+    assert_eq!(session.script.elements[0].revised, [Revised { from: 13, to: 18, set: 1 }]);
+    assert_eq!(session.script.elements[0].notes[0].range, Some((19, 23)));
+    // Enter after "stops" takes the note to the new paragraph.
+    storyteller_engine::commands::enter(&mut session, 0, "The old pump stops".len()).unwrap();
+    assert_eq!(session.script.elements[0].notes.len(), 0);
+    assert_eq!(session.script.elements[1].notes[0].range, Some((0, 4)));
+    // Backspace joins it back, note and all.
+    storyteller_engine::commands::merge_previous(&mut session, 1).unwrap();
+    assert_eq!(session.script.elements[0].notes[0].range, Some((18, 22)));
+}

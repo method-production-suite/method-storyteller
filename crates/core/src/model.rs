@@ -400,14 +400,141 @@ impl Element {
         character_name(&self.text)
     }
 
+    /// Replaces the text, moving what is anchored to it (revised spans, note ranges) with the
+    /// edit: the text both versions share at the start and the end keeps its anchors, and an
+    /// anchor inside the changed part moves to its edge (a revised span grows over new text).
+    pub fn set_text(&mut self, text: impl Into<String>) {
+        let old = crate::inline::plain(&self.text);
+        self.text = text.into();
+        let new = crate::inline::plain(&self.text);
+        if old == new {
+            return;
+        }
+        let edit = Edit::between(&old, &new);
+        for span in &mut self.revised {
+            span.from = edit.start(span.from);
+            span.to = edit.end(span.to);
+        }
+        self.revised.retain(|r| r.to > r.from);
+        for note in &mut self.notes {
+            if let Some((from, to)) = note.range {
+                note.range =
+                    Some(if from == to { (edit.start(from), edit.start(from)) } else { (edit.start(from), edit.end(to).max(edit.start(from))) });
+            }
+        }
+    }
+
+    /// Moves everything anchored at or after printed character `at` to `into` (the paragraph an
+    /// Enter split off), counted from its start.
+    pub fn split_anchors(&mut self, at: u32, into: &mut Element) {
+        let mut kept = Vec::new();
+        for span in self.revised.drain(..) {
+            if span.from < at {
+                kept.push(Revised { to: span.to.min(at), ..span });
+            }
+            if span.to > at {
+                into.revised.push(Revised { from: span.from.saturating_sub(at), to: span.to - at, ..span });
+            }
+        }
+        self.revised = kept;
+        let (stay, go): (Vec<ScriptNote>, Vec<ScriptNote>) = self.notes.drain(..).partition(|n| n.range.is_none_or(|(from, _)| from < at));
+        self.notes = stay;
+        into.notes.extend(go.into_iter().map(|mut n| {
+            n.range = n.range.map(|(from, to)| (from - at, to - at));
+            n
+        }));
+    }
+
+    /// Takes `other`'s anchors (the paragraph a Backspace joined on), placed `at` printed
+    /// characters into this one.
+    pub fn absorb_anchors(&mut self, other: &mut Element, at: u32) {
+        for span in other.revised.drain(..) {
+            mark_revised(&mut self.revised, at.saturating_add(span.from), span.to.saturating_sub(span.from), span.set);
+        }
+        self.notes.extend(other.notes.drain(..).map(|mut n| {
+            n.range = Some(n.range.map_or((at, at), |(from, to)| (at.saturating_add(from), at.saturating_add(to))));
+            n
+        }));
+    }
+
+    /// A cursor over the revised spans, for walking the text from start to end.
+    pub(crate) fn revision_cursor(&self) -> RevisionCursor<'_> {
+        let mut spans: Vec<&Revised> = self.revised.iter().collect();
+        spans.sort_by_key(|r| (r.from, r.to));
+        RevisionCursor { spans, next: 0 }
+    }
+
     /// The revision set the printed character at `at` was changed in.
     pub fn revision_at(&self, at: u32) -> Option<u32> {
         self.revised.iter().find(|r| r.from <= at && at < r.to).map(|r| r.set)
     }
+}
+
+/// Revised spans walked in order: asked about places that only move forward, it answers in
+/// constant time overall.
+pub(crate) struct RevisionCursor<'a> {
+    spans: Vec<&'a Revised>,
+    next: usize,
+}
+
+impl RevisionCursor<'_> {
+    fn skip_to(&mut self, at: u32) {
+        while self.spans.get(self.next).is_some_and(|r| r.to <= at) {
+            self.next += 1;
+        }
+    }
+
+    /// The set the character at `at` was changed in.
+    pub(crate) fn set_at(&mut self, at: u32) -> Option<u32> {
+        self.skip_to(at);
+        self.spans.get(self.next).filter(|r| r.from <= at).map(|r| r.set)
+    }
 
     /// The first place after `at` where revised text starts or ends.
-    pub(crate) fn next_revision_edge(&self, at: u32) -> Option<u32> {
-        self.revised.iter().flat_map(|r| [r.from, r.to]).filter(|edge| *edge > at).min()
+    pub(crate) fn next_edge(&mut self, at: u32) -> Option<u32> {
+        self.skip_to(at);
+        self.spans.get(self.next).map(|r| if r.from > at { r.from } else { r.to })
+    }
+}
+
+/// One edit between two versions of a paragraph's printed text, as the parts they share at the
+/// start and at the end.
+struct Edit {
+    prefix: u32,
+    old_tail: u32,
+    new_tail: u32,
+}
+
+impl Edit {
+    fn between(old: &str, new: &str) -> Edit {
+        let (old, new): (Vec<char>, Vec<char>) = (old.chars().collect(), new.chars().collect());
+        let prefix = old.iter().zip(&new).take_while(|(a, b)| a == b).count();
+        let room = old.len().min(new.len()) - prefix;
+        let suffix = old.iter().rev().zip(new.iter().rev()).take(room).take_while(|(a, b)| a == b).count();
+        let count = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
+        Edit { prefix: count(prefix), old_tail: count(old.len() - suffix), new_tail: count(new.len() - suffix) }
+    }
+
+    /// Where an anchor's start goes.
+    fn start(&self, at: u32) -> u32 {
+        if at <= self.prefix {
+            at
+        } else if at >= self.old_tail {
+            (at - self.old_tail).saturating_add(self.new_tail)
+        } else {
+            self.prefix
+        }
+    }
+
+    /// Where an anchor's end goes.
+    fn end(&self, at: u32) -> u32 {
+        if at <= self.prefix {
+            at
+        } else if at >= self.old_tail {
+            (at - self.old_tail).saturating_add(self.new_tail)
+        } else {
+            self.new_tail
+        }
     }
 }
 

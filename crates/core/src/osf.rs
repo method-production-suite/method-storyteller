@@ -26,7 +26,7 @@ use std::collections::HashMap;
 use quick_xml::XmlVersion;
 use quick_xml::events::Event;
 
-use crate::fdx::{all_attrs, default_note_form, escape, note_attributes, revision_set_attributes, revisions_attributes, set_tag_attr};
+use crate::fdx::{all_attrs, default_note_form, escape, note_attributes, revision_set_attributes, revisions_attributes};
 use crate::inline::{self, Run, Style};
 use crate::layout::{Align, ElementStyle, Layout, chars_per_line};
 use crate::model::{
@@ -246,6 +246,8 @@ struct Para {
     style: Vec<(String, String)>,
     runs: Vec<Run>,
     revised: Vec<Revised>,
+    /// Characters of text read so far.
+    chars: u32,
     children: String,
 }
 
@@ -375,9 +377,10 @@ fn paras(xml: &str) -> Result<Vec<Para>, CoreError> {
 
 fn push_run(para: &mut Para, text: &str, (style, revision): (Style, u32)) {
     let text = text.replace("\r\n", "\n");
-    let at: usize = para.runs.iter().map(|r| r.text.chars().count()).sum();
-    let len = text.chars().count();
-    mark_revised(&mut para.revised, u32::try_from(at).unwrap_or(u32::MAX), u32::try_from(len).unwrap_or(u32::MAX), revision);
+    let len = u32::try_from(text.chars().count()).unwrap_or(u32::MAX);
+    let at = para.chars;
+    para.chars = at.saturating_add(len);
+    mark_revised(&mut para.revised, at, len, revision);
     match para.runs.last_mut() {
         Some(last) if last.style == style => last.text.push_str(&text),
         _ => para.runs.push(Run { text, style, note: false }),
@@ -787,8 +790,15 @@ fn read_revisions(top: &[TopLevel]) -> Revisions {
     revisions
 }
 
-fn revision_colors(revisions: &Revisions) -> String {
-    let mut out = String::from("<revision_colors");
+/// The revision list, spelled as the document spells it (camelCase in the unofficial "2.1").
+fn revision_colors(revisions: &Revisions, spelling: Spelling) -> String {
+    let camel = spelling == Spelling::Camel;
+    let (list, entry, name_key, index_key) = if camel {
+        ("revisionColors", "revisionColor", "colorName", "colorIndex")
+    } else {
+        ("revision_colors", "revision_color", "color_name", "color_index")
+    };
+    let mut out = format!("<{list}");
     let bare = Revisions { fdx_attributes: Vec::new(), ..revisions.clone() };
     if !revisions.fdx_attributes.is_empty() && revisions.fdx_attributes != revisions_attributes(&bare) {
         for (k, v) in prefixed("fdx_", &revisions.fdx_attributes) {
@@ -803,11 +813,11 @@ fn revision_colors(revisions: &Revisions) -> String {
     for set in &revisions.sets {
         let index = palette_index(set);
         let (color_name, palette_color) = PALETTE.get(index).copied().unwrap_or(("White", "#FFFFFF"));
-        out.push_str("<revision_color");
+        out.push_str(&format!("<{entry}"));
         write_attr("name", &set.name, &mut out);
         write_attr("index", &set.id.to_string(), &mut out);
-        write_attr("color_name", color_name, &mut out);
-        write_attr("color_index", &index.to_string(), &mut out);
+        write_attr(name_key, color_name, &mut out);
+        write_attr(index_key, &index.to_string(), &mut out);
         write_attr("mark", &set.mark, &mut out);
         // No page colour at all is said too, or it would read back as the palette's.
         match set.page_color.as_deref() {
@@ -825,40 +835,122 @@ fn revision_colors(revisions: &Revisions) -> String {
         }
         out.push_str("/>");
     }
-    out.push_str("</revision_colors>");
+    out.push_str(&format!("</{list}>"));
     out
 }
 
-/// A `<lists>` section with its revision colours replaced by `revisions`.
-fn with_revision_colors(lists: &str, revisions: &Revisions) -> String {
-    let fresh = revision_colors(revisions);
-    if let Some(start) = lists.find("<revision_colors") {
-        let rest = lists.get(start..).unwrap_or_default();
-        let len = match (rest.find("</revision_colors>"), rest.find('>')) {
-            (_, Some(gt)) if rest.get(..=gt).is_some_and(|t| t.ends_with("/>")) => gt + 1,
-            (Some(close), _) => close + "</revision_colors>".len(),
-            _ => rest.len(),
-        };
-        return format!("{}{fresh}{}", lists.get(..start).unwrap_or_default(), lists.get(start + len..).unwrap_or_default());
-    }
-    match lists.find('>') {
-        Some(gt) if lists.get(..=gt).is_some_and(|t| t.ends_with("/>")) => {
-            format!("{}>{fresh}</lists>", lists.get(..gt.saturating_sub(1)).unwrap_or_default())
+/// A `<lists>` section with its revision colours, in whichever spelling, replaced by `revisions`.
+fn with_revision_colors(lists: &str, revisions: &Revisions, spelling: Spelling) -> String {
+    let fresh = revision_colors(revisions, spelling);
+    let mut reader = quick_xml::Reader::from_str(lists);
+    let mut depth = 0usize;
+    let mut open: Option<usize> = None;
+    let mut root_end: Option<(usize, bool)> = None;
+    loop {
+        let before = usize::try_from(reader.buffer_position()).unwrap_or(usize::MAX);
+        let Ok(event) = reader.read_event() else { return lists.to_string() };
+        let after = usize::try_from(reader.buffer_position()).unwrap_or(usize::MAX);
+        let is_ours = |name: &[u8]| key(&String::from_utf8_lossy(name)) == "revisioncolors";
+        match event {
+            Event::Start(start) => {
+                depth += 1;
+                if depth == 1 {
+                    root_end = Some((after, false));
+                } else if depth == 2 && is_ours(start.local_name().as_ref()) {
+                    open = Some(before);
+                }
+            }
+            Event::End(_) => {
+                if depth == 2
+                    && let Some(start) = open.take()
+                {
+                    return format!("{}{fresh}{}", lists.get(..start).unwrap_or_default(), lists.get(after..).unwrap_or_default());
+                }
+                depth = depth.saturating_sub(1);
+            }
+            Event::Empty(start) => {
+                if depth == 0 {
+                    root_end = Some((after, true));
+                } else if depth == 1 && is_ours(start.local_name().as_ref()) {
+                    return format!("{}{fresh}{}", lists.get(..before).unwrap_or_default(), lists.get(after..).unwrap_or_default());
+                }
+            }
+            Event::Eof => break,
+            _ => {}
         }
-        Some(gt) => format!("{}{fresh}{}", lists.get(..=gt).unwrap_or_default(), lists.get(gt + 1..).unwrap_or_default()),
+    }
+    // No list yet: it goes first in the section.
+    match root_end {
+        Some((end, false)) => format!("{}{fresh}{}", lists.get(..end).unwrap_or_default(), lists.get(end..).unwrap_or_default()),
+        Some((_, true)) => rebuild_start_tag(lists, |_| {}, Some(&fresh)),
         None => lists.to_string(),
     }
 }
 
-/// A `<settings>` tag with `revision` set to the active set.
-fn with_active_revision(settings: &str, active: Option<u32>) -> String {
-    let tag_end = settings.find('>').map_or(settings.len(), |at| at + 1);
-    let tag = settings.get(..tag_end).unwrap_or_default();
-    let same = tags(tag).first().and_then(|(_, a)| get(a, "revision")).and_then(|r| r.trim().parse::<u32>().ok()) == active;
-    match active {
-        Some(active) if !same => format!("{}{}", set_tag_attr(tag, "revision", &active.to_string()), settings.get(tag_end..).unwrap_or_default()),
-        _ => settings.to_string(),
+/// A section with its root start tag rebuilt from its parsed attributes after `edit`, and the
+/// rest as it was. `content` opens a self-closing root around it.
+fn rebuild_start_tag(raw: &str, edit: impl FnOnce(&mut Vec<(String, String)>), content: Option<&str>) -> String {
+    let mut reader = quick_xml::Reader::from_str(raw);
+    loop {
+        let before = usize::try_from(reader.buffer_position()).unwrap_or(usize::MAX);
+        let event = match reader.read_event() {
+            Ok(Event::Eof) | Err(_) => return raw.to_string(),
+            Ok(event) => event,
+        };
+        let after = usize::try_from(reader.buffer_position()).unwrap_or(usize::MAX);
+        let (start, empty) = match event {
+            Event::Start(start) => (start, false),
+            Event::Empty(start) => (start, true),
+            _ => continue,
+        };
+        let name = String::from_utf8_lossy(start.name().as_ref()).into_owned();
+        let mut attributes = all_attrs(&start);
+        edit(&mut attributes);
+        let mut out = format!("{}<{name}", raw.get(..before).unwrap_or_default());
+        for (k, v) in &attributes {
+            write_attr(k, v, &mut out);
+        }
+        match (empty, content) {
+            (true, Some(content)) => out.push_str(&format!(">{content}</{name}>")),
+            (true, None) => out.push_str("/>"),
+            (false, _) => out.push('>'),
+        }
+        out.push_str(raw.get(after..).unwrap_or_default());
+        return out;
     }
+}
+
+/// A `<settings>` section with `name` set to `value` (or removed for `None`), unless what it
+/// holds already `means` the same.
+fn with_setting(settings: &str, name: &str, value: Option<String>, means: impl Fn(Option<&str>) -> bool) -> String {
+    let current = tags(settings).first().and_then(|(_, a)| get(a, name).map(str::to_string));
+    if means(current.as_deref()) {
+        return settings.to_string();
+    }
+    rebuild_start_tag(
+        settings,
+        |attributes| {
+            let wanted = key(name);
+            match (attributes.iter().position(|(k, _)| key(k) == wanted), value) {
+                (Some(at), Some(value)) => {
+                    if let Some((_, slot)) = attributes.get_mut(at) {
+                        *slot = value;
+                    }
+                }
+                (Some(at), None) => {
+                    attributes.remove(at);
+                }
+                (None, Some(value)) => attributes.push((name.to_string(), value)),
+                (None, None) => {}
+            }
+        },
+        None,
+    )
+}
+
+/// A `<settings>` section with `revision` set to the active set.
+fn with_active_revision(settings: &str, active: Option<u32>) -> String {
+    with_setting(settings, "revision", active.map(|a| a.to_string()), |v| v.and_then(|r| r.trim().parse::<u32>().ok()) == active)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -919,13 +1011,14 @@ fn write_runs(runs: &[Run], element: Option<&Element>, out: &mut String) {
         return;
     }
     let mut at = 0u32;
+    let mut revisions = element.map(Element::revision_cursor);
     for run in printed {
         let chars: Vec<char> = run.text.chars().collect();
         let len = u32::try_from(chars.len()).unwrap_or(u32::MAX);
         let mut from = 0u32;
         loop {
             let here = at.saturating_add(from);
-            let to = element.and_then(|e| e.next_revision_edge(here)).map(|edge| edge.saturating_sub(at)).filter(|end| *end < len).unwrap_or(len);
+            let to = revisions.as_mut().and_then(|r| r.next_edge(here)).map(|edge| edge.saturating_sub(at)).filter(|end| *end < len).unwrap_or(len);
             out.push_str("      <text");
             if run.style.bold {
                 out.push_str(" bold=\"1\"");
@@ -936,11 +1029,11 @@ fn write_runs(runs: &[Run], element: Option<&Element>, out: &mut String) {
             if run.style.underline {
                 out.push_str(" underline=\"1\"");
             }
-            if let Some(revision) = element.and_then(|e| e.revision_at(here)) {
+            if let Some(revision) = revisions.as_mut().and_then(|r| r.set_at(here)) {
                 out.push_str(&format!(" revision=\"{revision}\""));
             }
             out.push('>');
-            let piece: String = chars.iter().skip(from as usize).take(to.saturating_sub(from) as usize).collect();
+            let piece: String = chars.get(from as usize..to as usize).unwrap_or_default().iter().collect();
             escape(&piece, out);
             out.push_str("</text>\n");
             from = to;
@@ -1144,7 +1237,7 @@ pub fn write(script: &Script) -> String {
                         let raw = match top_name(raw).as_str() {
                             "lists" if !revisions_same => {
                                 lists_written = true;
-                                with_revision_colors(raw, &script.revisions)
+                                with_revision_colors(raw, &script.revisions, spelling)
                             }
                             "settings" if !revisions_same => with_active_revision(raw, script.revisions.active),
                             _ => raw.to_string(),
@@ -1162,7 +1255,7 @@ pub fn write(script: &Script) -> String {
                 write_title_page(&script.title_page, spelling, &mut out);
             }
             if !revisions_same && !lists_written && !script.revisions.sets.is_empty() {
-                out.push_str(&format!("  <lists>{}</lists>\n", revision_colors(&script.revisions)));
+                out.push_str(&format!("  <lists>{}</lists>\n", revision_colors(&script.revisions, spelling)));
             }
         }
         None => {
@@ -1174,7 +1267,7 @@ pub fn write(script: &Script) -> String {
             write_paragraphs(script, Spelling::Snake, true, &mut out);
             write_title_page(&script.title_page, Spelling::Snake, &mut out);
             if !script.revisions.sets.is_empty() || !script.revisions.fdx_attributes.is_empty() {
-                out.push_str(&format!("  <lists>{}</lists>\n", revision_colors(&script.revisions)));
+                out.push_str(&format!("  <lists>{}</lists>\n", revision_colors(&script.revisions, Spelling::Snake)));
             }
         }
     }
