@@ -73,21 +73,66 @@ fn split_scene_number(text: &str) -> (String, Option<String>) {
     (trimmed.to_string(), None)
 }
 
-fn remove_boneyard(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut rest = text;
-    while let Some(start) = rest.find("/*") {
-        let Some(after) = rest.get(start + 2..) else { break };
-        let Some(end) = after.find("*/") else { break };
-        out.push_str(rest.get(..start).unwrap_or(""));
-        rest = after.get(end + 2..).unwrap_or("");
+/// The `/* … */` blocks of a source: byte ranges, each including its markers. An unclosed
+/// `/*` is not a block.
+fn boneyard_blocks(text: &str) -> Vec<(usize, usize)> {
+    let mut out = Vec::new();
+    let mut from = 0;
+    while let Some(start) = text.get(from..).and_then(|r| r.find("/*")).map(|s| s + from) {
+        let Some(end) = text.get(start + 2..).and_then(|r| r.find("*/")).map(|e| e + start + 4) else { break };
+        out.push((start, end));
+        from = end;
     }
-    out.push_str(rest);
     out
+}
+
+/// The source without its boneyard blocks: exactly what the parser reads, so a block never
+/// changes how the script around it parses.
+fn remove_boneyard(text: &str, blocks: &[(usize, usize)]) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut at = 0;
+    for &(start, end) in blocks {
+        out.push_str(text.get(at..start).unwrap_or(""));
+        at = end;
+    }
+    out.push_str(text.get(at..).unwrap_or(""));
+    out
+}
+
+/// Gives each block to the paragraph that follows it, in one pass: a block standing at the
+/// start of a line (only spaces before it) belongs with a paragraph starting on that line or
+/// later; one after text on its line, with the next paragraph to start below. Blocks after the
+/// last paragraph go to `boneyard_end`.
+fn attach_boneyard(script: &mut Script, starts: &[usize], stripped: &str, source: &str, blocks: &[(usize, usize)]) {
+    let mut removed = 0;
+    let (mut scanned, mut line, mut line_start) = (0, 0, 0);
+    for &(start, end) in blocks {
+        // Where the block stood in the text the parser read.
+        let at = start - removed;
+        removed += end - start;
+        for (offset, c) in stripped.get(scanned..at).unwrap_or("").char_indices() {
+            if c == '\n' {
+                line += 1;
+                line_start = scanned + offset + 1;
+            }
+        }
+        scanned = at;
+        let at_line_start = stripped.get(line_start..at).is_some_and(|before| before.trim().is_empty());
+        let index = starts.partition_point(|&s| if at_line_start { s < line } else { s <= line });
+        let block = source.get(start..end).unwrap_or("").to_string();
+        match script.elements.get_mut(index) {
+            Some(element) => element.boneyard.push(block),
+            None => script.boneyard_end.push(block),
+        }
+    }
 }
 
 struct Builder {
     elements: Vec<Element>,
+    /// The source line the paragraph being read starts on.
+    line: usize,
+    /// The line each element's paragraph starts on, for placing boneyard blocks.
+    starts: Vec<usize>,
 }
 
 impl Builder {
@@ -96,28 +141,50 @@ impl Builder {
             return Err(CoreError::TooManyElements);
         }
         self.elements.push(element);
+        self.starts.push(self.line);
         Ok(())
     }
 }
 
-/// Parse a Fountain document.
+/// Parse a Fountain document. Boneyard blocks are kept on the paragraphs they stand before
+/// ([`Element::boneyard`]) and parsed around exactly as if they were not there.
 pub fn parse(source: &str) -> Result<Script, CoreError> {
     if source.len() > MAX_INPUT_BYTES {
         return Err(CoreError::TooLarge);
     }
     let source = source.strip_prefix('\u{feff}').unwrap_or(source).replace("\r\n", "\n").replace('\r', "\n");
-    let source = remove_boneyard(&source);
+    let blocks = boneyard_blocks(&source);
+    let stripped = remove_boneyard(&source, &blocks);
+    let (mut script, starts) = parse_body(&stripped)?;
+    attach_boneyard(&mut script, &starts, &stripped, &source, &blocks);
+    // A literal `/*` in the text was written escaped, so it never pairs with a later block.
+    for element in &mut script.elements {
+        if element.text.contains("/\\*") {
+            element.text = element.text.replace("/\\*", "/*");
+        }
+    }
+    for field in &mut script.title_page.fields {
+        if field.value.contains("/\\*") {
+            field.value = field.value.replace("/\\*", "/*");
+        }
+    }
+    Ok(script)
+}
+
+/// Parse a normalized source with no boneyard: the script, and the line each element starts on.
+fn parse_body(source: &str) -> Result<(Script, Vec<usize>), CoreError> {
     let all_lines: Vec<&str> = source.split('\n').collect();
 
     let (title_page, body_start) = parse_title_page(&all_lines);
     let lines = all_lines.get(body_start..).unwrap_or(&[]);
-    let mut builder = Builder { elements: Vec::new() };
+    let mut builder = Builder { elements: Vec::new(), line: 0, starts: Vec::new() };
     let count = lines.len();
     let line_at = |index: usize| lines.get(index).copied().unwrap_or("");
     let blank_at = |index: usize| index >= count || is_blank(line_at(index));
 
     let mut i = 0;
     while i < count {
+        builder.line = body_start + i;
         let line = line_at(i);
         if is_blank(line) {
             i += 1;
@@ -184,7 +251,7 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
             i = push_action(&mut builder, lines, i, line)?;
         }
     }
-    Ok(Script { title_page, elements: builder.elements, ..Script::default() })
+    Ok((Script { title_page, elements: builder.elements, ..Script::default() }, builder.starts))
 }
 
 fn parse_title_page(lines: &[&str]) -> (TitlePage, usize) {
@@ -311,16 +378,17 @@ fn push_body_lines(out: &mut String, text: &str) {
 pub fn write(script: &Script) -> String {
     let mut out = String::new();
     for field in &script.title_page.fields {
+        let value = field.value.replace("/*", "/\\*");
         out.push_str(&field.key);
         out.push(':');
-        if field.value.contains('\n') {
-            for line in field.value.split('\n') {
+        if value.contains('\n') {
+            for line in value.split('\n') {
                 out.push_str("\n    ");
                 out.push_str(line.trim());
             }
-        } else if !field.value.is_empty() {
+        } else if !value.is_empty() {
             out.push(' ');
-            out.push_str(&field.value);
+            out.push_str(&value);
         }
         out.push('\n');
     }
@@ -339,7 +407,14 @@ pub fn write(script: &Script) -> String {
             out.push_str(if continues_block { "\n" } else { "\n\n" });
         }
         in_block = continues_block || element.kind == ElementKind::Character;
-        let text = element.text.as_str();
+        // Set-aside text goes back at the start of the paragraph it stood before, on the same
+        // line, so the paragraph reads exactly as it did.
+        for block in &element.boneyard {
+            out.push_str(block);
+        }
+        // A literal `/*` is written escaped, or it would pair with a later block's `*/`.
+        let escaped = element.text.replace("/*", "/\\*");
+        let text = escaped.as_str();
         match element.kind {
             ElementKind::SceneHeading => {
                 if !is_scene_heading(text) || text.trim_start().starts_with('.') {
@@ -396,6 +471,10 @@ pub fn write(script: &Script) -> String {
             }
             ElementKind::PageBreak => out.push_str("==="),
         }
+    }
+    for block in &script.boneyard_end {
+        out.push_str(if out.is_empty() { "" } else { "\n\n" });
+        out.push_str(block);
     }
     out.push('\n');
     out
