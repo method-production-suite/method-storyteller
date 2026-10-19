@@ -45,6 +45,8 @@ pub struct Session {
     last_edit: Option<EditKind>,
     paginated: Option<Paginated>,
     lengths: Option<Vec<SceneLength>>,
+    /// The writer's learned words (see [`crate::spell::Personal`]); the app fills them from its settings.
+    pub spelling: crate::spell::Personal,
 }
 
 impl Default for Session {
@@ -62,7 +64,8 @@ impl Session {
         Session {
             script,
             path: None,
-            format: FileFormat::Fountain,
+            // New scripts are Open Screenplay Format, the standard; Fountain is one choice away.
+            format: FileFormat::Osf,
             dirty: false,
             caret: Caret::default(),
             layout,
@@ -71,6 +74,7 @@ impl Session {
             last_edit: None,
             paginated: None,
             lengths: None,
+            spelling: crate::spell::Personal::default(),
         }
     }
 

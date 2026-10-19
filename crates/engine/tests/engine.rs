@@ -384,3 +384,55 @@ fn file_errors_carry_their_kind() {
     // Other commands' errors are not file errors.
     assert_eq!(registry.run("app.nothing", &mut session, &Map::new()).err().and_then(|e| e.file_problem()), None);
 }
+
+/// Spell check steps through misspellings with suggestions; Ignore, Learn and Change.
+#[test]
+fn spell_check_steps_ignores_learns_and_changes() {
+    let registry = Registry::new();
+    let script = "INT. HUT - DAY\n\nNora taps the glsas. The seismograf is still.\n\nNORA\nZorbly.\n";
+    let mut s = Session::new(storyteller_core::fountain::parse(script).unwrap());
+    let next = |s: &mut Session| run(&registry, s, "spell.next", json!({}))["value"].clone();
+    let first = next(&mut s);
+    assert_eq!(first["word"], "glsas");
+    assert_eq!(first["total"], 3);
+    assert!(first["suggestions"].as_array().unwrap().iter().any(|w| w == "glass"), "{first}");
+    // Change it, undoably.
+    run(&registry, &mut s, "spell.change", json!({ "index": 1, "start": 14, "word": "glsas", "replacement": "glass" }));
+    assert_eq!(s.script.elements[1].text, "Nora taps the glass. The seismograf is still.");
+    assert_eq!(next(&mut s)["word"], "seismograf");
+    // Ignore for the session; learn for good.
+    s.dirty = false;
+    run(&registry, &mut s, "spell.ignore", json!({ "word": "seismograf" }));
+    assert_eq!(s.script.spelling_ignored, ["seismograf"], "ignored words stay with the script");
+    assert!(s.dirty, "so the file has something new to save");
+    let learned = run(&registry, &mut s, "spell.learn", json!({ "word": "Zorbly" }));
+    assert_eq!(learned["value"]["learned"], "zorbly");
+    assert_eq!(next(&mut s)["total"], 0, "nothing left");
+    run(&registry, &mut s, "edit.undo", json!({}));
+    assert!(s.script.elements[1].text.contains("glsas"), "Change is one Undo");
+}
+
+/// Saving says what a format will not keep, and nothing when it keeps everything.
+#[test]
+fn save_warnings_name_what_a_format_drops() {
+    use storyteller_core::Element;
+    use storyteller_engine::files::{FileFormat, save_warnings, saved_message};
+    let mut s = storyteller_core::fountain::parse("# ACT ONE\n\nINT. A - DAY\n\nx\n").unwrap();
+    s.elements.push(Element::new(K::Shot, "CLOSE ON THE NEEDLE"));
+    s.elements.push(Element::new(K::Character, "NORA"));
+    s.elements.push(Element::new(K::Dialogue, "One."));
+    s.elements.push(Element::new(K::Dialogue, "Two."));
+    s.elements.push(Element::new(K::Dialogue, "Three."));
+    let fountain = save_warnings(&s, FileFormat::Fountain);
+    assert_eq!(fountain.len(), 2, "{fountain:?}");
+    assert!(fountain[0].starts_with("1 shot will read back as action"));
+    assert!(fountain[1].starts_with("1 speech in more than one paragraph"));
+    let osf = save_warnings(&s, FileFormat::Osf);
+    assert_eq!(osf.len(), 1);
+    assert!(osf[0].starts_with("1 section is kept for Method Storyteller"));
+    assert!(save_warnings(&s, FileFormat::Fdx).is_empty());
+    let message = saved_message("Saved", std::path::Path::new("a.fountain"), &s, FileFormat::Fountain);
+    assert!(message.ends_with("Save as Open Screenplay Format to keep them."), "{message}");
+    let plain = storyteller_core::fountain::parse("INT. A - DAY\n\nx\n").unwrap();
+    assert_eq!(saved_message("Saved", std::path::Path::new("a.osf"), &plain, FileFormat::Osf), "Saved a.osf");
+}

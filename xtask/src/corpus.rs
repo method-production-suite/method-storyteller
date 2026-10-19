@@ -9,7 +9,8 @@
 //! with every document section kept), then compares
 //! each scene's start page with the page Final Draft recorded in the file
 //! (`SceneProperties@Page`), each scene's length in eighths with the one it recorded
-//! (`SceneProperties@Length`), and the page count with the PDF's. Output is numbers only:
+//! (`SceneProperties@Length`), and the page count with the PDF's. It also counts the script notes
+//! that come back the same after `.fdx` to Open Screenplay Format to `.fdx`. Output is numbers only:
 //! anonymous file numbers, counts, percentages and page numbers.
 
 use std::path::{Path, PathBuf};
@@ -17,7 +18,7 @@ use std::process::Command;
 
 use storyteller_core::layout::Layout;
 use storyteller_core::model::ElementKind;
-use storyteller_core::{fdx, paginate};
+use storyteller_core::{Script, fdx, osf, paginate};
 
 /// Corpus results for one file.
 #[derive(Default)]
@@ -31,6 +32,24 @@ struct FileResult {
     round_trip: bool,
     /// Scene lengths compared with Final Draft's: (scenes, exact).
     lengths: (usize, usize),
+    /// Script notes: (read, the same after `.fdx` to OSF to `.fdx`).
+    notes: (usize, usize),
+}
+
+/// Every note with what it covers and the Final Draft attributes it is written with.
+fn notes(script: &Script) -> Vec<String> {
+    let reread = fdx::parse(&fdx::write(script)).unwrap_or_default();
+    reread
+        .elements
+        .iter()
+        .enumerate()
+        .flat_map(|(index, element)| {
+            element.notes.iter().map(move |n| {
+                let attributes = n.fdx.as_ref().map(|f| format!("{:?}", f.attributes)).unwrap_or_default();
+                format!("{index} {:?} {:?} {:?} {:?} {} {attributes}", n.text, n.range, n.color, n.author, n.unanchored)
+            })
+        })
+        .collect()
 }
 
 fn inside(path: &Path, root: &Path) -> bool {
@@ -84,6 +103,11 @@ fn measure(fdx_path: &Path, pdf: Option<&Path>) -> Result<FileResult, String> {
     let first = fdx::write(&script);
     let round_trip = fdx::parse(&first).is_ok_and(|again| fdx::write(&again) == first && again.fdx == script.fdx);
     let mut result = FileResult { round_trip, ..FileResult::default() };
+    let before = notes(&script);
+    if !before.is_empty() {
+        let after = osf::parse(&osf::write(&script)).map(|s| notes(&s)).unwrap_or_default();
+        result.notes = (before.len(), before.iter().zip(&after).filter(|(a, b)| a == b).count().min(after.len()));
+    }
 
     let paginated = paginate::paginate(&script, &Layout::for_script(&script));
     result.pages = paginated.page_count() + usize::from(paginated.title_page.is_some());
@@ -144,6 +168,7 @@ pub fn run(root: &Path) -> Result<(), String> {
         (0, 0, 0, 0, 0, 0, 0, 0);
     let mut max_drift = 0;
     let mut lengths = (0usize, 0usize);
+    let mut notes = (0usize, 0usize);
     for (n, (fdx_path, pdf)) in entries.iter().enumerate() {
         let n = n + 1;
         if inside(fdx_path, root) || pdf.as_deref().is_some_and(|p| inside(p, root)) {
@@ -159,6 +184,8 @@ pub fn run(root: &Path) -> Result<(), String> {
                 round_trips += usize::from(r.round_trip);
                 lengths.0 += r.lengths.0;
                 lengths.1 += r.lengths.1;
+                notes.0 += r.notes.0;
+                notes.1 += r.notes.1;
                 scenes += r.scenes;
                 exact += r.exact;
                 all_exact_files += usize::from(r.scenes > 0 && r.exact == r.scenes);
@@ -182,6 +209,7 @@ pub fn run(root: &Path) -> Result<(), String> {
             }
         }
     }
+    println!("notes: {} read, {} the same after .fdx to OSF to .fdx", notes.0, notes.1);
     println!(
         "corpus: {files} files, {failed} failed to import, {round_trips} round-trip identically; scenes exact {exact}/{scenes} ({}), files scene-exact {all_exact_files}, max drift {max_drift} pages; scene lengths exact {}/{} ({}); page count matches PDF {page_matches}/{with_pdf}",
         percent(exact, scenes),

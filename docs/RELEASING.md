@@ -68,10 +68,10 @@ timestamp instead, ready to notarize; `--no-build` packages the binary already i
 
 ### The icon
 
-The icon is provisional, like the brand: `packaging/icons/mark.svg` is a copy of the mark in
-the website's `brand/storyteller` folder. When the brand changes, copy the new mark there
-and run `packaging/icons/make-icons.sh` on a Mac; it remakes `icon.icns`, `icon.ico` and the
-PNGs. Commit them together.
+The app icon and the document icons are drawn from the mark by `scripts/make-icons.py`
+(docs/BRAND.md says how). After the mark changes, run `python3 scripts/make-brand.py`, then
+`python3 scripts/make-icons.py` on a Mac; it remakes everything in `packaging/icons/`.
+Commit them together.
 
 ## Cutting a release
 
@@ -113,6 +113,11 @@ draft and refuses a release that is already published.
 - Where you can, install the Windows setup and the `.deb` or AppImage and do the same; the
   README's platform table says which were tested.
 - Check the four installer names are version-free and `SHA256SUMS.txt` lists them.
+- Check the updater files are there: `Method-Storyteller_<version>_aarch64.app.tar.gz`, its
+  `.sig`, and `latest.json` naming this version with a `darwin-aarch64` entry. The draft job
+  already refused a signature that does not check against the app's public key. Once the
+  draft is published, `releases/latest/download/latest.json` serves it and installed apps on
+  Apple silicon find the update within six hours (or at once with Help > Check for Updates).
 - Then publish. Afterwards, the shared checklist's "After publishing" steps (the website,
   live download links, the announcement), and the README's platform table where a status
   changed.
@@ -131,6 +136,8 @@ gh secret set KEYCHAIN_PASSWORD -R method-production-suite/method-storyteller
 gh secret set AC_API_KEY_ID -R method-production-suite/method-storyteller
 gh secret set AC_API_ISSUER_ID -R method-production-suite/method-storyteller
 gh secret set AC_API_KEY_P8_BASE64 -R method-production-suite/method-storyteller
+gh secret set TAURI_SIGNING_PRIVATE_KEY -R method-production-suite/method-storyteller
+gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD -R method-production-suite/method-storyteller
 ```
 
 | Secret | Value | Turns on |
@@ -141,6 +148,8 @@ gh secret set AC_API_KEY_P8_BASE64 -R method-production-suite/method-storyteller
 | `AC_API_KEY_ID` | the App Store Connect API key's ID | notarizing and stapling (with the next two, and signing) |
 | `AC_API_ISSUER_ID` | that key's Issuer ID | |
 | `AC_API_KEY_P8_BASE64` | the key's `.p8` file, base64-encoded | |
+| `TAURI_SIGNING_PRIVATE_KEY` | the minisign update key, as the base64 of its secret key box ("Method Storyteller - Update signing key" in 1Password; key ID C4D0E2230F7A95FB) | the updater archive, its `.sig` and `latest.json` (with the next one, and a notarized Mac build) |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | that key's password | |
 | `WINDOWS_CERTIFICATE` | a code signing `.pfx`, base64-encoded (none exists yet) | signing the Windows installer (with the next one) |
 | `WINDOWS_CERTIFICATE_PASSWORD` | that `.pfx`'s password | |
 
@@ -151,17 +160,19 @@ needs System Settings > Privacy & Security > Open Anyway. With the Windows secre
 app and the installer are signed; without them both are unsigned. The job log says
 what was skipped.
 
-Updates: Storyteller has no updater yet, so there is no updater key and no `latest.json`.
-The shared `method-update` crate (SUITE-STANDARDS.md section 1) brings both; its secrets
-will be added here when it lands.
+Updates: the update key's names are the suite's (Method Budget's), though Storyteller does not
+use Tauri; `cargo xtask updater-archive` signs with the `minisign` crate the suite updater is
+tested against. The public half is `PUBKEY` in `crates/app/src/updates.rs`; a new key means a
+new `PUBKEY` in a release first, or installed apps refuse the next update. Without the key,
+or without notarizing, the release has no updater files and installed apps do not see it.
 
 ## The release workflow
 
 | Job | Permissions | What it does |
 |---|---|---|
 | `check` | contents: read | the tag is `v` plus the version in `Cargo.toml`, points at a commit on `main`, and `docs/releases/<version>.md` is written |
-| `build` (macOS arm64, Windows x64, Linux x64) | contents: read | compiles everything first, before any secret reaches the runner; then packages each platform with `--no-build`; on macOS signs, notarizes, staples and verifies (the binary must be arm64 only), each only when its secrets are there; on Windows signs the app and the installer only with a certificate |
-| `draft` | contents: write (the only job with it) | checks all four installers are there, writes `SHA256SUMS.txt`, and runs `gh release create --draft` with the notes |
+| `build` (macOS arm64, Windows x64, Linux x64) | contents: read | compiles everything first, before any secret reaches the runner; then packages each platform with `--no-build`; on macOS signs, notarizes, staples and verifies (the binary must be arm64 only), each only when its secrets are there; then, with the update key, packs and signs the updater archive; on Windows signs the app and the installer only with a certificate |
+| `draft` | contents: write (the only job with it) | checks all four installers are there, writes `latest.json` after checking the archive's signature against the app's public key, writes `SHA256SUMS.txt`, and runs `gh release create --draft` with the notes |
 
 Only first-party actions are used, each pinned to the suite's full commit SHA. Each secret
 is given only to the steps that use it. The two AppImage tools (appimagetool and its

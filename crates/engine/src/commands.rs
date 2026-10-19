@@ -614,7 +614,7 @@ fn all_commands() -> Vec<Command> {
                 files::save(&s.script, &path, s.format, &s.layout)?;
                 s.dirty = false;
                 s.break_typing();
-                Ok(Outcome::message(format!("Saved {}", path.display())))
+                Ok(Outcome::message(files::saved_message("Saved", &path, &s.script, s.format)))
             },
         },
         Command {
@@ -635,7 +635,7 @@ fn all_commands() -> Vec<Command> {
                 s.format = format;
                 s.dirty = false;
                 s.break_typing();
-                Ok(Outcome::message(format!("Saved {}", path.display())))
+                Ok(Outcome::message(files::saved_message("Saved", &path, &s.script, format)))
             },
         },
         Command {
@@ -667,7 +667,7 @@ fn all_commands() -> Vec<Command> {
                 let path = path(p, "path")?;
                 let format = if FileFormat::from_path(&path) == FileFormat::FadeIn { FileFormat::FadeIn } else { FileFormat::Osf };
                 files::save(&s.script, &path, format, &s.layout)?;
-                Ok(Outcome::message(format!("Exported {}", path.display())))
+                Ok(Outcome::message(files::saved_message("Exported", &path, &s.script, format)))
             },
         },
         Command {
@@ -935,6 +935,93 @@ fn all_commands() -> Vec<Command> {
             run: |s, _| Ok(Outcome::value(json!(character_names(&s.script)))),
         },
         Command {
+            id: "spell.next",
+            label: "Next Misspelling",
+            menu: "",
+            shortcut: None,
+            params: const { &[param("backwards", Bool, false, "Find the previous one instead"), INDEX, OFFSET] },
+            enabled: always,
+            run: |s, p| {
+                let misses = crate::spell::misspelled(&s.script, &s.spelling);
+                let element = opt_index(p, "index")?.unwrap_or(s.caret.element);
+                let offset = opt_index(p, "offset")?.unwrap_or(s.caret.offset);
+                let backwards = opt_bool(p, "backwards")?.unwrap_or(false);
+                let hits: Vec<find::Hit> = misses.iter().map(|m| find::Hit { element: m.element, start: m.start, end: m.end }).collect();
+                let Some((number, hit)) = find::find_next(&hits, element, offset, backwards) else {
+                    return Ok(Outcome { message: Some("No misspellings".into()), value: json!({ "total": 0 }) });
+                };
+                let word = misses.get(number).map(|m| m.word.clone()).unwrap_or_default();
+                s.caret = Caret { element: hit.element, offset: if backwards { hit.start } else { hit.end } };
+                s.break_typing();
+                Ok(Outcome::value(json!({
+                    "element": hit.element, "start": hit.start, "end": hit.end, "word": word,
+                    "suggestions": crate::spell::suggestions(&word, 6), "number": number + 1, "total": hits.len(),
+                })))
+            },
+        },
+        Command {
+            id: "spell.ignore",
+            label: "Ignore Spelling",
+            menu: "",
+            shortcut: None,
+            params: const { &[param("word", String, true, "The word to accept in this script (kept with the script)")] },
+            enabled: always,
+            run: |s, p| {
+                let word = string(p, "word")?;
+                let lower = word.to_lowercase();
+                // Kept with the script, so it stays ignored when the file is saved and reopened.
+                if !s.script.spelling_ignored.contains(&lower) {
+                    s.script.spelling_ignored.push(lower);
+                    s.dirty = true;
+                }
+                Ok(Outcome::message(format!("Ignoring “{word}” in this script")))
+            },
+        },
+        Command {
+            id: "spell.learn",
+            label: "Learn Spelling",
+            menu: "",
+            shortcut: None,
+            params: const { &[param("word", String, true, "The word to add to the writer's dictionary")] },
+            enabled: always,
+            run: |s, p| {
+                let word = string(p, "word")?;
+                s.spelling.learned.insert(word.to_lowercase());
+                Ok(Outcome { message: Some(format!("Added “{word}” to your dictionary")), value: json!({ "learned": word.to_lowercase() }) })
+            },
+        },
+        Command {
+            id: "spell.change",
+            label: "Change Spelling",
+            menu: "",
+            shortcut: None,
+            params: const {
+                &[
+                    INDEX,
+                    param("start", Integer, true, "Byte offset where the word starts"),
+                    param("word", String, true, "The word as it is now (nothing changes if the text there differs)"),
+                    param("replacement", String, true, "The new spelling"),
+                ]
+            },
+            enabled: always,
+            run: |s, p| {
+                let index = element_index(s, p)?;
+                let start = opt_index(p, "start")?.ok_or(CommandError::Missing("start"))?;
+                let word = string(p, "word")?;
+                let replacement = string(p, "replacement")?;
+                let text = s.script.elements.get(index).map(|e| e.text.clone()).unwrap_or_default();
+                let end = start.checked_add(word.len()).ok_or(CommandError::Invalid { name: "start", reason: "out of range".into() })?;
+                if text.get(start..end) != Some(word.as_str()) {
+                    return Ok(Outcome { message: Some("The word has changed since".into()), value: json!({ "changed": false }) });
+                }
+                let new_text = format!("{}{replacement}{}", text.get(..start).unwrap_or(""), text.get(end..).unwrap_or(""));
+                set_text(s, index, &new_text, false)?;
+                let caret = start.saturating_add(replacement.len());
+                s.caret = Caret { element: index, offset: caret.min(s.script.elements.get(index).map_or(0, |e| e.text.len())) };
+                Ok(Outcome::value(json!({ "changed": true })))
+            },
+        },
+        Command {
             id: "element.set_text",
             label: "Set Text",
             menu: "",
@@ -1177,5 +1264,5 @@ fn all_commands() -> Vec<Command> {
 fn export(session: &mut Session, params: &Params, format: FileFormat) -> Result<Outcome, CommandError> {
     let path = path(params, "path")?;
     files::save(&session.script, &path, format, &session.layout)?;
-    Ok(Outcome::message(format!("Exported {}", path.display())))
+    Ok(Outcome::message(files::saved_message("Exported", &path, &session.script, format)))
 }
