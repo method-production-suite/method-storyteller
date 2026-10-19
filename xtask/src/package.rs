@@ -434,8 +434,9 @@ mod tests {
             assert!(plist.contains(&format!("<string>document-{kind}</string>")), "{kind} names its icon");
             assert!(packaging(&format!("icons/document-{kind}.icns")).is_file(), "{kind}'s icon is in packaging/icons");
         }
-        // Each declared type is an Editor; .osf, the standard, is the one the app owns.
+        // Each declared type is an Editor at Default rank: open formats, so the app claims none.
         assert_eq!(plist.matches("<string>Editor</string>").count(), DOCUMENT_KINDS.len());
-        assert_eq!(plist.matches("<string>Owner</string>").count(), 1);
+        assert_eq!(plist.matches("<string>Default</string>").count(), DOCUMENT_KINDS.len());
+        assert!(!plist.contains("<string>Owner</string>"));
     }
 }

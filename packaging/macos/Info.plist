@@ -6,6 +6,8 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
+	<!-- Matched by extension, not by type identifier, so the app is offered for these files
+	     whichever app's declaration of their type the system uses. -->
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
@@ -14,16 +16,12 @@
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
-			<string>Owner</string>
+			<string>Default</string>
 			<key>CFBundleTypeIconFile</key>
 			<string>document-osf</string>
 			<key>CFBundleTypeExtensions</key>
 			<array>
 				<string>osf</string>
-			</array>
-			<key>LSItemContentTypes</key>
-			<array>
-				<string>com.methodstoryteller.osf</string>
 			</array>
 		</dict>
 		<dict>
@@ -39,10 +37,6 @@
 			<array>
 				<string>fountain</string>
 			</array>
-			<key>LSItemContentTypes</key>
-			<array>
-				<string>com.methodstoryteller.fountain</string>
-			</array>
 		</dict>
 		<dict>
 			<key>CFBundleTypeName</key>
@@ -56,10 +50,6 @@
 			<key>CFBundleTypeExtensions</key>
 			<array>
 				<string>fdx</string>
-			</array>
-			<key>LSItemContentTypes</key>
-			<array>
-				<string>com.methodstoryteller.fdx</string>
 			</array>
 		</dict>
 	</array>
