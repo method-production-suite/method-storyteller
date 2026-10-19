@@ -24,8 +24,10 @@ says otherwise.
    Fountain plus a small sidecar file; a package format of our own. **Recommend: OSF with
    extensions**, offered when a writer first locks pages or turns on revision mode, with
    Fountain staying the drafting default. Needed before M5.
-2. **Default working format for new scripts.** **Built on the recommendation: Fountain**, with
-   Open Screenplay Format one menu choice away (File > Save New Scripts as…).
+2. **Default working format for new scripts.** Built today: Fountain, with Open Screenplay
+   Format one menu choice away (File > Save New Scripts as…). **Reopened (owner, 2026-10-18):**
+   OSF may suit better for what it can hold. A side-by-side study is coming as
+   `docs/research/osf-vs-fountain.md`; the pick it ends with lands here.
 3. **Tab after text in a character cue.** Final Draft starts a parenthetical by default, with an
    option to open the extension list. **Built on the recommendation: parenthetical**; the
    extension option comes with stored SmartType lists. To confirm in the Final Draft 11 session.
@@ -42,6 +44,20 @@ says otherwise.
    other languages as downloadable dictionaries later; ignore lists kept in the document (an
    `.fdx` already carries them). Reversible; built on this unless the owner says otherwise.
 
+7. **Script notes in Fountain.** Fountain has `[[notes]]` inline; they cannot carry a colour,
+   an author or a range. Options: keep Fountain notes as plain `[[…]]` and keep full notes only in
+   OSF and `.fdx`; or add a `method_` convention inside the note text. **Recommend: plain `[[…]]`
+   in Fountain**, full notes in OSF and `.fdx`, and a one-line warning when saving notes with
+   colours to Fountain. Changes what a Fountain file holds, so it waits for the owner.
+8. **The title page.** `.fdx` stores the title page as free layout (aligned paragraphs, tab
+   stops); Fountain and the app use fields. Options: keep fields and lay them out the industry
+   way; or add a free-layout title page editor. **Recommend: fields for V1**, an imported free
+   layout kept and printed as it came, a layout editor after V1. Changes how writers work, so it
+   waits for the owner.
+9. **Copy and paste between apps.** Inside Storyteller a copy keeps element types. **Recommend:
+   also put Fountain text on the clipboard**, so a paste into any text editor or another
+   screenwriting app keeps the screenplay's shape. Reversible; built on this.
+
 ### Tests that need the owner's hands
 
 - **The writing feel (M3).** Write a few pages from scratch: Enter, Tab, the element picker,
@@ -57,13 +73,16 @@ says otherwise.
   presets), any break threshold the PDFs leave ambiguous, the undocumented Tab and Shift-Tab
   keys, revision output details, and the outline elements of older versions. Prepared files
   and a click list come before the session.
+- **The design pass (D).** Look at the offscreen pictures of the icon, the editor and every panel
+  in light and dark, and say what feels off. Nothing needs the app open on your screen.
 - **Private corpus.** New FDX+PDF pairs straight out of Final Draft (same day, same draft) widen
   the ground truth. The harness never prints script text; the files stay on one machine.
 
 ### Release go-aheads
 
-- **First release (v0.2.0)**, once the release workflow lands: the owner confirms the signing
-  and notarization secrets, checks the draft `.dmg`, and publishes. Then the README platform
+- **First release (v0.2.0)**, once the release workflow publishes the updater files: the signing,
+  notarization and update keys are in place (2026-10-18); the owner checks the draft `.dmg` and
+  `latest.json`, and publishes. Then the README platform
   table and the website's status change.
 
 ---
@@ -108,15 +127,42 @@ says otherwise.
 6. **Pictures** [have] M. A capture command retakes every README picture from an invented
    Field Station script, 1280×800, light and dark.
 
-### V1 milestones
+### V1 milestones, worked continuously
+
+One small PR per item, each to MReview, the next item started without waiting for the merge.
+Items that touch separate files run side by side in their own sessions; items marked *owner*
+wait for a decision above.
+
 7. **M4, notes and navigation** [partial] M. Done: scene lengths in the navigator, Go To (page,
-   scene), find and replace, rename a character. Still to do: spell check (decision 6), script
-   notes (range, colour, author), bookmarks for Go To, element-preserving copy and paste.
-8. **M5, production I** L. Scene numbering with A-suffix inserts, omit and unomit, revision
-   sets (name, mark, colour), revision mode and marks, revised-pages header. Needs decision 1.
-9. **M6, production II** L. Lock pages and A-pages, revised-pages-only PDF, scene, character,
-   location and cast reports with CSV, the structured export for Method Scheduling.
-10. **M7, release** M. The Final Draft 11 session, then V1.0.
+   scene), find and replace, rename a character. Next, in order: spell check (decision 6, waits
+   on the dictionary's licence check), element-preserving copy and paste (decision 9), script
+   notes on a line or a range with colour and author in all three `.fdx` generations and OSF
+   (decision 7 for Fountain), scene titles, summaries and colours, drag to reorder scenes in
+   the navigator (one Undo), bookmarks for Go To, the character table, show and hide outline
+   paragraphs.
+8. **M5, production I** L. Full scene numbering (A-suffix inserts, prefix schemes, left and
+   right), omit and unomit, revision sets (name, mark, colour), revision mode, mark and clear,
+   deleted-text markers, revisions drawn in the editor and the PDF, the revised-pages header,
+   revised-pages-only and range PDFs, clean copies. Needs decision 1.
+9. **M6, production II and reports** L. Locked pages as imported, then lock pages, A-pages, lock
+   and unlock; scene, location, character and cast reports with CSV; plain-text export; the
+   structured export Method Schedule reads.
+10. **D, the design pass** M (new, owner 2026-10-18). Matched to the family (Method Budget's and
+    Method Schedule's BRAND.md), every step pictured offscreen in light and dark:
+    - the final mark and wordmark (replacing the provisional ones in docs/brand and site/);
+    - the app icon at every macOS size, plus Windows and Linux, and a document icon for
+      `.fountain`, `.osf` and `.fdx`;
+    - the type scale, spacing and colour of the editor, the navigator, the status bar, the find
+      bar, the dialogs and the Help windows, as tokens in theme.rs that BRAND.md lists;
+    - dark mode checked surface by surface, contrast measured as in BRAND.md;
+    - empty states (no script, no scenes, nothing found) and error states (a file that will not
+      open, a failed save, a failed update) written in the family voice.
+    Runs beside M4 to M6: it touches theme, icons and copy, not the engine.
+11. **M7, release** M. The Final Draft 11 session (the eight prepared checks in one sitting,
+    each answer a committed golden test), the fixes it finds, then V1.0.
+
+**Parallel tracks while M4 runs:** the release workflow's updater files (`latest.json` and the
+signed `.app.tar.gz`), the OSF and Fountain study, and the design pass. Each is its own PR.
 
 ### Smaller items
 - **Page view** [partial] S. A speech split across pages should continue on the next sheet
