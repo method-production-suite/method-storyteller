@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 use serde_json::{Map, Value, json};
-use storyteller_core::{Element, ElementKind, Script, autocomplete};
+use storyteller_core::{Element, ElementKind, Script, autocomplete, inline};
 
 use crate::files::{self, FileFormat};
 use crate::find;
@@ -322,7 +322,7 @@ pub fn set_text(session: &mut Session, index: usize, text: &str, typing: bool) -
     let becomes_heading = typing && element.kind == ElementKind::Action && flow::is_heading_start(&text);
     session.checkpoint(if typing { EditKind::Typing(index) } else { EditKind::Other });
     if let Some(element) = session.script.elements.get_mut(index) {
-        element.text = text;
+        element.set_text(text);
     }
     if becomes_heading {
         // Its own undo step, so one Undo turns it back into the action just typed.
@@ -347,7 +347,7 @@ fn set_kind(session: &mut Session, index: usize, to: ElementKind) -> Result<(), 
     session.checkpoint(EditKind::Other);
     if let Some(element) = session.script.elements.get_mut(index) {
         element.kind = to;
-        element.text = text;
+        element.set_text(text);
         element.normalize();
     }
     if session.caret.element == index {
@@ -402,11 +402,16 @@ pub fn enter(session: &mut Session, index: usize, offset: usize) -> Result<Enter
         head.push(')');
         tail.clear();
     }
-    if let Some(current) = session.script.elements.get_mut(index) {
-        current.text = head.trim_end().to_string();
-    }
     let next_kind = rule.enter;
     let (mut fresh, mut caret) = new_element(next_kind);
+    if let Some(current) = session.script.elements.get_mut(index) {
+        // Revised text and notes after the caret go with the text to the new paragraph.
+        // The new paragraph starts after the spaces Enter drops.
+        let dropped = element.text.get(offset..).unwrap_or("").chars().take_while(|c| c.is_whitespace()).count();
+        let at = u32::try_from(inline::plain(element.text.get(..offset).unwrap_or("")).chars().count() + dropped).unwrap_or(u32::MAX);
+        current.split_anchors(at, &mut fresh);
+        current.set_text(head.trim_end().to_string());
+    }
     if !tail.is_empty() {
         let (text, _) = flow::convert_text(&tail, element.kind, next_kind);
         fresh.text = text;
@@ -437,7 +442,7 @@ pub fn tab(session: &mut Session, index: usize) -> Result<(), CommandError> {
         set_kind(session, index, rule.tab_empty)?;
         let (fresh, caret) = new_element(rule.tab_empty);
         if let Some(element) = session.script.elements.get_mut(index) {
-            element.text = fresh.text;
+            element.set_text(fresh.text);
         }
         session.caret = Caret { element: index, offset: caret };
         return Ok(());
@@ -454,7 +459,7 @@ pub fn element_shortcut(session: &mut Session, index: usize, kind: ElementKind) 
         set_kind(session, index, kind)?;
         if kind == ElementKind::Parenthetical && session.element(index).is_some_and(|e| e.text.trim().is_empty()) {
             if let Some(element) = session.script.elements.get_mut(index) {
-                element.text = "()".into();
+                element.set_text("()");
             }
             session.caret = Caret { element: index, offset: 1 };
         }
@@ -469,7 +474,7 @@ pub fn merge_previous(session: &mut Session, index: usize) -> Result<bool, Comma
         return Ok(false);
     }
     session.checkpoint(EditKind::Other);
-    let current = session.script.elements.remove(index);
+    let mut current = session.script.elements.remove(index);
     let previous_index = index - 1;
     let Some(previous) = session.script.elements.get_mut(previous_index) else { return Ok(false) };
     if previous.kind == ElementKind::PageBreak {
@@ -478,7 +483,7 @@ pub fn merge_previous(session: &mut Session, index: usize) -> Result<bool, Comma
         session.caret = Caret { element: previous_index, offset: 0 };
         return Ok(true);
     }
-    let mut extra = current.text;
+    let mut extra = std::mem::take(&mut current.text);
     if previous.kind == ElementKind::Parenthetical || current.kind == ElementKind::Parenthetical {
         extra = extra.trim_matches(['(', ')']).to_string();
     }
@@ -488,8 +493,12 @@ pub fn merge_previous(session: &mut Session, index: usize) -> Result<bool, Comma
     if previous.kind.is_caps() {
         extra = extra.to_uppercase();
     }
-    text.insert_str(floor_char_boundary(&text, at), &extra);
-    previous.text = if previous.kind.is_single_line() { text.replace('\n', " ") } else { text };
+    let at = floor_char_boundary(&text, at);
+    text.insert_str(at, &extra);
+    previous.set_text(if previous.kind.is_single_line() { text.replace('\n', " ") } else { text });
+    // The joined paragraph's revised text and notes come along, where its text now sits.
+    let joined_at = u32::try_from(inline::plain(previous.text.get(..at).unwrap_or_default()).chars().count()).unwrap_or(u32::MAX);
+    previous.absorb_anchors(&mut current, joined_at);
     session.caret = Caret { element: previous_index, offset: at };
     Ok(true)
 }
@@ -818,7 +827,7 @@ fn all_commands() -> Vec<Command> {
                 s.checkpoint(EditKind::Other);
                 for (index, text) in changed {
                     if let Some(element) = s.script.elements.get_mut(index) {
-                        element.text = text;
+                        element.set_text(text);
                     }
                 }
                 s.clamp_caret();
@@ -878,7 +887,7 @@ fn all_commands() -> Vec<Command> {
                         let name_len = element.character_name().len();
                         let start = element.text.len() - element.text.trim_start().len();
                         let rest = element.text.get(start + name_len..).unwrap_or("").to_string();
-                        element.text = format!("{new_name}{rest}");
+                        element.set_text(format!("{new_name}{rest}"));
                         cues += 1;
                     } else if everywhere && element.kind != ElementKind::Character {
                         // Names in prose are capitalised, so `will` is not WILL and `may` is not MAY.
@@ -886,14 +895,16 @@ fn all_commands() -> Vec<Command> {
                             .into_iter()
                             .filter(|&(start, _)| element.text.get(start..).and_then(|t| t.chars().next()).is_some_and(char::is_uppercase))
                             .collect();
+                        let mut text = element.text.clone();
                         for &(start, end) in hits.iter().rev() {
-                            let found = element.text.get(start..end).unwrap_or("");
+                            let found = text.get(start..end).unwrap_or("");
                             let name = name_like(found, &to);
-                            element.text.replace_range(start..end, &name);
+                            text.replace_range(start..end, &name);
                         }
                         if element.kind.is_caps() {
-                            element.text = element.text.to_uppercase();
+                            text = text.to_uppercase();
                         }
+                        element.set_text(text);
                         mentions += hits.len();
                     }
                 }

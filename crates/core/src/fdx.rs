@@ -7,7 +7,9 @@
 //! Everything we do not model is kept and written back: other top-level sections (element
 //! settings, page layout, revisions, tags …) verbatim in [`FdxDocument`], and each paragraph's
 //! own type name, extra attributes and non-text children (scene properties, notes, omitted
-//! scenes) in [`FdxParagraph`]. Per-run attributes such as revision ids are not kept yet.
+//! scenes) in [`FdxParagraph`]. A run's `RevisionID` becomes the paragraph's revised spans and the
+//! `Revisions` section the script's revision sets; other run attributes (font, size, colour) are
+//! not kept yet.
 //!
 //! Script notes come in three forms (docs/research/v1-notes/fdx-format.md): a `ScriptNote` inside
 //! its paragraph among the text runs, the top-level `ScriptNotes` list placed by `Range`
@@ -20,7 +22,10 @@ use quick_xml::events::{BytesRef, BytesStart, Event};
 
 use crate::inline::{self, Run, Style};
 use crate::layout::{Align, ElementStyle, Layout, chars_per_line};
-use crate::model::{Element, ElementKind, FdxDocument, FdxNote, FdxNoteForm, FdxParagraph, FdxSection, Script, ScriptNote, TitleField, TitlePage};
+use crate::model::{
+    Element, ElementKind, FdxDocument, FdxNote, FdxNoteForm, FdxParagraph, FdxSection, Revised, RevisionSet, Revisions, Script, ScriptNote,
+    TitleField, TitlePage, mark_revised,
+};
 use crate::paginate;
 use crate::{CoreError, MAX_ELEMENTS, MAX_INPUT_BYTES};
 
@@ -132,20 +137,24 @@ fn write_text_runs(markup: &str, indent: &str, out: &mut String) {
     }
 }
 
-fn write_run(text: &str, style: Style, indent: &str, out: &mut String) {
+fn write_run(text: &str, style: Style, revision: Option<u32>, indent: &str, out: &mut String) {
     out.push_str(indent);
-    let style = style_attr(style);
-    if style.is_empty() {
-        out.push_str("<Text>");
-    } else {
-        out.push_str(&format!("<Text Style=\"{style}\">"));
+    out.push_str("<Text");
+    if let Some(revision) = revision {
+        out.push_str(&format!(" RevisionID=\"{revision}\""));
     }
+    let style = style_attr(style);
+    if !style.is_empty() {
+        out.push_str(&format!(" Style=\"{style}\""));
+    }
+    out.push('>');
     escape(text, out);
     out.push_str("</Text>\n");
 }
 
 /// A paragraph's text runs with its notes among them: a plain `[[note]]` where it sits in the
-/// text, a script note kept inside the paragraph at the start of its range.
+/// text, a script note kept inside the paragraph at the start of its range. Runs split where
+/// revised text starts and ends, and revised runs carry their set's `RevisionID`.
 fn write_body(element: &Element, indent: &str, out: &mut String) {
     let mut notes: Vec<(u32, &ScriptNote)> =
         element.notes.iter().filter(|n| note_form(n) == FdxNoteForm::Inline).map(|n| (n.range.map_or(0, |r| r.0), n)).collect();
@@ -153,6 +162,7 @@ fn write_body(element: &Element, indent: &str, out: &mut String) {
     let mut pending = notes.into_iter().peekable();
     let mut at: u32 = 0;
     let mut wrote_text = false;
+    let mut revisions = element.revision_cursor();
     for run in inline::parse(&element.text) {
         if run.note {
             out.push_str(indent);
@@ -169,9 +179,11 @@ fn write_body(element: &Element, indent: &str, out: &mut String) {
                 out.push_str(&inline_note_xml(note));
                 out.push('\n');
             }
-            let to = pending.peek().map(|(pos, _)| pos.saturating_sub(at)).filter(|end| *end < len).unwrap_or(len);
-            let piece: String = chars.iter().skip(from as usize).take(to.saturating_sub(from) as usize).collect();
-            write_run(&piece, run.style, indent, out);
+            let here = at.saturating_add(from);
+            let edge = [pending.peek().map(|(pos, _)| *pos), revisions.next_edge(here)].into_iter().flatten().min();
+            let to = edge.map(|edge| edge.saturating_sub(at)).filter(|end| *end < len).unwrap_or(len);
+            let piece: String = chars.get(from as usize..to as usize).unwrap_or_default().iter().collect();
+            write_run(&piece, run.style, revisions.set_at(here), indent, out);
             wrote_text = true;
             from = to;
             if from >= len {
@@ -208,7 +220,7 @@ fn write_attr(key: &str, value: &str, out: &mut String) {
 }
 
 /// `tag` (a start tag such as `<SceneProperties Length="1" Page="3"/>`) with `name` set to `value`.
-fn set_tag_attr(tag: &str, name: &str, value: &str) -> String {
+pub(crate) fn set_tag_attr(tag: &str, name: &str, value: &str) -> String {
     let key = format!(" {name}=\"");
     if let Some(at) = tag.find(&key) {
         let start = at + key.len();
@@ -348,7 +360,7 @@ pub fn write_with_layout(script: &Script, layout: &Layout) -> String {
     let ranged_same =
         ranged.len() == read_ranged.len() && ranged.iter().zip(read_ranged).all(|((s, e, n), (rs, re, rn))| s == rs && e == re && *n == rn);
     let unanchored_same = unanchored.len() == read_unanchored.len() && unanchored.iter().zip(read_unanchored).all(|(n, r)| *n == r);
-    let (mut ranged_written, mut unanchored_written) = (false, false);
+    let (mut ranged_written, mut unanchored_written, mut revisions_written) = (false, false, false);
     let mut title_written = false;
     for section in sections {
         match section {
@@ -361,6 +373,16 @@ pub fn write_with_layout(script: &Script, layout: &Layout) -> String {
                     write_note_list("ScriptNotes", ranged.iter().map(|(s, e, n)| ranged_note_xml(n, *s, *e)), &mut out);
                 }
                 ranged_written = true;
+            }
+            FdxSection::Raw(xml) if section_is(xml, "Revisions") && !revisions_written => {
+                if script.fdx.as_ref().and_then(|d| d.revisions.as_ref()) == Some(&script.revisions) {
+                    out.push_str("  ");
+                    out.push_str(xml);
+                    out.push('\n');
+                } else {
+                    write_revisions(&script.revisions, &mut out);
+                }
+                revisions_written = true;
             }
             FdxSection::Raw(xml) if section_is(xml, "UnanchoredScriptNotes") => {
                 if unanchored_same {
@@ -393,6 +415,9 @@ pub fn write_with_layout(script: &Script, layout: &Layout) -> String {
     }
     if !title_written {
         write_title_page(&script.title_page, &mut out);
+    }
+    if !revisions_written && !script.revisions.is_empty() {
+        write_revisions(&script.revisions, &mut out);
     }
     if !ranged_written && !ranged.is_empty() {
         write_note_list("ScriptNotes", ranged.iter().map(|(s, e, n)| ranged_note_xml(n, *s, *e)), &mut out);
@@ -451,6 +476,9 @@ struct ParagraphState {
     children: String,
     runs: Vec<Run>,
     notes: Vec<ScriptNote>,
+    revised: Vec<Revised>,
+    /// Characters of printed text read so far.
+    chars: u32,
     has_text: bool,
     /// The paragraph wraps a dual-dialogue block; it is not an element itself.
     wraps_dual: bool,
@@ -459,8 +487,7 @@ struct ParagraphState {
 impl ParagraphState {
     /// Characters of printed text read so far.
     fn printed_chars(&self) -> u32 {
-        let count: usize = self.runs.iter().filter(|r| !r.note).map(|r| r.text.chars().count()).sum();
-        u32::try_from(count).unwrap_or(u32::MAX)
+        self.chars
     }
 }
 
@@ -490,6 +517,7 @@ enum CaptureInto {
 struct RunStyle {
     style: Style,
     all_caps: bool,
+    revision: u32,
 }
 
 /// Attributes the model holds itself, so they are not kept in [`FdxParagraph::attributes`].
@@ -516,7 +544,7 @@ pub(crate) fn all_attrs(element: &BytesStart<'_>) -> Vec<(String, String)> {
 }
 
 fn parse_style(value: Option<String>) -> RunStyle {
-    let mut run = RunStyle { style: Style::default(), all_caps: false };
+    let mut run = RunStyle { style: Style::default(), all_caps: false, revision: 0 };
     for part in value.unwrap_or_default().split('+') {
         match part.trim() {
             "Bold" => run.style.bold = true,
@@ -634,6 +662,8 @@ impl Importer {
                 children: String::new(),
                 runs: Vec::new(),
                 notes: Vec::new(),
+                revised: Vec::new(),
+                chars: 0,
                 has_text: false,
                 wraps_dual: false,
             });
@@ -642,7 +672,9 @@ impl Importer {
         let parent = self.parent_paragraph().map(|p| p.region);
         match (name, parent) {
             ("Text", Some(_)) => {
-                self.run = Some(parse_style(attr(start, "Style")));
+                let mut run = parse_style(attr(start, "Style"));
+                run.revision = attr(start, "RevisionID").and_then(|r| r.trim().parse().ok()).unwrap_or(0);
+                self.run = Some(run);
                 if let Some(paragraph) = self.parent_paragraph() {
                     paragraph.has_text = true;
                 }
@@ -666,6 +698,10 @@ impl Importer {
         let Some(run) = self.run else { return };
         let Some(paragraph) = self.paragraphs.last_mut() else { return };
         let text = if run.all_caps { text.to_uppercase() } else { text.to_string() };
+        let at = paragraph.chars;
+        let len = u32::try_from(text.chars().count()).unwrap_or(u32::MAX);
+        paragraph.chars = at.saturating_add(len);
+        mark_revised(&mut paragraph.revised, at, len, run.revision);
         match paragraph.runs.last_mut() {
             Some(last) if last.style == run.style && !last.note => last.text.push_str(&text),
             _ => paragraph.runs.push(Run { text, style: run.style, note: false }),
@@ -756,6 +792,7 @@ impl Importer {
         }
         let mut element = Element::new(kind, markup);
         element.notes = paragraph.notes;
+        element.revised = paragraph.revised;
         if kind == ElementKind::SceneHeading {
             element.scene_number = paragraph.number;
         }
@@ -822,6 +859,11 @@ impl Importer {
 
     fn into_script(mut self) -> Script {
         self.place_listed_notes();
+        let revisions = self.document.sections.iter().find_map(|s| match s {
+            FdxSection::Raw(xml) if section_is(xml, "Revisions") => Some(read_revisions(xml)),
+            _ => None,
+        });
+        self.document.revisions = revisions.clone();
         apply_hidden_types(&mut self.elements, &self.document.sections);
         let title_page = self
             .document
@@ -832,7 +874,13 @@ impl Importer {
                 FdxSection::Raw(_) => None,
             })
             .unwrap_or_default();
-        Script { title_page, elements: self.elements, fdx: Some(Box::new(self.document)), ..Script::default() }
+        Script {
+            title_page,
+            elements: self.elements,
+            revisions: revisions.unwrap_or_default(),
+            fdx: Some(Box::new(self.document)),
+            ..Script::default()
+        }
     }
 }
 
@@ -1347,6 +1395,83 @@ fn ranged_notes(elements: &[Element]) -> Vec<(u32, u32, &ScriptNote)> {
     }
     out.sort_by_key(|(from, to, _)| (*from, *to));
     out
+}
+
+// ---------------------------------------------------------------------------------------------
+// Revisions
+
+fn number(value: Option<&str>) -> Option<u32> {
+    value.and_then(|v| v.trim().parse().ok())
+}
+
+/// The revision sets of a `Revisions` section.
+fn read_revisions(xml: &str) -> Revisions {
+    let tags = tags(xml);
+    let mut revisions = Revisions::default();
+    if let Some((_, root)) = tags.first() {
+        revisions.active = number(get(root, "ActiveSet"));
+        revisions.fdx_attributes = root.clone();
+    }
+    for (_, attributes) in tags.iter().skip(1).filter(|(name, _)| name == "Revision").take(MAX_ELEMENTS) {
+        revisions.sets.push(RevisionSet {
+            id: number(get(attributes, "ID")).unwrap_or(0),
+            name: get(attributes, "Name").unwrap_or_default().to_string(),
+            mark: get(attributes, "Mark").unwrap_or_default().to_string(),
+            color: get(attributes, "Color").and_then(rgb_from_fdx),
+            page_color: get(attributes, "PageColor").and_then(rgb_from_fdx),
+            fdx_attributes: attributes.clone(),
+        });
+    }
+    revisions
+}
+
+/// `attributes` with `key` set to `value`, keeping a value already there that means the same.
+fn keep_or_set(attributes: &mut Vec<(String, String)>, key: &str, value: Option<String>, same: impl Fn(&str) -> bool) {
+    if get(attributes, key).is_some_and(&same) {
+        return;
+    }
+    set_or_remove(attributes, key, value);
+}
+
+/// The `Revision` attributes for a set: the ones it came with, brought up to date.
+pub(crate) fn revision_set_attributes(set: &RevisionSet) -> Vec<(String, String)> {
+    let mut attributes = set.fdx_attributes.clone();
+    keep_or_set(&mut attributes, "Color", set.color.as_deref().and_then(rgb_to_fdx), |c| rgb_from_fdx(c) == set.color);
+    keep_or_set(&mut attributes, "ID", Some(set.id.to_string()), |v| number(Some(v)) == Some(set.id));
+    keep_or_set(&mut attributes, "Mark", Some(set.mark.clone()), |v| v == set.mark);
+    keep_or_set(&mut attributes, "Name", Some(set.name.clone()), |v| v == set.name);
+    keep_or_set(&mut attributes, "PageColor", set.page_color.as_deref().and_then(rgb_to_fdx), |c| rgb_from_fdx(c) == set.page_color);
+    if set.fdx_attributes.is_empty() {
+        attributes.sort();
+    }
+    attributes
+}
+
+/// The `Revisions` element's own attributes, brought up to date.
+pub(crate) fn revisions_attributes(revisions: &Revisions) -> Vec<(String, String)> {
+    let mut attributes = revisions.fdx_attributes.clone();
+    keep_or_set(&mut attributes, "ActiveSet", revisions.active.map(|a| a.to_string()), |v| number(Some(v)) == revisions.active);
+    attributes
+}
+
+fn write_revisions(revisions: &Revisions, out: &mut String) {
+    out.push_str("  <Revisions");
+    for (key, value) in revisions_attributes(revisions) {
+        write_attr(&key, &value, out);
+    }
+    if revisions.sets.is_empty() {
+        out.push_str("/>\n");
+        return;
+    }
+    out.push_str(">\n");
+    for set in &revisions.sets {
+        out.push_str("    <Revision");
+        for (key, value) in revision_set_attributes(set) {
+            write_attr(&key, &value, out);
+        }
+        out.push_str("/>\n");
+    }
+    out.push_str("  </Revisions>\n");
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -128,6 +128,9 @@ pub struct Element {
     /// the text are separate: they hold text only.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notes: Vec<ScriptNote>,
+    /// Revised text: spans of the printed text marked with a revision set (see [`Revised`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub revised: Vec<Revised>,
     /// Final Draft data this paragraph carried that the model does not use (see [`FdxParagraph`]).
     #[serde(skip)]
     pub fdx: Option<Box<FdxParagraph>>,
@@ -161,6 +164,53 @@ pub struct ScriptNote {
     /// Final Draft data the note carried that the model does not use.
     #[serde(skip)]
     pub fdx: Option<Box<FdxNote>>,
+}
+
+/// Text marked as changed in a revision.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Revised {
+    /// Characters of the paragraph's printed text, `from..to`.
+    pub from: u32,
+    pub to: u32,
+    /// The [`RevisionSet::id`] it was changed in.
+    pub set: u32,
+}
+
+/// One revision set, such as "Blue Rev.": the colour and mark its changes print with.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RevisionSet {
+    /// The number revised text refers to (Final Draft's `ID`, OSF's `index`).
+    pub id: u32,
+    pub name: String,
+    /// The margin mark, usually `*`.
+    pub mark: String,
+    /// Colour of the mark and revised text, `#RRGGBB`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    /// Colour of the pages issued in this set, `#RRGGBB`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page_color: Option<String>,
+    /// Final Draft attributes the model does not use (`FullRevision`, `Style` …), every one in file order.
+    #[serde(skip)]
+    pub fdx_attributes: Vec<(String, String)>,
+}
+
+/// The script's revision sets and which one new changes go into.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Revisions {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active: Option<u32>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sets: Vec<RevisionSet>,
+    /// Attributes of Final Draft's `Revisions` element (`RevisionMode`, `Location` …), in file order.
+    #[serde(skip)]
+    pub fdx_attributes: Vec<(String, String)>,
+}
+
+impl Revisions {
+    pub fn is_empty(&self) -> bool {
+        self.active.is_none() && self.sets.is_empty() && self.fdx_attributes.is_empty()
+    }
 }
 
 /// How a Final Draft file stores a script note.
@@ -213,6 +263,9 @@ pub struct OsfDocument {
     pub sections: Vec<OsfSection>,
     /// Other members of the `.fadein` archive it came in, kept as they were.
     pub archive_entries: Vec<ArchiveEntry>,
+    /// The revisions as read; the revision list and setting are written back as they were while
+    /// they are the same.
+    pub revisions: Option<Revisions>,
 }
 
 /// A member of a ZIP archive, kept compressed exactly as read so it can be written back.
@@ -266,6 +319,8 @@ pub struct FdxDocument {
     pub ranged_notes: Vec<(u32, u32, ScriptNote)>,
     /// The `UnanchoredScriptNotes` list as read.
     pub unanchored_notes: Vec<ScriptNote>,
+    /// The revisions as read; the `Revisions` section is written back as it was while they are the same.
+    pub revisions: Option<Revisions>,
 }
 
 /// One top-level section of an imported Final Draft document.
@@ -291,6 +346,7 @@ impl Element {
             dual: false,
             level: 0,
             notes: Vec::new(),
+            revised: Vec::new(),
             fdx: None,
             osf: None,
             boneyard: Vec::new(),
@@ -347,6 +403,155 @@ impl Element {
     /// Character name without extensions such as `(V.O.)` or a trailing `^`.
     pub fn character_name(&self) -> &str {
         character_name(&self.text)
+    }
+
+    /// Replaces the text, moving what is anchored to it (revised spans, note ranges) with the
+    /// edit: the text both versions share at the start and the end keeps its anchors, and an
+    /// anchor inside the changed part moves to its edge (a revised span grows over new text).
+    pub fn set_text(&mut self, text: impl Into<String>) {
+        let old = crate::inline::plain(&self.text);
+        self.text = text.into();
+        let new = crate::inline::plain(&self.text);
+        if old == new {
+            return;
+        }
+        let edit = Edit::between(&old, &new);
+        for span in &mut self.revised {
+            span.from = edit.start(span.from);
+            span.to = edit.end(span.to);
+        }
+        self.revised.retain(|r| r.to > r.from);
+        for note in &mut self.notes {
+            if let Some((from, to)) = note.range {
+                note.range =
+                    Some(if from == to { (edit.start(from), edit.start(from)) } else { (edit.start(from), edit.end(to).max(edit.start(from))) });
+            }
+        }
+    }
+
+    /// Moves everything anchored at or after printed character `at` to `into` (the paragraph an
+    /// Enter split off), counted from its start.
+    pub fn split_anchors(&mut self, at: u32, into: &mut Element) {
+        let mut kept = Vec::new();
+        for span in self.revised.drain(..) {
+            if span.from < at {
+                kept.push(Revised { to: span.to.min(at), ..span });
+            }
+            if span.to > at {
+                into.revised.push(Revised { from: span.from.saturating_sub(at), to: span.to - at, ..span });
+            }
+        }
+        self.revised = kept;
+        let (stay, go): (Vec<ScriptNote>, Vec<ScriptNote>) = self.notes.drain(..).partition(|n| n.range.is_none_or(|(from, _)| from < at));
+        self.notes = stay;
+        into.notes.extend(go.into_iter().map(|mut n| {
+            n.range = n.range.map(|(from, to)| (from - at, to - at));
+            n
+        }));
+    }
+
+    /// Takes `other`'s anchors (the paragraph a Backspace joined on), placed `at` printed
+    /// characters into this one.
+    pub fn absorb_anchors(&mut self, other: &mut Element, at: u32) {
+        for span in other.revised.drain(..) {
+            mark_revised(&mut self.revised, at.saturating_add(span.from), span.to.saturating_sub(span.from), span.set);
+        }
+        self.notes.extend(other.notes.drain(..).map(|mut n| {
+            n.range = Some(n.range.map_or((at, at), |(from, to)| (at.saturating_add(from), at.saturating_add(to))));
+            n
+        }));
+    }
+
+    /// A cursor over the revised spans, for walking the text from start to end.
+    pub(crate) fn revision_cursor(&self) -> RevisionCursor<'_> {
+        let mut spans: Vec<&Revised> = self.revised.iter().collect();
+        spans.sort_by_key(|r| (r.from, r.to));
+        RevisionCursor { spans, next: 0 }
+    }
+
+    /// The revision set the printed character at `at` was changed in.
+    pub fn revision_at(&self, at: u32) -> Option<u32> {
+        self.revised.iter().find(|r| r.from <= at && at < r.to).map(|r| r.set)
+    }
+}
+
+/// Revised spans walked in order: asked about places that only move forward, it answers in
+/// constant time overall.
+pub(crate) struct RevisionCursor<'a> {
+    spans: Vec<&'a Revised>,
+    next: usize,
+}
+
+impl RevisionCursor<'_> {
+    fn skip_to(&mut self, at: u32) {
+        while self.spans.get(self.next).is_some_and(|r| r.to <= at) {
+            self.next += 1;
+        }
+    }
+
+    /// The set the character at `at` was changed in.
+    pub(crate) fn set_at(&mut self, at: u32) -> Option<u32> {
+        self.skip_to(at);
+        self.spans.get(self.next).filter(|r| r.from <= at).map(|r| r.set)
+    }
+
+    /// The first place after `at` where revised text starts or ends.
+    pub(crate) fn next_edge(&mut self, at: u32) -> Option<u32> {
+        self.skip_to(at);
+        self.spans.get(self.next).map(|r| if r.from > at { r.from } else { r.to })
+    }
+}
+
+/// One edit between two versions of a paragraph's printed text, as the parts they share at the
+/// start and at the end.
+struct Edit {
+    prefix: u32,
+    old_tail: u32,
+    new_tail: u32,
+}
+
+impl Edit {
+    fn between(old: &str, new: &str) -> Edit {
+        let (old, new): (Vec<char>, Vec<char>) = (old.chars().collect(), new.chars().collect());
+        let prefix = old.iter().zip(&new).take_while(|(a, b)| a == b).count();
+        let room = old.len().min(new.len()) - prefix;
+        let suffix = old.iter().rev().zip(new.iter().rev()).take(room).take_while(|(a, b)| a == b).count();
+        let count = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
+        Edit { prefix: count(prefix), old_tail: count(old.len() - suffix), new_tail: count(new.len() - suffix) }
+    }
+
+    /// Where an anchor's start goes.
+    fn start(&self, at: u32) -> u32 {
+        if at <= self.prefix {
+            at
+        } else if at >= self.old_tail {
+            (at - self.old_tail).saturating_add(self.new_tail)
+        } else {
+            self.prefix
+        }
+    }
+
+    /// Where an anchor's end goes.
+    fn end(&self, at: u32) -> u32 {
+        if at <= self.prefix {
+            at
+        } else if at >= self.old_tail {
+            (at - self.old_tail).saturating_add(self.new_tail)
+        } else {
+            self.new_tail
+        }
+    }
+}
+
+/// Marks `len` characters from `from` as revised in `set`, joining a span it continues.
+pub(crate) fn mark_revised(spans: &mut Vec<Revised>, from: u32, len: u32, set: u32) {
+    if set == 0 || len == 0 {
+        return;
+    }
+    let to = from.saturating_add(len);
+    match spans.last_mut() {
+        Some(last) if last.set == set && last.to == from => last.to = to,
+        _ => spans.push(Revised { from, to, set }),
     }
 }
 
@@ -415,6 +620,9 @@ fn keys_match(a: &str, b: &str) -> bool {
 pub struct Script {
     pub title_page: TitlePage,
     pub elements: Vec<Element>,
+    /// Revision sets and the active set.
+    #[serde(default, skip_serializing_if = "Revisions::is_empty")]
+    pub revisions: Revisions,
     /// Final Draft data from an imported `.fdx` that the model does not use; written back on FDX export.
     #[serde(skip)]
     pub fdx: Option<Box<FdxDocument>>,

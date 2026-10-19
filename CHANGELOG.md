@@ -17,6 +17,8 @@ for its own version in Help > What's New, once after an update.
 - Open and save `.fdx` and `.fadein` files; export PDF.
 - Script notes from `.fdx` files keep their place, colour and author when saved as `.fdx` or
   Open Screenplay Format, and back.
+- Revision sets (name, mark, colours) and revised text from `.fdx` and Open Screenplay Format
+  files are kept when saving in either format.
 - Title page, scene navigator, scene numbers, page view and draft view, zoom.
 - A Help menu: user guide, keyboard shortcuts, this list, bug reports and licences.
 - A command line tool, `method-storyteller`, that converts, paginates and exports without a
