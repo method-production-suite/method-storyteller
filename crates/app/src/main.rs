@@ -49,6 +49,8 @@ fn main() -> eframe::Result {
     // app draws its title and controls there beside the traffic lights.
     #[cfg(target_os = "macos")]
     let viewport = viewport.with_fullsize_content_view(true).with_titlebar_shown(false).with_title_shown(false);
+    // Files opened from the Finder arrive as an Apple Event while the app launches (macOS).
+    storyteller_macos_open::install();
     let options = eframe::NativeOptions { viewport, ..Default::default() };
     eframe::run_native(storyteller_engine::APP_NAME, options, Box::new(move |cc| Ok(Box::new(app::StorytellerApp::new(cc, file, control_port)))))
 }
