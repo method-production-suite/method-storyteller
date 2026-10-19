@@ -1934,6 +1934,7 @@ dependencies = [
  "serde_json",
  "storyteller-core",
  "storyteller-engine",
+ "storyteller-macos-open",
  "storyteller-pdf",
  "tempfile",
 ]
@@ -3418,6 +3419,14 @@ dependencies = [
  "storyteller-pdf",
  "tempfile",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "storyteller-macos-open"
+version = "0.1.0"
+dependencies = [
+ "objc2 0.6.5",
+ "objc2-foundation 0.3.2",
 ]
 
 [[package]]
