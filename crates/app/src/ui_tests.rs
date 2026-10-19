@@ -356,3 +356,36 @@ fn open_sample_at_start() {
     harness.run_steps(3);
     assert!(harness.state().showing_sample(), "--open-sample opens the sample");
 }
+
+#[test]
+fn a_scene_in_the_navigator_jumps_to_its_action() {
+    let script = "INT. A - DAY\n\nOne.\n\nEXT. B - NIGHT\n\nNORA\nHello.\n\nShe waits.\n\nINT. C - DAY\n\nNORA\nOnly talk.\n\nINT. D - DAY\n";
+    let (mut harness, _file) = harness(script);
+    harness.state_mut().prefs.update(|p| p.view.navigator = true);
+    harness.run_steps(3);
+    let caret_after = |harness: &mut Harness<'static, StorytellerApp>, n: usize| {
+        // The navigator paints its rows, so click a row where the app's own registry puts it.
+        let id = format!("navigator.scene.{n}");
+        let pos = harness.state().automation.find(&id).map(|w| w.rect.center()).unwrap_or_else(|| panic!("{id} is on screen"));
+        let press = |pressed| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE };
+        harness.input_mut().events.extend([egui::Event::PointerMoved(pos), press(true)]);
+        harness.step();
+        harness.input_mut().events.push(press(false));
+        harness.run_steps(4);
+        harness.state().session.caret.element
+    };
+    let elements = |h: &Harness<'static, StorytellerApp>| h.state().session.script.elements.iter().map(|e| e.text.clone()).collect::<Vec<_>>();
+    let texts = elements(&harness);
+    let at = |text: &str| texts.iter().position(|t| t == text).unwrap_or(usize::MAX);
+    assert_eq!(caret_after(&mut harness, 1), at("She waits."), "past the dialogue, to the scene's action");
+    assert_eq!(caret_after(&mut harness, 0), at("One."));
+    assert_eq!(caret_after(&mut harness, 2), at("NORA").max(at("Only talk.") - 1), "a scene with no action: the first line under the heading");
+    assert_eq!(caret_after(&mut harness, 3), at("INT. D - DAY"), "an empty scene: its heading");
+    let focused = harness.state().editor.focused;
+    assert_eq!(focused, Some(at("INT. D - DAY")), "and the editor has the keyboard there");
+    // Typing after a click goes straight into the scene's action.
+    let waits = caret_after(&mut harness, 1);
+    harness.input_mut().events.push(egui::Event::Text("Rain. ".into()));
+    harness.run_steps(3);
+    assert_eq!(harness.state().session.script.elements[waits].text, "Rain. She waits.");
+}
