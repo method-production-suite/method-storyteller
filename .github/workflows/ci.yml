@@ -18,14 +18,39 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    # SUITE-STANDARDS.md §6: no incremental state and line-tables-only debug info keep the
+    # target folder, and so the cache, small.
+    env:
+      CARGO_INCREMENTAL: 0
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
+      CARGO_PROFILE_TEST_DEBUG: line-tables-only
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - id: cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: gates-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: gates-${{ runner.os }}-
       - name: Linux packages for eframe
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libgl1-mesa-dev libwayland-dev
       - run: cargo xtask ci
+      # Only main saves (SUITE-STANDARDS.md §6): a pull request restores main's cache and never
+      # writes its own, so the repository stays under GitHub's 10 GB and main's cache is kept.
+      - if: github.ref == 'refs/heads/main' && steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: gates-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
   cooldown:
     # Fails a change that adds crates published less than 14 days ago (scripts/check-crate-ages.py).
     runs-on: ubuntu-latest
