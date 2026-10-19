@@ -237,7 +237,7 @@ impl StorytellerApp {
         }
         app.session.layout.show_scene_numbers = app.prefs.get().view.scene_numbers;
         // A file opened from the Finder to launch the app arrives before the first frame.
-        let file = file.or_else(|| storyteller_macos_open::take().pop());
+        let file = file.or_else(|| app.first_from_finder());
         let ctx = cc.egui_ctx.clone();
         storyteller_macos_open::set_wake(move || ctx.request_repaint());
         if let Some(path) = file {
@@ -505,18 +505,31 @@ impl StorytellerApp {
         saved
     }
 
-    /// The extension new scripts are saved with: the writer's choice of working format.
-    /// A file opened from the Finder while the app runs: the latest one, after asking about
-    /// unsaved changes. Waits while a question is already on screen.
+    /// A file opened from the Finder while the app runs, after asking about unsaved changes.
+    /// Waits while a question is already on screen.
     fn open_from_finder(&mut self, ctx: &egui::Context) {
         if self.prompt.is_some() {
             return;
         }
-        if let Some(path) = storyteller_macos_open::take().pop() {
+        if let Some(path) = self.first_from_finder() {
             self.guard_unsaved(ctx, Pending::Open(Some(path)));
         }
     }
 
+    /// The first of the files opened from the Finder. The window holds one script, so any
+    /// others are named in the status line rather than dropped silently.
+    fn first_from_finder(&mut self) -> Option<PathBuf> {
+        let mut paths = storyteller_macos_open::take().into_iter();
+        let first = paths.next()?;
+        let others: Vec<String> =
+            paths.map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| p.display().to_string())).collect();
+        if !others.is_empty() {
+            self.status = format!("One script at a time: opened the first. Not opened: {}.", others.join(", "));
+        }
+        Some(first)
+    }
+
+    /// The extension new scripts are saved with: the writer's choice of working format.
     fn preferred_extension(&self) -> &'static str {
         if self.prefs.get().general.new_script_format == "osf" { "osf" } else { "fountain" }
     }

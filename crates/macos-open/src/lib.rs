@@ -54,9 +54,9 @@ mod macos {
     use std::path::PathBuf;
 
     use objc2::rc::Retained;
-    use objc2::runtime::{AnyClass, AnyObject, NSObject, Sel};
+    use objc2::runtime::{NSObject, Sel};
     use objc2::{AllocAnyThread, define_class, msg_send, sel};
-    use objc2_foundation::{NSAppleEventDescriptor, NSNotification, NSNotificationCenter, NSString};
+    use objc2_foundation::{NSAppleEventDescriptor, NSAppleEventManager, NSNotification, NSNotificationCenter, NSString};
 
     /// `kCoreEventClass`, `kAEOpenDocuments` and `keyDirectObject`, from the Apple Event headers.
     const CORE_EVENT_CLASS: u32 = u32::from_be_bytes(*b"aevt");
@@ -71,29 +71,33 @@ mod macos {
         impl OpenDocuments {
             #[unsafe(method(willFinishLaunching:))]
             fn will_finish_launching(&self, _notification: &NSNotification) {
-                let Some(class) = AnyClass::get(c"NSAppleEventManager") else { return };
-                // SAFETY: `sharedAppleEventManager` is a class method taking no arguments and
-                // returning the (retained, never nil) shared manager.
-                let manager: Option<Retained<AnyObject>> = unsafe { msg_send![class, sharedAppleEventManager] };
-                let Some(manager) = manager else { return };
+                let manager = NSAppleEventManager::sharedAppleEventManager();
                 let handler: Sel = sel!(handleOpenDocuments:withReplyEvent:);
                 // SAFETY: the selector names a method this class defines with the signature the
                 // manager calls, `self` lives for the whole process (see `install`), and the
                 // event class and ID are `AEEventClass`/`AEEventID`, both 32-bit unsigned.
                 let () = unsafe {
-                    msg_send![&*manager, setEventHandler: self, andSelector: handler, forEventClass: CORE_EVENT_CLASS, andEventID: OPEN_DOCUMENTS]
+                    msg_send![&manager, setEventHandler: self, andSelector: handler, forEventClass: CORE_EVENT_CLASS, andEventID: OPEN_DOCUMENTS]
                 };
             }
 
             #[unsafe(method(handleOpenDocuments:withReplyEvent:))]
-            fn handle_open_documents(&self, event: &NSAppleEventDescriptor, _reply: &NSAppleEventDescriptor) {
+            fn handle_open_documents(&self, event: Option<&NSAppleEventDescriptor>, _reply: Option<&NSAppleEventDescriptor>) {
+                let Some(event) = event else { return };
                 // SAFETY: `paramDescriptorForKeyword:` takes an `AEKeyword` (32-bit unsigned) and
                 // returns a descriptor or nil.
                 let list: Option<Retained<NSAppleEventDescriptor>> = unsafe { msg_send![event, paramDescriptorForKeyword: DIRECT_OBJECT] };
                 let Some(list) = list else { return };
                 let mut paths = Vec::new();
+                let count = list.numberOfItems();
+                if count == 0 {
+                    // One file, sent as a single descriptor rather than a list.
+                    if let Some(path) = list.fileURLValue().and_then(|url| url.path()) {
+                        paths.push(PathBuf::from(path.to_string()));
+                    }
+                }
                 // Apple Event lists count from 1.
-                for index in 1..=list.numberOfItems() {
+                for index in 1..=count {
                     let path = list.descriptorAtIndex(index).and_then(|item| item.fileURLValue()).and_then(|url| url.path());
                     if let Some(path) = path {
                         paths.push(PathBuf::from(path.to_string()));
