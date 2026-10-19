@@ -494,3 +494,26 @@ fn edits_keep_revisions_and_notes_on_their_text() {
     storyteller_engine::commands::merge_previous(&mut session, 1).unwrap();
     assert_eq!(session.script.elements[0].notes[0].range, Some((18, 22)));
 }
+
+/// A word ignored with capitals, as a file may hold it, is ignored in any case and not added twice.
+#[test]
+fn ignored_words_keep_their_case_and_match_any_case() {
+    let registry = storyteller_engine::commands::Registry::new();
+    let mut s = storyteller_engine::session::Session::new(storyteller_core::fountain::parse("McKenzie waits. MCKENZIE waits.\n").unwrap());
+    s.script.spelling_ignored = vec!["McKenzie".into()];
+    assert!(
+        storyteller_engine::spell::misspelled_in(
+            &s.script.elements[0].text,
+            &Default::default(),
+            &s.spelling,
+            &storyteller_engine::spell::ignored_set(&s.script.spelling_ignored)
+        )
+        .is_empty()
+    );
+    run(&registry, &mut s, "spell.ignore", json!({ "word": "mckenzie" }));
+    assert_eq!(s.script.spelling_ignored, ["McKenzie"]);
+    // Spaces around a word are not part of it.
+    run(&registry, &mut s, "spell.ignore", json!({ "word": " Zorbly " }));
+    run(&registry, &mut s, "spell.ignore", json!({ "word": "zorbly" }));
+    assert_eq!(s.script.spelling_ignored, ["McKenzie", "Zorbly"]);
+}

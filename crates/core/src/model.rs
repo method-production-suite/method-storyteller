@@ -676,8 +676,9 @@ pub struct Script {
     /// Fountain boneyard blocks after the last paragraph (see [`Element::boneyard`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub boneyard_end: Vec<String>,
-    /// Words the writer told spell check to ignore in this script, lower case (`.fdx`
-    /// SpellCheckIgnoreLists, OSF `<spelling><ignored>`; Fountain has no place for them).
+    /// Words the writer told spell check to ignore in this script, as written and each once in
+    /// any case (`.fdx` SpellCheckIgnoreLists, OSF `<spelling><ignored>`; Fountain has no place
+    /// for them). Spell check compares them without case.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub spelling_ignored: Vec<String>,
 }

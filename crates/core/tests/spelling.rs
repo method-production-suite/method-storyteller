@@ -38,9 +38,9 @@ const OSF: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 "#;
 
 #[test]
-fn reads_the_ignored_words_in_lower_case_once_each() {
-    assert_eq!(fdx::parse(DOC).unwrap().spelling_ignored, ["kestrel", "mara"]);
-    assert_eq!(osf::parse(OSF).unwrap().spelling_ignored, ["kestrel", "mara"], "not the user dictionary");
+fn reads_the_ignored_words_as_written_once_each() {
+    assert_eq!(fdx::parse(DOC).unwrap().spelling_ignored, ["Kestrel", "Mara"], "the later `kestrel` is the same word");
+    assert_eq!(osf::parse(OSF).unwrap().spelling_ignored, ["Kestrel", "Mara"], "not the user dictionary");
 }
 
 #[test]
@@ -54,16 +54,19 @@ fn an_unchanged_list_goes_back_as_written() {
 #[test]
 fn a_changed_list_is_rewritten_and_the_rest_stays() {
     let mut script = fdx::parse(DOC).unwrap();
-    script.spelling_ignored.push("tannoy".into());
+    script.spelling_ignored.push("Tannoy".into());
     let xml = fdx::write(&script);
-    assert!(xml.contains("<IgnoredWords><Word>kestrel</Word><Word>mara</Word><Word>tannoy</Word></IgnoredWords>"), "{xml}");
+    assert!(
+        xml.contains("<IgnoredWords><Word>Kestrel</Word><Word>Mara</Word><Word>Tannoy</Word></IgnoredWords>"),
+        "a changed list keeps the words' case: {xml}"
+    );
     assert!(xml.contains(r#"<Range End="4" Start="0"/>"#), "ignored ranges stay: {xml}");
     assert_eq!(fdx::parse(&xml).unwrap().spelling_ignored, script.spelling_ignored);
 
     let mut script = osf::parse(OSF).unwrap();
-    script.spelling_ignored.retain(|w| w != "mara");
+    script.spelling_ignored.retain(|w| w != "Mara");
     let xml = osf::write(&script);
-    assert!(xml.contains(r#"<user_dictionary><entry word="Tannoy"/></user_dictionary><ignored><entry word="kestrel"/></ignored>"#), "{xml}");
+    assert!(xml.contains(r#"<user_dictionary><entry word="Tannoy"/></user_dictionary><ignored><entry word="Kestrel"/></ignored>"#), "{xml}");
     assert_eq!(osf::parse(&xml).unwrap().spelling_ignored, script.spelling_ignored);
 }
 
