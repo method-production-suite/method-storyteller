@@ -26,7 +26,7 @@ const SHOTS: [Shot; 3] = [
     // The writing view: one continuous column.
     Shot { name: "hero", fdx: false, page_view: false, focus: 6 },
     // Page view at the break between pages 1 and 2.
-    Shot { name: "page", fdx: false, page_view: true, focus: 23 },
+    Shot { name: "page", fdx: false, page_view: true, focus: 25 },
     // The same script opened from an .fdx file.
     Shot { name: "import", fdx: true, page_view: true, focus: 0 },
 ];
@@ -39,15 +39,14 @@ fn var(name: &str) -> Option<PathBuf> {
 #[test]
 #[ignore = "run by `cargo xtask screens`"]
 fn screens() {
-    let (Some(out), Some(fountain), Some(fdx)) =
-        (var("STORYTELLER_SCREENS_OUT"), var("STORYTELLER_SCREENS_FOUNTAIN"), var("STORYTELLER_SCREENS_FDX"))
+    let (Some(out), Some(script), Some(fdx)) = (var("STORYTELLER_SCREENS_OUT"), var("STORYTELLER_SCREENS_SCRIPT"), var("STORYTELLER_SCREENS_FDX"))
     else {
         panic!("run through `cargo xtask screens`");
     };
     for theme in [egui::Theme::Light, egui::Theme::Dark] {
         let suffix = if theme == egui::Theme::Dark { "dark" } else { "light" };
         for shot in &SHOTS {
-            let file = if shot.fdx { &fdx } else { &fountain };
+            let file = if shot.fdx { &fdx } else { &script };
             let (width, height, rgba) = draw(file, theme, shot);
             let path = out.join(format!("{}-{suffix}.png", shot.name));
             if let Err(error) = write_png(&path, width, height, &rgba) {
