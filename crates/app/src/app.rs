@@ -168,6 +168,8 @@ pub struct StorytellerApp {
     sample: bool,
     /// Input for the next frame: Edit > Cut and Copy, after the text field has its focus back.
     next_frame_input: Vec<Event>,
+    /// A caret to give the keyboard to on the next frame (after a click outside the editor).
+    focus_next_frame: Option<(usize, usize)>,
     /// Drawn for the offscreen pictures: the window as a Mac shows it, menus in the menu bar.
     #[cfg(test)]
     pictures: bool,
@@ -253,6 +255,7 @@ impl StorytellerApp {
             update_line: None,
             sample: false,
             next_frame_input: Vec::new(),
+            focus_next_frame: None,
             #[cfg(test)]
             pictures: false,
         };
@@ -1082,8 +1085,12 @@ impl StorytellerApp {
                 let response = response.on_hover_text(detail);
                 self.automation.add(format!("navigator.scene.{n}"), "listitem", heading.to_string(), &response);
                 if response.clicked() {
-                    self.editor.pending_focus = Some((scene.element, 0));
-                    self.session.caret = Caret { element: scene.element, offset: 0 };
+                    // Straight into the scene's action, ready to read or write on.
+                    let entry = scene_entry(&self.session.script, scene.element);
+                    self.session.caret = Caret { element: entry, offset: 0 };
+                    // On the next frame: egui drops the focus at the end of this one, since the
+                    // click landed on no text field.
+                    self.focus_next_frame = Some((entry, 0));
                 }
             }
         });
@@ -1525,6 +1532,22 @@ impl UiHost for AppHost<'_> {
     }
 }
 
+/// Where a click on a scene in the navigator puts the caret: the scene's first action line;
+/// with none, the first line under the heading (a scene that opens on dialogue); with nothing
+/// under it, the heading itself.
+fn scene_entry(script: &storyteller_core::Script, heading: usize) -> usize {
+    let scene: Vec<(usize, ElementKind)> = script
+        .elements
+        .iter()
+        .enumerate()
+        .skip(heading + 1)
+        .take_while(|(_, e)| e.kind != ElementKind::SceneHeading)
+        .filter(|(_, e)| e.kind.is_printed())
+        .map(|(i, e)| (i, e.kind))
+        .collect();
+    scene.iter().find(|(_, kind)| *kind == ElementKind::Action).or_else(|| scene.first()).map_or(heading, |&(i, _)| i)
+}
+
 impl eframe::App for StorytellerApp {
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
         if let Some(batch) = self.automation.injected.pop_front() {
@@ -1534,6 +1557,10 @@ impl eframe::App for StorytellerApp {
     }
 
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if let Some(focus) = self.focus_next_frame.take() {
+            self.editor.pending_focus = Some(focus);
+            ctx.request_repaint();
+        }
         // Edit > Cut and Copy, chosen last frame: the field has its focus back now.
         let input = std::mem::take(&mut self.next_frame_input);
         if !input.is_empty() {
