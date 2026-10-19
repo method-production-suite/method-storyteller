@@ -144,16 +144,11 @@ fn yes() -> bool {
 }
 
 impl Layout {
-    /// The layout a script paginates with: the default, with an imported `.fdx` file's own
-    /// page layout and element settings applied.
+    /// The layout a script paginates with: the default, with the script's own page layout and
+    /// element settings (see [`crate::format`]) applied.
     pub fn for_script(script: &crate::model::Script) -> Layout {
         let mut layout = Layout::default();
-        if let Some(document) = &script.fdx {
-            crate::fdx::apply_layout(document, &mut layout);
-        }
-        if let Some(document) = &script.osf {
-            crate::osf::apply_layout(document, &mut layout);
-        }
+        crate::format::apply(&script.format, &mut layout);
         layout
     }
 

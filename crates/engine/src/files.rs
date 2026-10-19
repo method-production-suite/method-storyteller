@@ -198,6 +198,9 @@ pub fn save_warnings(script: &Script, format: FileFormat) -> Vec<String> {
                     plural(revised, "revised passage", "revised passages")
                 ));
             }
+            if script.pages_locked() {
+                warnings.push("the locked pages will be unlocked (Fountain cannot lock pages)".to_string());
+            }
             let notes = script.elements.iter().map(|e| e.notes.len()).sum::<usize>();
             if notes > 0 {
                 warnings.push(format!(

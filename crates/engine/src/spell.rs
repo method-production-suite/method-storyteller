@@ -28,14 +28,14 @@ pub fn dictionary() -> Option<&'static spellbook::Dictionary> {
 
 /// The writer's own dictionary: words added with Learn, spelled right in every script (the app
 /// keeps them in its settings). Words ignored for one script live on the script itself
-/// ([`Script::spelling_ignored`]); no file format saves them yet, so they last the session.
+/// ([`Script::spelling_ignored`]).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Personal {
     pub learned: HashSet<String>,
 }
 
 impl Personal {
-    fn knows(&self, word: &str, ignored: &[String]) -> bool {
+    fn knows(&self, word: &str, ignored: &HashSet<String>) -> bool {
         let lower = word.to_lowercase();
         self.learned.contains(&lower) || ignored.contains(&lower)
     }
@@ -140,8 +140,14 @@ pub fn names(script: &Script) -> HashSet<String> {
         .collect()
 }
 
-/// Whether one word is spelled right.
-pub fn is_right(word: &str, names: &HashSet<String>, personal: &Personal, ignored: &[String]) -> bool {
+/// The script's ignored words in lower case, to look up any case. They keep the case they were
+/// written in on the script; build this once per pass, not once per word.
+pub fn ignored_set(ignored: &[String]) -> HashSet<String> {
+    ignored.iter().map(|w| w.to_lowercase()).collect()
+}
+
+/// Whether one word is spelled right. `ignored` is [`ignored_set`] of the script's ignored words.
+pub fn is_right(word: &str, names: &HashSet<String>, personal: &Personal, ignored: &HashSet<String>) -> bool {
     let word = word.replace('’', "'");
     if word.chars().any(|c| c.is_ascii_digit()) || word.chars().count() < 2 {
         return true;
@@ -168,13 +174,14 @@ pub fn is_right(word: &str, names: &HashSet<String>, personal: &Personal, ignore
 }
 
 /// The misspelled words of one text, as byte ranges: what the editor underlines.
-pub fn misspelled_in(text: &str, names: &HashSet<String>, personal: &Personal, ignored: &[String]) -> Vec<(usize, usize)> {
+pub fn misspelled_in(text: &str, names: &HashSet<String>, personal: &Personal, ignored: &HashSet<String>) -> Vec<(usize, usize)> {
     words(text).into_iter().filter(|&(start, end)| text.get(start..end).is_some_and(|word| !is_right(word, names, personal, ignored))).collect()
 }
 
 /// Every misspelled word of the script, in reading order.
 pub fn misspelled(script: &Script, personal: &Personal) -> Vec<Miss> {
     let names = names(script);
+    let ignored = ignored_set(&script.spelling_ignored);
     let mut out = Vec::new();
     for (index, element) in script.elements.iter().enumerate() {
         // Page breaks and outline lines (sections, synopses) are not script text.
@@ -183,7 +190,7 @@ pub fn misspelled(script: &Script, personal: &Personal) -> Vec<Miss> {
         }
         for (start, end) in words(&element.text) {
             let Some(word) = element.text.get(start..end) else { continue };
-            if !is_right(word, &names, personal, &script.spelling_ignored) {
+            if !is_right(word, &names, personal, &ignored) {
                 out.push(Miss { element: index, start, end, word: word.to_string() });
             }
         }
@@ -222,7 +229,7 @@ mod tests {
     fn the_dictionary_loads_and_checks() {
         let none = HashSet::new();
         let personal = Personal::default();
-        let is_right = |w: &str, n: &HashSet<String>, p: &Personal| is_right(w, n, p, &[]);
+        let is_right = |w: &str, n: &HashSet<String>, p: &Personal| is_right(w, n, p, &HashSet::new());
         assert!(is_right("glass", &none, &personal));
         assert!(is_right("GLASS", &none, &personal), "a word in capitals");
         assert!(is_right("don’t", &none, &personal), "a curly apostrophe");

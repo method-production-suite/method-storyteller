@@ -976,15 +976,17 @@ fn all_commands() -> Vec<Command> {
             label: "Ignore Spelling",
             menu: "",
             shortcut: None,
-            params: const { &[param("word", String, true, "The word to accept in this script, for this session")] },
+            params: const { &[param("word", String, true, "The word to accept in this script (kept with the script)")] },
             enabled: always,
             run: |s, p| {
                 let word = string(p, "word")?;
+                let word = word.trim();
                 let lower = word.to_lowercase();
-                // Kept on the script for this session. No file format saves the list yet, so
-                // ignoring a word does not mark the script edited.
-                if !s.script.spelling_ignored.contains(&lower) {
-                    s.script.spelling_ignored.push(lower);
+                // Kept with the script as written, so it stays ignored when the file is saved and
+                // reopened; a word already there in any case is not added again.
+                if !s.script.spelling_ignored.iter().any(|w| w.to_lowercase() == lower) {
+                    s.script.spelling_ignored.push(word.to_string());
+                    s.dirty = true;
                 }
                 Ok(Outcome::message(format!("Ignoring “{word}” in this script")))
             },

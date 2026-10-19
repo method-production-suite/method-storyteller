@@ -419,8 +419,8 @@ fn spell_check_steps_ignores_learns_and_changes() {
     // Ignore for the session; learn for good.
     s.dirty = false;
     run(&registry, &mut s, "spell.ignore", json!({ "word": "seismograf" }));
-    assert_eq!(s.script.spelling_ignored, ["seismograf"], "ignored on the script, for this session");
-    assert!(!s.dirty, "no file format saves the list yet, so nothing new to save");
+    assert_eq!(s.script.spelling_ignored, ["seismograf"], "ignored words stay with the script");
+    assert!(s.dirty, "so the file has something new to save");
     let learned = run(&registry, &mut s, "spell.learn", json!({ "word": "Zorbly" }));
     assert_eq!(learned["value"]["learned"], "zorbly");
     assert_eq!(next(&mut s)["total"], 0, "nothing left");
@@ -464,6 +464,8 @@ fn fountain_save_warns_about_revisions_and_notes() {
     let fountain = save_warnings(&s, FileFormat::Fountain);
     assert!(fountain.iter().any(|w| w.starts_with("1 revised passage will lose")), "{fountain:?}");
     assert!(fountain.iter().any(|w| w.starts_with("1 script note with a colour")), "{fountain:?}");
+    s.elements[0].page_starts.push(storyteller_core::model::PageStart { at: 0, label: "1".into(), ..Default::default() });
+    assert!(save_warnings(&s, FileFormat::Fountain).iter().any(|w| w.starts_with("the locked pages will be unlocked")));
     s.spelling_ignored = vec!["seismograf".into(), "zorbly".into()];
     let fountain = save_warnings(&s, FileFormat::Fountain);
     assert!(
@@ -491,4 +493,27 @@ fn edits_keep_revisions_and_notes_on_their_text() {
     // Backspace joins it back, note and all.
     storyteller_engine::commands::merge_previous(&mut session, 1).unwrap();
     assert_eq!(session.script.elements[0].notes[0].range, Some((18, 22)));
+}
+
+/// A word ignored with capitals, as a file may hold it, is ignored in any case and not added twice.
+#[test]
+fn ignored_words_keep_their_case_and_match_any_case() {
+    let registry = storyteller_engine::commands::Registry::new();
+    let mut s = storyteller_engine::session::Session::new(storyteller_core::fountain::parse("McKenzie waits. MCKENZIE waits.\n").unwrap());
+    s.script.spelling_ignored = vec!["McKenzie".into()];
+    assert!(
+        storyteller_engine::spell::misspelled_in(
+            &s.script.elements[0].text,
+            &Default::default(),
+            &s.spelling,
+            &storyteller_engine::spell::ignored_set(&s.script.spelling_ignored)
+        )
+        .is_empty()
+    );
+    run(&registry, &mut s, "spell.ignore", json!({ "word": "mckenzie" }));
+    assert_eq!(s.script.spelling_ignored, ["McKenzie"]);
+    // Spaces around a word are not part of it.
+    run(&registry, &mut s, "spell.ignore", json!({ "word": " Zorbly " }));
+    run(&registry, &mut s, "spell.ignore", json!({ "word": "zorbly" }));
+    assert_eq!(s.script.spelling_ignored, ["McKenzie", "Zorbly"]);
 }
