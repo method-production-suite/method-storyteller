@@ -997,6 +997,7 @@ impl Importer {
             format,
             fdx: Some(Box::new(self.document)),
             osf: None,
+            spelling_ignored: Vec::new(),
         })
     }
 }
