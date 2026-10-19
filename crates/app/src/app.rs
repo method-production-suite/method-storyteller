@@ -39,7 +39,7 @@ const GO_TO_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Alt+G" } else { "Cmd
 const FIND_NEXT_KEY: &str = if cfg!(target_os = "macos") { "Cmd+G" } else { "F3" };
 const FIND_PREVIOUS_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Shift+G" } else { "Shift+F3" };
 
-const APP_COMMANDS: [AppCommand; 26] = [
+const APP_COMMANDS: [AppCommand; 25] = [
     AppCommand { id: "app.title_page", label: "Title Page…", menu: "File/Title Page…", shortcut: Some("Cmd+Shift+T") },
     AppCommand { id: "prefs.new_fountain", label: "Save New Scripts as Fountain", menu: "File/Save New Scripts as Fountain", shortcut: None },
     AppCommand {
@@ -65,7 +65,6 @@ const APP_COMMANDS: [AppCommand; 26] = [
     AppCommand { id: "help.shortcuts", label: "Keyboard Shortcuts", menu: "Help/Keyboard Shortcuts", shortcut: None },
     AppCommand { id: "help.whats_new", label: "What's New", menu: "Help/What's New", shortcut: None },
     AppCommand { id: "help.open_sample", label: "Open Sample Script", menu: "Help/Open Sample Script", shortcut: None },
-    AppCommand { id: "prefs.show_sample", label: "Show Sample at Launch", menu: "Help/Show Sample at Launch", shortcut: None },
     AppCommand { id: "help.check_updates", label: "Check for Updates…", menu: "Help/Check for Updates…", shortcut: None },
     AppCommand {
         id: "prefs.check_updates_automatically",
@@ -242,9 +241,14 @@ impl StorytellerApp {
             app.prefs.update(|p| p.general.last_seen_version = help::VERSION.to_string());
         }
         app.session.layout.show_scene_numbers = app.prefs.get().view.scene_numbers;
-        // With nothing to open (no file, nothing opened before), show the sample.
+        // The first launch with nothing to open shows the sample, once. A writer who already has
+        // scripts (a file given, or recent files) retires it unshown.
         let general = &app.prefs.get().general;
-        let show_sample = general.show_sample && general.recent.is_empty();
+        let first_launch = !general.sample_seen;
+        let show_sample = first_launch && general.recent.is_empty() && file.is_none();
+        if first_launch {
+            app.prefs.update(|p| p.general.sample_seen = true);
+        }
         if let Some(path) = file {
             app.open_path(&path);
         } else if show_sample {
@@ -353,9 +357,6 @@ impl StorytellerApp {
             "help.shortcuts" => self.help.shortcuts = true,
             "help.whats_new" => self.help.whats_new = true,
             "help.open_sample" => self.guard_unsaved(ctx, Pending::Sample),
-            "prefs.show_sample" => {
-                self.prefs.update(|p| p.general.show_sample = !p.general.show_sample);
-            }
             "help.licenses" => self.help.licenses = Some(self.help.licenses.unwrap_or(0)),
             "help.user_guide" => self.open_link(help::USER_GUIDE, "Opened the user guide in your browser."),
             "help.website" => self.open_link(help::SUITE_WEBSITE, "Opened methodproduction.com in your browser."),
@@ -725,7 +726,6 @@ impl StorytellerApp {
             "prefs.new_fountain" => Some(self.prefs.get().general.new_script_format != "osf"),
             "prefs.new_osf" => Some(self.prefs.get().general.new_script_format == "osf"),
             "prefs.smart_quotes" => Some(self.prefs.get().general.smart_quotes),
-            "prefs.show_sample" => Some(self.prefs.get().general.show_sample),
             "prefs.check_updates_automatically" => Some(self.updates.automatic()),
             _ => None,
         }

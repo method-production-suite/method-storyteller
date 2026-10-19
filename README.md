@@ -118,8 +118,8 @@ writing anything a person will read. Pagination changes are reviewed through
 the golden files in `crates/core/tests/golden/` (`UPDATE_GOLDEN=1 cargo test -p storyteller-core`
 regenerates them).
 
-The same script opens when there is nothing else to open, and from Help > Open Sample Script
-any time, as an unsaved copy.
+The same script opens once on a first launch with nothing else to open, and from Help > Open
+Sample Script any time, as an unsaved copy.
 
 `cargo xtask screens` retakes every picture above from the invented script in
 [examples/field-station.osf](examples/field-station.osf), in light and dark, with the

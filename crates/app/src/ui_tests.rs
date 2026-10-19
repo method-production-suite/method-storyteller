@@ -225,18 +225,16 @@ fn with_nothing_to_open_the_sample_is_shown_unsaved() {
     assert!(app.session.script.elements.len() > 1000, "the whole of Field Station");
     assert_eq!(app.display_title(), "Field Station (sample)");
     assert_eq!(app.status, super::sample::SAMPLE_LINE);
+    assert!(app.prefs.get().general.sample_seen, "shown once");
 }
 
 #[test]
-fn help_opens_the_sample_and_the_setting_turns_it_off() {
+fn help_opens_the_sample_any_time() {
     let (mut harness, _file) = harness(SCRIPT);
     assert!(!harness.state().showing_sample(), "a file given at launch opens instead of the sample");
+    assert!(harness.state().prefs.get().general.sample_seen, "and retires the first-launch sample unshown");
     harness.state_mut().queued.push("help.open_sample".into());
     harness.run_steps(3);
     assert!(harness.state().showing_sample(), "Help > Open Sample Script");
     assert!(harness.state().session.path.is_none());
-    assert_eq!(harness.state().checked("prefs.show_sample"), Some(true));
-    harness.state_mut().queued.push("prefs.show_sample".into());
-    harness.run_steps(3);
-    assert_eq!(harness.state().checked("prefs.show_sample"), Some(false), "Help > Show Sample at Launch turns it off");
 }

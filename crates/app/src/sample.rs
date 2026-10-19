@@ -1,5 +1,5 @@
-//! The sample script, Field Station, built into the app. With nothing to open, the app shows it
-//! as an unsaved copy, so a first launch has a real script to look at. Help > Open Sample Script
+//! The sample script, Field Station, built into the app. The first launch with nothing to open
+//! shows it once, as an unsaved copy, so there is a real script to look at. Help > Open Sample Script
 //! brings it back at any time. The bundled text is never written: Save asks where to put a copy.
 
 use storyteller_engine::Session;
@@ -14,7 +14,7 @@ pub(super) const SAMPLE_NAME: &str = "Field Station";
 
 /// The line shown under the page while the sample is open.
 pub(super) const SAMPLE_LINE: &str =
-    "This is the sample script, Field Station. Change anything; Save keeps a copy wherever you choose. Help > Show Sample at Launch turns this off.";
+    "This is the sample script, Field Station. Change anything; Save keeps a copy wherever you choose. Help > Open Sample Script brings it back.";
 
 impl StorytellerApp {
     /// Opens a fresh copy of the sample, unsaved and with no path.

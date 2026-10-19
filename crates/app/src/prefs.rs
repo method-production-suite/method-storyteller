@@ -35,13 +35,14 @@ pub struct General {
     pub smart_quotes: bool,
     /// The version that last ran, so What's New opens once after an update.
     pub last_seen_version: String,
-    /// Show the sample script when there is nothing to open (Help > Show Sample at Launch).
-    pub show_sample: bool,
+    /// The first-launch sample has had its turn: shown once, or retired unshown because the
+    /// writer already had a script to open.
+    pub sample_seen: bool,
 }
 
 impl Default for General {
     fn default() -> Self {
-        General { recent: Vec::new(), new_script_format: "osf".into(), smart_quotes: true, last_seen_version: String::new(), show_sample: true }
+        General { recent: Vec::new(), new_script_format: "osf".into(), smart_quotes: true, last_seen_version: String::new(), sample_seen: false }
     }
 }
 
