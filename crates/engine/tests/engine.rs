@@ -172,12 +172,28 @@ fn tab_starts_the_next_element_and_shortcuts_insert() {
     run(&registry, &mut s, "element.set_text", json!({ "text": "int.", "typing": true }));
     assert_eq!(s.current().unwrap().kind, K::SceneHeading, "a scene heading stays one");
     run(&registry, &mut s, "element.set_kind", json!({ "kind": "action" }));
+    // Turned back into action, it stays action as the writer types on; cleared and retyped, it
+    // becomes a heading again.
+    run(&registry, &mut s, "element.set_text", json!({ "text": "INT. ", "typing": true }));
+    assert_eq!(s.current().unwrap().kind, K::Action, "a heading turned back into action stays action");
+    run(&registry, &mut s, "element.set_text", json!({ "text": "", "typing": true }));
     run(&registry, &mut s, "element.set_text", json!({ "text": "ext.", "typing": true }));
     assert_eq!((s.current().unwrap().kind, s.current().unwrap().text.as_str()), (K::SceneHeading, "EXT."), "typing ext. in action makes a heading");
     run(&registry, &mut s, "edit.undo", json!({}));
     assert_eq!((s.current().unwrap().kind, s.current().unwrap().text.as_str()), (K::Action, "ext."), "one undo turns it back into action");
     run(&registry, &mut s, "element.set_text", json!({ "text": "Est.", "typing": true }));
     assert_eq!(s.current().unwrap().kind, K::Action, "Est. stays action");
+
+    // A whole heading arriving at once (fast keys, a paste) after a speech becomes a heading,
+    // and the next speech by the same character starts afresh, without (CONT'D).
+    let mut s = Session::new(storyteller_core::fountain::parse("INT. HUT - DAY\n\nNORA\nHello.\n\nShe waits.\n").unwrap());
+    let action = s.script.elements.len() - 1;
+    run(&registry, &mut s, "element.set_text", json!({ "index": action, "text": "", "typing": true }));
+    run(&registry, &mut s, "element.set_text", json!({ "index": action, "text": "EXT. RIDGE - DAWN", "typing": true }));
+    assert_eq!(s.script.elements[action].kind, K::SceneHeading, "EXT. RIDGE - DAWN typed in one go");
+    s.script.elements.push(storyteller_core::Element::new(K::Character, "NORA"));
+    s.script.elements.push(storyteller_core::Element::new(K::Dialogue, "Again."));
+    assert!(!storyteller_core::paginate::auto_contd_at(&s.script, s.script.elements.len() - 2), "no (CONT'D) across a scene heading");
 
     let mut s = Session::default();
     run(&registry, &mut s, "element.set_kind", json!({ "kind": "character" }));
