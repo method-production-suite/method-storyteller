@@ -21,12 +21,13 @@ const COPYRIGHT: &str = "Copyright (c) 2026 Method Production Suite Team and the
 const CHANGELOG: &str = include_str!("../../../CHANGELOG.md");
 
 /// Shown in Licenses and Notices, in this order.
-const NOTICES: [(&str, &str); 5] = [
+const NOTICES: [(&str, &str); 6] = [
     ("MIT", include_str!("../../../LICENSE-MIT")),
     ("Apache-2.0", include_str!("../../../LICENSE-APACHE")),
     ("Notice", include_str!("../../../NOTICE")),
     ("Attribution", include_str!("../../../ATTRIBUTION.md")),
     ("Courier Prime (OFL)", include_str!("../../../assets/fonts/OFL.txt")),
+    ("English dictionary (SCOWL)", include_str!("../../../assets/dictionaries/README_en_US.txt")),
 ];
 
 /// `application/x-www-form-urlencoded`, as browsers write it.

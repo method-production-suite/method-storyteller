@@ -14,6 +14,17 @@ Every bundled asset, with its author, source and licence. Each file also has a
 
 The fonts are distributed unmodified. PDF export embeds subsets of them, which the OFL permits.
 
+## Dictionaries
+
+| File | Author | Source | Licence |
+| --- | --- | --- | --- |
+| `assets/dictionaries/en_US.dic` | Kevin Atkinson and the SCOWL contributors | [en_US Hunspell dictionary 2020.12.07](http://wordlist.aspell.net) (SCOWL size 60) | SCOWL's permissive notice, Ispell's BSD licence and the notices in [README_en_US.txt](assets/dictionaries/README_en_US.txt) |
+| `assets/dictionaries/en_US.aff` | as above; affix file after Geoff Kuenning's Ispell | as above | as above |
+| `assets/dictionaries/README_en_US.txt` | as above | as above | the notices themselves, kept verbatim |
+
+The spell check's English dictionary, distributed unmodified. The app shows README_en_US.txt in
+Help > Licenses and Notices.
+
 ## Pictures
 
 `assets/screens/` holds pictures of this app, taken by `cargo xtask screens` from

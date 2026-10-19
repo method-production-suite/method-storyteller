@@ -350,12 +350,16 @@ pub struct Script {
     /// Open Screenplay Format data from an imported `.osf` or `.fadein`; written back on OSF export.
     #[serde(skip)]
     pub osf: Option<Box<OsfDocument>>,
+    /// Words the writer told spell check to ignore in this script, lower case (`.fdx`
+    /// SpellCheckIgnoreLists, OSF `<spelling><ignored>`; Fountain has no place for them).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub spelling_ignored: Vec<String>,
 }
 
 impl Script {
     /// A new, empty script with one scene heading to start typing in.
     pub fn blank() -> Self {
-        Script { title_page: TitlePage::default(), elements: vec![Element::new(ElementKind::SceneHeading, "")], fdx: None, osf: None }
+        Script { elements: vec![Element::new(ElementKind::SceneHeading, "")], ..Script::default() }
     }
 
     /// Normalize every element (see [`Element::normalize`]).
