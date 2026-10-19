@@ -5,6 +5,11 @@ rather than Fountain, for what OSF can hold, without giving up compatibility? Th
 two formats, measures what Method Storyteller's own reader and writer keep, and ends with a
 recommendation. Formats are named factually; comparisons with other apps stay in private notes.
 
+> **Decision (the owner, 2026-10-18):** Open Screenplay Format is the standard and the default
+> for new scripts, with Fountain fully supported and one choice away, and a "Lossless .fdx"
+> milestone alongside. The study's recommendation below was to keep Fountain for now; the owner
+> chose OSF for its feature set. The gaps in section 5 are being closed first.
+
 **In short:** OSF can hold far more of a production draft (revisions, locked pages, styles,
 per-element settings), and our OSF round trip already keeps every element type Fountain cannot.
 But today the extra capacity is mostly unused: what Storyteller writers can make right now
