@@ -7,7 +7,7 @@ use serde::Serialize;
 use serde_json::{Map, Value, json};
 use storyteller_core::{Element, ElementKind, Script, autocomplete, inline};
 
-use crate::files::{self, FileFormat};
+use crate::files::{self, FileError, FileFormat, FileProblem};
 use crate::find;
 use crate::flow;
 use crate::session::{Caret, EditKind, Session, floor_char_boundary};
@@ -27,6 +27,25 @@ pub enum CommandError {
     Invalid { name: &'static str, reason: String },
     #[error("{0}")]
     Failed(String),
+    /// A file could not be read or written; `problem` says what kind of trouble it was.
+    #[error("{detail}")]
+    File { problem: FileProblem, detail: String },
+}
+
+impl CommandError {
+    /// The kind of file trouble, when this is a file error.
+    pub fn file_problem(&self) -> Option<FileProblem> {
+        match self {
+            CommandError::File { problem, .. } => Some(*problem),
+            _ => None,
+        }
+    }
+}
+
+impl From<FileError> for CommandError {
+    fn from(error: FileError) -> Self {
+        CommandError::File { problem: error.problem(), detail: error.to_string() }
+    }
 }
 
 /// What a command reports back.
@@ -583,7 +602,7 @@ fn all_commands() -> Vec<Command> {
             enabled: always,
             run: |s, p| {
                 let path = path(p, "path")?;
-                let (script, format) = files::open(&path).map_err(|e| CommandError::Failed(e.to_string()))?;
+                let (script, format) = files::open(&path)?;
                 let layout = s.layout.clone();
                 *s = Session::new(script);
                 s.layout = layout;
@@ -601,7 +620,7 @@ fn all_commands() -> Vec<Command> {
             enabled: has_path,
             run: |s, _| {
                 let path = s.path.clone().ok_or(CommandError::Missing("path"))?;
-                files::save(&s.script, &path, s.format, &s.layout).map_err(|e| CommandError::Failed(e.to_string()))?;
+                files::save(&s.script, &path, s.format, &s.layout)?;
                 s.dirty = false;
                 s.break_typing();
                 Ok(Outcome::message(files::saved_message("Saved", &path, &s.script, s.format)))
@@ -620,7 +639,7 @@ fn all_commands() -> Vec<Command> {
                     FileFormat::Pdf => return Err(CommandError::Invalid { name: "path", reason: "use file.export_pdf for PDF".into() }),
                     other => other,
                 };
-                files::save(&s.script, &path, format, &s.layout).map_err(|e| CommandError::Failed(e.to_string()))?;
+                files::save(&s.script, &path, format, &s.layout)?;
                 s.path = Some(path.clone());
                 s.format = format;
                 s.dirty = false;
@@ -656,7 +675,7 @@ fn all_commands() -> Vec<Command> {
             run: |s, p| {
                 let path = path(p, "path")?;
                 let format = if FileFormat::from_path(&path) == FileFormat::FadeIn { FileFormat::FadeIn } else { FileFormat::Osf };
-                files::save(&s.script, &path, format, &s.layout).map_err(|e| CommandError::Failed(e.to_string()))?;
+                files::save(&s.script, &path, format, &s.layout)?;
                 Ok(Outcome::message(files::saved_message("Exported", &path, &s.script, format)))
             },
         },
@@ -956,15 +975,15 @@ fn all_commands() -> Vec<Command> {
             label: "Ignore Spelling",
             menu: "",
             shortcut: None,
-            params: const { &[param("word", String, true, "The word to accept in this script (kept with the script)")] },
+            params: const { &[param("word", String, true, "The word to accept in this script, for this session")] },
             enabled: always,
             run: |s, p| {
                 let word = string(p, "word")?;
                 let lower = word.to_lowercase();
-                // Kept with the script, so it stays ignored when the file is saved and reopened.
+                // Kept on the script for this session. No file format saves the list yet, so
+                // ignoring a word does not mark the script edited.
                 if !s.script.spelling_ignored.contains(&lower) {
                     s.script.spelling_ignored.push(lower);
-                    s.dirty = true;
                 }
                 Ok(Outcome::message(format!("Ignoring “{word}” in this script")))
             },
@@ -1255,6 +1274,6 @@ fn all_commands() -> Vec<Command> {
 
 fn export(session: &mut Session, params: &Params, format: FileFormat) -> Result<Outcome, CommandError> {
     let path = path(params, "path")?;
-    files::save(&session.script, &path, format, &session.layout).map_err(|e| CommandError::Failed(e.to_string()))?;
+    files::save(&session.script, &path, format, &session.layout)?;
     Ok(Outcome::message(files::saved_message("Exported", &path, &session.script, format)))
 }

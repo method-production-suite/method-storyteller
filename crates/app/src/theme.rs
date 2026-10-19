@@ -100,6 +100,8 @@ pub const PAGE_MUTED: Color32 = rgb(0x707070);
 pub const PAGE_RULE: Color32 = rgb(0xC4C4C4);
 /// A find match on the page: the accent as a light wash.
 pub const FIND_MARK: Color32 = rgb(0xEBBCC8);
+/// A misspelled word on the page: a thin red underline (the page is always white paper).
+pub const SPELL_MARK: Color32 = rgb(0xC0392B);
 /// Selected text on the page: a lighter wash, so a find match inside it still shows.
 pub const PAGE_SELECTION: Color32 = rgb(0xF5D9E0);
 
