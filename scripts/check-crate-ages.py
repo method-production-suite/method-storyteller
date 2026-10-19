@@ -4,9 +4,11 @@
 Usage: python3 scripts/check-crate-ages.py [--days 14] [--lock Cargo.lock] [--only-changed REF]
                                           [--allow-git URL ...] [--cache FILE]
 
-Looks up each locked crates.io crate's versions (one request per crate, one per second, per
-crates.io's crawler policy, retrying when asked to slow down) and lists any locked version
-younger than the cooldown, with the newest compatible version old enough to pin to. A package from
+Dates each locked crates.io version by its file on static.crates.io first (a CDN, no rate
+limit; never earlier than the publish date), and asks the crates.io API (one request per crate,
+one per second, per its crawler policy, retrying when asked to slow down) only about versions
+that look young. Lists any locked version younger than the cooldown, with the newest compatible
+version old enough to pin to. A package from
 anywhere else (a git repository, another registry) has no publish date to check, so it
 fails the check too: fail closed. The one exception is a git repository passed with
 --allow-git, and only when the lock pins it to an exact revision (reviewed once, by rev).
@@ -19,6 +21,7 @@ since that git ref are checked. Stdlib only, so it runs anywhere Python 3 does.
 import argparse
 import re
 import datetime as dt
+import email.utils
 import json
 import subprocess
 import sys
@@ -64,9 +67,52 @@ def versions(name):
     }
 
 
+def stored_at(name, version):
+    """When static.crates.io last wrote the .crate file (its Last-Modified), or None. Never
+    earlier than the publish date (files are sometimes rewritten later, never before), so a
+    crate this shows as old enough is old enough, and the API rate limit is spent only on the
+    rest."""
+    req = urllib.request.Request(
+        f"https://static.crates.io/crates/{name}/{name}-{version}.crate", method="HEAD", headers={"User-Agent": UA}
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            stamp = r.headers.get("Last-Modified")
+    except urllib.error.URLError:
+        return None
+    return email.utils.parsedate_to_datetime(stamp) if stamp else None
+
+
+def index_path(name):
+    """A crate's path in the sparse index (index.crates.io), by Cargo's naming rule."""
+    lower = name.lower()
+    if len(lower) <= 2:
+        return f"{len(lower)}/{lower}"
+    if len(lower) == 3:
+        return f"3/{lower[0]}/{lower}"
+    return f"{lower[:2]}/{lower[2:4]}/{lower}"
+
+
+def yanked_in_index(name, version):
+    """Whether the sparse index marks this version yanked (a CDN, no rate limit). None when the
+    index cannot be read."""
+    req = urllib.request.Request(f"https://index.crates.io/{index_path(name)}", headers={"User-Agent": UA})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            lines = r.read().decode().splitlines()
+    except urllib.error.URLError:
+        return None
+    for line in lines:
+        entry = json.loads(line)
+        if entry.get("vers") == version:
+            return bool(entry.get("yanked"))
+    return None
+
+
 def semver(version):
-    """(major, minor, patch) of a plain release, or None for a pre-release or build."""
-    m = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version)
+    """(major, minor, patch) of a release (build metadata such as `+spec-1.1.0` ignored), or
+    None for a pre-release."""
+    m = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:\+[0-9A-Za-z.-]+)?", version)
     return tuple(int(x) for x in m.groups()) if m else None
 
 
@@ -139,6 +185,15 @@ def main():
             pass
     pins = []
     for i, (name, version) in enumerate(sorted(pkgs)):
+        stored = stored_at(name, version) if name not in known else None
+        yanked = yanked_in_index(name, version) if stored and stored <= cutoff else None
+        if stored and stored <= cutoff and yanked is not None:
+            # Old enough by its file date alone; the index says whether it was yanked.
+            flag = "  YANKED" if yanked else ""
+            if yanked:
+                bad.append(f"{name} {version} (yanked)")
+            print(f"{name:40} {version:16} {(now - stored).days:5}+ days{flag}")
+            continue
         if name not in known or version not in known[name]:
             time.sleep(1)
             known[name] = versions(name)
