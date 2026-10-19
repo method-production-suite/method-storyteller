@@ -66,6 +66,10 @@ says otherwise.
   the navigator against what you expect; ⌘⌥G to a scene number and a page; ⌘F, Enter and ⇧Enter,
   Replace, Replace All and one ⌘Z; Production > Rename Character with and without "Also in
   action, dialogue and other text".
+- **Lossless `.fdx` (the final check).** Open our exported `.fdx` files in your licensed copy
+  and say whether the notes, revisions, locked pages and element settings came through. The
+  files and a click list (what to open, where to look, what you should see) come here when the
+  milestone's pieces have merged; about 20 minutes, nothing to type.
 - **The parity check (M7).** One scripted session with a licensed reference app settles the eight open questions in
   the V1 inventory: whether our `.fdx` exports open cleanly, encodings never seen filled in
   (alternates, tags in text, A-page locks), A-page and A-scene lettering edge cases, pagination
@@ -140,14 +144,31 @@ wait for a decision above.
    (decision 7 for Fountain), scene titles, summaries and colours, drag to reorder scenes in
    the navigator (one Undo), bookmarks for Go To, the character table, show and hide outline
    paragraphs.
-8. **M5, production I** L. Full scene numbering (A-suffix inserts, prefix schemes, left and
+8. **Lossless `.fdx`** [partial] M (owner, 2026-10-18). Everything `.fdx` and Open Screenplay
+   Format can both hold converts exactly both ways (OSF to `.fdx`, `.fdx` to OSF, `.fdx` to
+   `.fdx`), proven by round-trip tests on files we write ourselves. Today an imported `.fdx`
+   keeps everything only when saved back as `.fdx`. One PR each, in order:
+   - script notes: the three `.fdx` generations (a note inside its paragraph, the older
+     unanchored list, the newer list with character ranges) into the model with range, colour
+     and author, to OSF `note` and back (colour and author in a `method_storyteller` child, so
+     our own round trip is exact);
+   - revisions: revision sets (name, colour, mark) and each run's revision, to OSF
+     `revision_colors` and `text@revision`, and back;
+   - locked pages and A-pages: locked pages into the model, to OSF `pages_locked` and each
+     paragraph's `page_number`, and back;
+   - element settings and page layout, to OSF `styles` and `settings` and back, through the
+     mapping layout.rs already has;
+   - the fidelity report, `docs/research/fdx-osf-fidelity.md`: what maps exactly, what is
+     approximated, what cannot map and why, checked by a test;
+   - the final check with the owner (above).
+9. **M5, production I** L. Full scene numbering (A-suffix inserts, prefix schemes, left and
    right), omit and unomit, revision sets (name, mark, colour), revision mode, mark and clear,
    deleted-text markers, revisions drawn in the editor and the PDF, the revised-pages header,
    revised-pages-only and range PDFs, clean copies. Needs decision 1.
-9. **M6, production II and reports** L. Locked pages as imported, then lock pages, A-pages, lock
+10. **M6, production II and reports** L. Locked pages as imported, then lock pages, A-pages, lock
    and unlock; scene, location, character and cast reports with CSV; plain-text export; the
    structured export Method Schedule reads.
-10. **D, the design pass** M (new, owner 2026-10-18). Matched to the family (Method Budget's and
+11. **D, the design pass** M (new, owner 2026-10-18). Matched to the family (Method Budget's and
     Method Schedule's BRAND.md), every step pictured offscreen in light and dark:
     - the final mark and wordmark (replacing the provisional ones in docs/brand and site/);
     - the app icon at every macOS size, plus Windows and Linux, and a document icon for
@@ -158,7 +179,7 @@ wait for a decision above.
     - empty states (no script, no scenes, nothing found) and error states (a file that will not
       open, a failed save, a failed update) written in the family voice.
     Runs beside M4 to M6: it touches theme, icons and copy, not the engine.
-11. **M7, parity check, then V1.0** M. The parity check (the eight prepared checks in one sitting,
+12. **M7, parity check, then V1.0** M. The parity check (the eight prepared checks in one sitting,
     each answer a committed golden test), the fixes it finds, then V1.0.
 
 **Parallel tracks while M4 runs:** the release workflow's updater files (`latest.json` and the
