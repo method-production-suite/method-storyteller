@@ -263,15 +263,19 @@ impl StorytellerApp {
     // Commands
 
     fn run(&mut self, id: &str, params: Map<String, Value>) {
-        match self.registry.run(id, &mut self.session, &params) {
-            Ok(outcome) => {
-                if let Some(message) = outcome.message {
-                    self.status = message;
-                }
-                self.error = None;
-            }
-            Err(error) => self.error = Some(error.to_string()),
+        if let Err(error) = self.try_run(id, params) {
+            self.error = Some(error.to_string());
         }
+    }
+
+    /// Runs a command, shows its message, and hands back the error for the caller to word.
+    fn try_run(&mut self, id: &str, params: Map<String, Value>) -> Result<(), storyteller_engine::CommandError> {
+        let outcome = self.registry.run(id, &mut self.session, &params)?;
+        if let Some(message) = outcome.message {
+            self.status = message;
+        }
+        self.error = None;
+        Ok(())
     }
 
     fn run_command(&mut self, ctx: &egui::Context, id: &str) {
@@ -452,9 +456,8 @@ impl StorytellerApp {
     fn open_path(&mut self, path: &Path) {
         let mut params = Map::new();
         params.insert("path".into(), json!(path.display().to_string()));
-        self.run("file.open", params);
-        if let Some(detail) = self.error.take() {
-            self.error = Some(crate::messages::open_failed(path, &detail));
+        if let Err(error) = self.try_run("file.open", params) {
+            self.error = Some(crate::messages::open_failed(path, error.file_problem(), &error.to_string()));
         } else {
             let shown = path.display().to_string();
             self.prefs.update(|p| p.push_recent(&shown));
@@ -502,9 +505,8 @@ impl StorytellerApp {
         }
         let mut params = Map::new();
         params.insert("path".into(), json!(path.display().to_string()));
-        self.run("file.save_as", params);
-        if let Some(detail) = self.error.take() {
-            self.error = Some(crate::messages::save_failed(&path, &detail));
+        if let Err(error) = self.try_run("file.save_as", params) {
+            self.error = Some(crate::messages::save_failed(&path, error.file_problem(), &error.to_string()));
         }
         let saved = self.error.is_none() && !self.session.dirty;
         if saved {
