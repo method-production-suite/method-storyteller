@@ -17,7 +17,7 @@ The fonts are distributed unmodified. PDF export embeds subsets of them, which t
 ## Pictures
 
 `assets/screens/` holds pictures of this app, taken by `cargo xtask screens` from
-`examples/field-station.fountain`, an invented script written for this project. They are
+`examples/field-station.osf`, the suite's invented Field Station script (examples/README.md). They are
 under the project's own licence, and need no sidecars.
 
 ## Libraries
