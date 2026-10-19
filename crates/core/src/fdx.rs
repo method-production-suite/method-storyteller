@@ -16,6 +16,9 @@
 //! (Version 5 and later: character offsets into the script, each paragraph break counting one),
 //! and the older top-level `UnanchoredScriptNotes`. All three become [`ScriptNote`]s on their
 //! paragraph and are written back in the form they came in.
+//!
+//! `LockedPages` entries (`PageNumber`, `Position`) become [`PageStart`]s on the paragraph each
+//! page starts in. `Position` counts like `ScriptNotes@Range`.
 
 use quick_xml::XmlVersion;
 use quick_xml::events::{BytesRef, BytesStart, Event};
@@ -23,8 +26,8 @@ use quick_xml::events::{BytesRef, BytesStart, Event};
 use crate::inline::{self, Run, Style};
 use crate::layout::{Align, ElementStyle, Layout, chars_per_line};
 use crate::model::{
-    Element, ElementKind, FdxDocument, FdxNote, FdxNoteForm, FdxParagraph, FdxSection, Revised, RevisionSet, Revisions, Script, ScriptNote,
-    TitleField, TitlePage, mark_revised,
+    Element, ElementKind, FdxDocument, FdxNote, FdxNoteForm, FdxParagraph, FdxSection, PageStart, Revised, RevisionSet, Revisions, Script,
+    ScriptNote, TitleField, TitlePage, mark_revised,
 };
 use crate::paginate;
 use crate::{CoreError, MAX_ELEMENTS, MAX_INPUT_BYTES};
@@ -39,7 +42,7 @@ const INLINE_NOTE_ATTR: &str = "StorytellerInline";
 /// The paragraph type written for an element: its imported type while its kind is unchanged,
 /// otherwise Final Draft's name for the kind. Sections and synopses use Final Draft's
 /// `Outline 1`–`Outline 4` and `Summary`.
-fn fdx_type(element: &Element) -> String {
+pub(crate) fn fdx_type(element: &Element) -> String {
     if let Some(fdx) = &element.fdx
         && fdx.kind == element.kind
     {
@@ -360,10 +363,35 @@ pub fn write_with_layout(script: &Script, layout: &Layout) -> String {
     let ranged_same =
         ranged.len() == read_ranged.len() && ranged.iter().zip(read_ranged).all(|((s, e, n), (rs, re, rn))| s == rs && e == re && *n == rn);
     let unanchored_same = unanchored.len() == read_unanchored.len() && unanchored.iter().zip(read_unanchored).all(|(n, r)| *n == r);
-    let (mut ranged_written, mut unanchored_written, mut revisions_written) = (false, false, false);
+    let (mut ranged_written, mut unanchored_written, mut revisions_written, mut locks_written) = (false, false, false, false);
+    let locks = locked_pages(elements);
+    let read_locks = script.fdx.as_deref().map(|d| d.locked_pages.as_slice()).unwrap_or_default();
+    let locks_same = locks.len() == read_locks.len() && locks.iter().zip(read_locks).all(|((p, s), (rp, rs))| p == rp && *s == rs);
     let mut title_written = false;
+    let format_same = script.fdx.as_ref().and_then(|d| d.format.as_ref()) == Some(&script.format);
+    let mut ignored_written = false;
+    let (mut elements_written, mut layout_written, mut mores_written) = (false, false, false);
     for section in sections {
         match section {
+            // A changed format is written from the model, all element settings where the first was.
+            FdxSection::Raw(xml) if !format_same && section_is(xml, "ElementSettings") => {
+                if !elements_written {
+                    write_element_settings(&script.format, &mut out);
+                    elements_written = true;
+                }
+            }
+            FdxSection::Raw(xml) if !format_same && section_is(xml, "PageLayout") => {
+                if let Some(page) = script.format.page.as_ref().filter(|_| !layout_written) {
+                    out.push_str(&format!("  {}\n", crate::format::fdx_page_layout(page)));
+                }
+                layout_written = true;
+            }
+            FdxSection::Raw(xml) if !format_same && section_is(xml, "MoresAndContinueds") => {
+                if let Some(page) = script.format.page.as_ref().filter(|_| !mores_written) {
+                    out.push_str(&format!("  {}\n", crate::format::fdx_mores(page)));
+                }
+                mores_written = true;
+            }
             FdxSection::Raw(xml) if section_is(xml, "ScriptNotes") => {
                 if ranged_same {
                     out.push_str("  ");
@@ -383,6 +411,28 @@ pub fn write_with_layout(script: &Script, layout: &Layout) -> String {
                     write_revisions(&script.revisions, &mut out);
                 }
                 revisions_written = true;
+            }
+            FdxSection::Raw(xml) if section_is(xml, "SpellCheckIgnoreLists") && !ignored_written => {
+                if script.fdx.as_ref().is_some_and(|d| d.spelling_ignored == script.spelling_ignored) {
+                    out.push_str("  ");
+                    out.push_str(xml);
+                } else {
+                    out.push_str("  ");
+                    out.push_str(&replace_child(xml, "ignoredwords", &ignored_words_xml(&script.spelling_ignored)));
+                }
+                out.push('\n');
+                ignored_written = true;
+            }
+            FdxSection::Raw(xml) if section_is(xml, "LockedPages") && !locks_written => {
+                if locks_same {
+                    out.push_str("  ");
+                    out.push_str(xml);
+                    out.push('\n');
+                } else {
+                    let root = tags(xml).into_iter().next().map(|(_, a)| a).unwrap_or_default();
+                    write_locked_pages(&root, &locks, &mut out);
+                }
+                locks_written = true;
             }
             FdxSection::Raw(xml) if section_is(xml, "UnanchoredScriptNotes") => {
                 if unanchored_same {
@@ -416,6 +466,25 @@ pub fn write_with_layout(script: &Script, layout: &Layout) -> String {
     if !title_written {
         write_title_page(&script.title_page, &mut out);
     }
+    if !format_same {
+        if !elements_written {
+            write_element_settings(&script.format, &mut out);
+        }
+        if let Some(page) = &script.format.page {
+            if !layout_written {
+                out.push_str(&format!("  {}\n", crate::format::fdx_page_layout(page)));
+            }
+            if !mores_written {
+                out.push_str(&format!("  {}\n", crate::format::fdx_mores(page)));
+            }
+        }
+    }
+    if !ignored_written && !script.spelling_ignored.is_empty() {
+        out.push_str(&format!("  <SpellCheckIgnoreLists><IgnoredRanges/>{}</SpellCheckIgnoreLists>\n", ignored_words_xml(&script.spelling_ignored)));
+    }
+    if !locks_written && !locks.is_empty() {
+        write_locked_pages(&[], &locks, &mut out);
+    }
     if !revisions_written && !script.revisions.is_empty() {
         write_revisions(&script.revisions, &mut out);
     }
@@ -427,6 +496,12 @@ pub fn write_with_layout(script: &Script, layout: &Layout) -> String {
     }
     out.push_str("</FinalDraft>\n");
     out
+}
+
+fn write_element_settings(format: &crate::format::Format, out: &mut String) {
+    for element in &format.elements {
+        out.push_str(&format!("  {}\n", crate::format::fdx_element(element, format.page.as_ref())));
+    }
 }
 
 fn write_title_page(title: &TitlePage, out: &mut String) {
@@ -527,7 +602,7 @@ fn attr(element: &BytesStart<'_>, name: &str) -> Option<String> {
     element
         .attributes()
         .flatten()
-        .find(|a| a.key.as_ref() == name.as_bytes())
+        .find(|a| a.key.as_ref() == name)
         .and_then(|a| a.normalized_value(XmlVersion::Implicit1_0).ok())
         .map(|v| v.into_owned())
 }
@@ -538,7 +613,7 @@ pub(crate) fn all_attrs(element: &BytesStart<'_>) -> Vec<(String, String)> {
         .flatten()
         .filter_map(|a| {
             let value = a.normalized_value(XmlVersion::Implicit1_0).ok()?;
-            Some((String::from_utf8_lossy(a.key.as_ref()).into_owned(), value.into_owned()))
+            Some((a.key.as_ref().to_string(), value.into_owned()))
         })
         .collect()
 }
@@ -565,10 +640,7 @@ fn xml_error(error: impl std::fmt::Display) -> CoreError {
 fn reference_text(reference: &BytesRef<'_>) -> Result<String, CoreError> {
     Ok(match reference.resolve_char_ref().map_err(xml_error)? {
         Some(c) => c.to_string(),
-        None => {
-            let name = reference.decode().map_err(xml_error)?;
-            quick_xml::escape::resolve_predefined_entity(&name).unwrap_or("").to_string()
-        }
+        None => quick_xml::escape::resolve_predefined_entity(reference.as_ref()).unwrap_or("").to_string(),
     })
 }
 
@@ -815,8 +887,53 @@ impl Importer {
         Ok(())
     }
 
+    /// Reads the `LockedPages` list onto the paragraphs each page starts in.
+    fn place_locked_pages(&mut self) -> Result<(), CoreError> {
+        let Some(xml) = self.document.sections.iter().find_map(|s| match s {
+            FdxSection::Raw(xml) if section_is(xml, "LockedPages") => Some(xml.clone()),
+            _ => None,
+        }) else {
+            return Ok(());
+        };
+        let starts: Vec<(usize, u32)> = self.starts.iter().enumerate().filter_map(|(i, s)| s.map(|s| (i, s))).collect();
+        let entries: Vec<Vec<(String, String)>> = tags(&xml).into_iter().skip(1).filter(|(name, _)| name == "LockedPage").map(|(_, a)| a).collect();
+        if entries.len() > MAX_ELEMENTS {
+            return Err(CoreError::TooManyElements);
+        }
+        // A page without a position starts where the one before it does.
+        let mut previous = 0;
+        let mut placed: Vec<(u32, Vec<(String, String)>)> = entries
+            .into_iter()
+            .map(|attributes| {
+                previous = number(get(&attributes, "Position")).unwrap_or(previous);
+                (previous, attributes)
+            })
+            .collect();
+        placed.sort_by_key(|(position, _)| *position);
+        for (position, attributes) in placed {
+            let mut kept = attributes.clone();
+            for (key, value) in &mut kept {
+                if key == "Position" {
+                    value.clear();
+                }
+            }
+            let after = starts.partition_point(|(_, s)| *s <= position);
+            let Some(&(index, start)) = starts.get(after.saturating_sub(1)) else { continue };
+            let page = PageStart {
+                at: position.saturating_sub(start),
+                label: get(&attributes, "PageNumber").unwrap_or_default().to_string(),
+                fdx_attributes: kept,
+            };
+            self.document.locked_pages.push((position, page.clone()));
+            if let Some(element) = self.elements.get_mut(index) {
+                element.page_starts.push(page);
+            }
+        }
+        Ok(())
+    }
+
     /// Reads the top-level note lists onto the paragraphs they belong to.
-    fn place_listed_notes(&mut self) {
+    fn place_listed_notes(&mut self) -> Result<(), CoreError> {
         let mut ranged = Vec::new();
         let mut unanchored = Vec::new();
         for section in &self.document.sections {
@@ -828,7 +945,11 @@ impl Importer {
             } else {
                 continue;
             };
-            for child in child_elements(xml).into_iter().take(MAX_ELEMENTS) {
+            let children = child_elements(xml);
+            if children.len() > MAX_ELEMENTS {
+                return Err(CoreError::TooManyElements);
+            }
+            for child in children {
                 let Some(read) = read_note(child, form) else { continue };
                 match form {
                     FdxNoteForm::Ranged => ranged.push((read.range.unwrap_or_default(), read.note)),
@@ -855,15 +976,17 @@ impl Importer {
             }
         }
         self.document.ranged_notes.sort_by_key(|(from, to, _)| (*from, *to));
+        Ok(())
     }
 
-    fn into_script(mut self) -> Script {
-        self.place_listed_notes();
+    fn into_script(mut self) -> Result<Script, CoreError> {
+        self.place_listed_notes()?;
         let revisions = self.document.sections.iter().find_map(|s| match s {
             FdxSection::Raw(xml) if section_is(xml, "Revisions") => Some(read_revisions(xml)),
             _ => None,
         });
         self.document.revisions = revisions.clone();
+        self.place_locked_pages()?;
         apply_hidden_types(&mut self.elements, &self.document.sections);
         let title_page = self
             .document
@@ -874,13 +997,30 @@ impl Importer {
                 FdxSection::Raw(_) => None,
             })
             .unwrap_or_default();
-        Script {
+        let spelling_ignored = self
+            .document
+            .sections
+            .iter()
+            .find_map(|s| match s {
+                FdxSection::Raw(xml) if section_is(xml, "SpellCheckIgnoreLists") => Some(ignored_words(xml, "ignoredwords")),
+                _ => None,
+            })
+            .unwrap_or_default();
+        self.document.spelling_ignored = spelling_ignored.clone();
+        let format = crate::format::from_fdx(self.document.sections.iter().filter_map(|s| match s {
+            FdxSection::Raw(xml) => Some(xml.as_str()),
+            FdxSection::TitlePage { .. } => None,
+        }));
+        self.document.format = Some(format.clone());
+        Ok(Script {
             title_page,
             elements: self.elements,
             revisions: revisions.unwrap_or_default(),
+            format,
             fdx: Some(Box::new(self.document)),
+            spelling_ignored,
             ..Script::default()
-        }
+        })
     }
 }
 
@@ -903,7 +1043,7 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
         let after = usize::try_from(reader.buffer_position()).unwrap_or(usize::MAX);
         if let Some(open) = &capture {
             match event {
-                Event::Start(start) => importer.push(&String::from_utf8_lossy(start.local_name().as_ref()))?,
+                Event::Start(start) => importer.push(start.local_name().as_ref())?,
                 Event::End(_) => {
                     if importer.stack.len() == open.depth {
                         let xml = source.get(open.start..after).unwrap_or_default();
@@ -920,7 +1060,7 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
         }
         match event {
             Event::Start(start) => {
-                let name = String::from_utf8_lossy(start.local_name().as_ref()).into_owned();
+                let name = start.local_name().as_ref().to_string();
                 if importer.stack.is_empty() {
                     if name != "FinalDraft" {
                         return Err(CoreError::NotFdx(format!("the root element is <{name}>")));
@@ -933,7 +1073,7 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
                 }
             }
             Event::Empty(start) => {
-                let name = String::from_utf8_lossy(start.local_name().as_ref()).into_owned();
+                let name = start.local_name().as_ref().to_string();
                 if importer.stack.is_empty() {
                     return Err(CoreError::NotFdx(format!("the root element is <{name}/>")));
                 }
@@ -957,12 +1097,11 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
                 importer.stack.pop();
             }
             Event::Text(text) => {
-                let content = text.xml_content(XmlVersion::Implicit1_0).map_err(xml_error)?;
+                let content = text.xml_content(XmlVersion::Implicit1_0);
                 importer.text(&content);
             }
             Event::CData(data) => {
-                let content = data.decode().map_err(xml_error)?;
-                importer.text(&content);
+                importer.text(data.as_ref());
             }
             Event::GeneralRef(reference) => importer.text(&reference_text(&reference)?),
             Event::Eof => break,
@@ -972,7 +1111,7 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
     if !saw_root {
         return Err(CoreError::NotFdx("no <FinalDraft> root element".into()));
     }
-    Ok(importer.into_script())
+    importer.into_script()
 }
 
 /// Which paragraph types the file's `ElementSettings` mark as hidden (`HiddenText` in the font
@@ -989,8 +1128,8 @@ fn hidden_types(sections: &[FdxSection]) -> Option<Vec<(String, bool)>> {
         while let Ok(event) = reader.read_event() {
             match event {
                 Event::Start(start) | Event::Empty(start) => match start.local_name().as_ref() {
-                    b"ElementSettings" => current = Some((attr(&start, "Type").unwrap_or_default(), false)),
-                    b"FontSpec" => {
+                    "ElementSettings" => current = Some((attr(&start, "Type").unwrap_or_default(), false)),
+                    "FontSpec" => {
                         if let Some((_, hidden)) = current.as_mut() {
                             *hidden |= attr(&start, "Style").is_some_and(|s| s.split('+').any(|p| p.trim() == "HiddenText"));
                         }
@@ -1089,7 +1228,7 @@ fn section_is(xml: &str, name: &str) -> bool {
 }
 
 /// The raw XML of each direct child element of a fragment's root.
-fn child_elements(xml: &str) -> Vec<&str> {
+pub(crate) fn child_elements(xml: &str) -> Vec<&str> {
     let mut reader = quick_xml::Reader::from_str(xml);
     let mut depth = 0usize;
     let mut start = 0usize;
@@ -1162,8 +1301,8 @@ fn read_note(xml: &str, form: FdxNoteForm) -> Option<ReadNote> {
                 depth += 1;
                 match (depth, start.local_name().as_ref()) {
                     (1, _) => attributes = Some(all_attrs(&start)),
-                    (2, b"Paragraph") => paragraphs.push(String::new()),
-                    (3, b"Text") => in_text = true,
+                    (2, "Paragraph") => paragraphs.push(String::new()),
+                    (3, "Text") => in_text = true,
                     _ => {}
                 }
                 continue;
@@ -1171,7 +1310,7 @@ fn read_note(xml: &str, form: FdxNoteForm) -> Option<ReadNote> {
             Event::Empty(start) => {
                 match (depth, start.local_name().as_ref()) {
                     (0, _) => attributes = Some(all_attrs(&start)),
-                    (1, b"Paragraph") => paragraphs.push(String::new()),
+                    (1, "Paragraph") => paragraphs.push(String::new()),
                     _ => {}
                 }
                 continue;
@@ -1183,8 +1322,8 @@ fn read_note(xml: &str, form: FdxNoteForm) -> Option<ReadNote> {
                 depth = depth.saturating_sub(1);
                 continue;
             }
-            Event::Text(text) if in_text => text.xml_content(XmlVersion::Implicit1_0).ok()?.into_owned(),
-            Event::CData(data) if in_text => data.decode().ok()?.into_owned(),
+            Event::Text(text) if in_text => text.xml_content(XmlVersion::Implicit1_0).into_owned(),
+            Event::CData(data) if in_text => data.as_ref().to_string(),
             Event::GeneralRef(reference) if in_text => reference_text(&reference).ok()?,
             Event::Eof => break,
             _ => continue,
@@ -1475,6 +1614,188 @@ fn write_revisions(revisions: &Revisions, out: &mut String) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Words spell check ignores
+
+/// An element name compared loosely: lower case, without underscores.
+fn loose(name: &str) -> String {
+    name.chars().filter(|c| *c != '_').flat_map(char::to_lowercase).collect()
+}
+
+/// The words in the child list `list` (compared loosely) of a section: each entry's text, or its
+/// `word` attribute. As written, each once whatever its case, in order.
+pub(crate) fn ignored_words(xml: &str, list: &str) -> Vec<String> {
+    let mut reader = quick_xml::Reader::from_str(xml);
+    let mut depth = 0usize;
+    let mut in_list = false;
+    let mut entry: Option<String> = None;
+    let mut words: Vec<String> = Vec::new();
+    let push = |word: &str, words: &mut Vec<String>| {
+        let word = word.trim();
+        let lower = word.to_lowercase();
+        if !word.is_empty() && !words.iter().any(|w| w.to_lowercase() == lower) && words.len() < MAX_ELEMENTS {
+            words.push(word.to_string());
+        }
+    };
+    while let Ok(event) = reader.read_event() {
+        match event {
+            Event::Start(start) => {
+                depth += 1;
+                if depth == 2 && loose(start.local_name().as_ref()) == list {
+                    in_list = true;
+                } else if depth == 3 && in_list {
+                    entry = Some(attr(&start, "word").unwrap_or_default());
+                }
+            }
+            Event::Empty(start) => {
+                if depth == 2 && in_list {
+                    push(&attr(&start, "word").unwrap_or_default(), &mut words);
+                }
+            }
+            Event::Text(text) if entry.is_some() => {
+                if let Some(word) = entry.as_mut() {
+                    word.push_str(&text.xml_content(XmlVersion::Implicit1_0));
+                }
+            }
+            Event::GeneralRef(reference) if entry.is_some() => {
+                if let (Some(word), Ok(content)) = (entry.as_mut(), reference_text(&reference)) {
+                    word.push_str(&content);
+                }
+            }
+            Event::End(_) => {
+                if depth == 3
+                    && let Some(word) = entry.take()
+                {
+                    push(&word, &mut words);
+                }
+                if depth == 2 {
+                    in_list = false;
+                }
+                depth = depth.saturating_sub(1);
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+    }
+    words
+}
+
+fn ignored_words_xml(words: &[String]) -> String {
+    if words.is_empty() {
+        return "<IgnoredWords/>".to_string();
+    }
+    let mut out = String::from("<IgnoredWords>");
+    for word in words {
+        out.push_str("<Word>");
+        escape(word, &mut out);
+        out.push_str("</Word>");
+    }
+    out.push_str("</IgnoredWords>");
+    out
+}
+
+/// A section with its direct child `child` (compared loosely) replaced by `fresh`, or `fresh`
+/// added first when it has none.
+pub(crate) fn replace_child(xml: &str, child: &str, fresh: &str) -> String {
+    let mut reader = quick_xml::Reader::from_str(xml);
+    let mut depth = 0usize;
+    let mut open: Option<usize> = None;
+    let mut root: Option<(usize, usize, bool)> = None;
+    loop {
+        let before = usize::try_from(reader.buffer_position()).unwrap_or(usize::MAX);
+        let Ok(event) = reader.read_event() else { return xml.to_string() };
+        let after = usize::try_from(reader.buffer_position()).unwrap_or(usize::MAX);
+        match event {
+            Event::Start(start) => {
+                depth += 1;
+                if depth == 1 {
+                    root = Some((before, after, false));
+                } else if depth == 2 && loose(start.local_name().as_ref()) == child {
+                    open = Some(before);
+                }
+            }
+            Event::End(_) => {
+                if depth == 2
+                    && let Some(start) = open.take()
+                {
+                    return format!("{}{fresh}{}", xml.get(..start).unwrap_or_default(), xml.get(after..).unwrap_or_default());
+                }
+                depth = depth.saturating_sub(1);
+            }
+            Event::Empty(start) => {
+                if depth == 0 {
+                    root = Some((before, after, true));
+                } else if depth == 1 && loose(start.local_name().as_ref()) == child {
+                    return format!("{}{fresh}{}", xml.get(..before).unwrap_or_default(), xml.get(after..).unwrap_or_default());
+                }
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+    }
+    match root {
+        Some((_, end, false)) => format!("{}{fresh}{}", xml.get(..end).unwrap_or_default(), xml.get(end..).unwrap_or_default()),
+        // A self-closing section opens around the new child.
+        Some((start, end, true)) => {
+            let tag = xml.get(start..end).unwrap_or_default();
+            let name: String = tag.trim_start_matches('<').chars().take_while(|c| !c.is_whitespace() && *c != '/' && *c != '>').collect();
+            let open_tag = format!("{}>", tag.trim_end_matches('>').trim_end_matches('/').trim_end());
+            format!("{}{open_tag}{fresh}</{name}>{}", xml.get(..start).unwrap_or_default(), xml.get(end..).unwrap_or_default())
+        }
+        None => xml.to_string(),
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Locked pages
+
+/// Every page start with its `Position` in the script, in order.
+fn locked_pages(elements: &[Element]) -> Vec<(u32, &PageStart)> {
+    let mut out: Vec<(u32, &PageStart)> = elements
+        .iter()
+        .zip(text_starts(elements))
+        .filter_map(|(element, start)| start.map(|start| element.page_starts.iter().map(move |p| (start.saturating_add(p.at), p))))
+        .flatten()
+        .collect();
+    out.sort_by_key(|(position, _)| *position);
+    out
+}
+
+/// The `LockedPage` attributes for a page start: the ones it came with, brought up to date.
+/// `position` is its place in the whole script (`None` leaves a place holder).
+pub(crate) fn locked_page_attributes(page: &PageStart, position: Option<u32>) -> Vec<(String, String)> {
+    let mut attributes = page.fdx_attributes.clone();
+    keep_or_set(&mut attributes, "PageNumber", Some(page.label.clone()), |v| v == page.label);
+    // A page that came without a position is written without one.
+    if page.fdx_attributes.is_empty() || get(&attributes, "Position").is_some() {
+        set_or_remove(&mut attributes, "Position", Some(position.map(|p| p.to_string()).unwrap_or_default()));
+    }
+    if page.fdx_attributes.is_empty() {
+        attributes.sort();
+    }
+    attributes
+}
+
+fn write_locked_pages(root: &[(String, String)], pages: &[(u32, &PageStart)], out: &mut String) {
+    out.push_str("  <LockedPages");
+    for (key, value) in root {
+        write_attr(key, value, out);
+    }
+    if pages.is_empty() {
+        out.push_str("/>\n");
+        return;
+    }
+    out.push_str(">\n");
+    for (position, page) in pages {
+        out.push_str("    <LockedPage");
+        for (key, value) in locked_page_attributes(page, Some(*position)) {
+            write_attr(&key, &value, out);
+        }
+        out.push_str("/>\n");
+    }
+    out.push_str("  </LockedPages>\n");
+}
+
+// ---------------------------------------------------------------------------------------------
 // Layout
 
 /// An indent in inches.
@@ -1497,7 +1818,6 @@ fn lines(points: &str) -> Option<u16> {
 /// One element's settings as Final Draft wrote them.
 #[derive(Default)]
 struct ElementSpec {
-    name: String,
     left: Option<f32>,
     first_indent: Option<f32>,
     right: Option<f32>,
@@ -1540,7 +1860,6 @@ pub fn paragraph_style(fdx: &FdxParagraph, base: ElementStyle) -> ElementStyle {
         return base;
     }
     let spec = ElementSpec {
-        name: String::new(),
         left: get(attributes, "LeftIndent").and_then(inches),
         right: get(attributes, "RightIndent").and_then(inches),
         first_indent: get(attributes, "FirstIndent").and_then(inches),
@@ -1559,7 +1878,7 @@ fn tags(xml: &str) -> Vec<(String, Vec<(String, String)>)> {
     while let Ok(event) = reader.read_event() {
         match event {
             Event::Start(start) | Event::Empty(start) => {
-                out.push((String::from_utf8_lossy(start.local_name().as_ref()).into_owned(), all_attrs(&start)));
+                out.push((start.local_name().as_ref().to_string(), all_attrs(&start)));
             }
             Event::Eof => break,
             _ => {}
@@ -1570,80 +1889,4 @@ fn tags(xml: &str) -> Vec<(String, Vec<(String, String)>)> {
 
 fn get<'a>(attributes: &'a [(String, String)], key: &str) -> Option<&'a str> {
     attributes.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
-}
-
-/// Applies an imported file's page layout, element settings and mores-and-continueds to `layout`.
-pub fn apply_layout(document: &FdxDocument, layout: &mut Layout) {
-    for section in &document.sections {
-        let FdxSection::Raw(xml) = section else { continue };
-        let tags = tags(xml);
-        let Some((root, root_attrs)) = tags.first() else { continue };
-        match root.as_str() {
-            "ElementSettings" => {
-                let mut spec = ElementSpec { name: get(root_attrs, "Type").unwrap_or_default().to_string(), ..ElementSpec::default() };
-                if let Some((_, paragraph)) = tags.iter().find(|(name, _)| name == "ParagraphSpec") {
-                    spec.left = get(paragraph, "LeftIndent").and_then(inches);
-                    spec.right = get(paragraph, "RightIndent").and_then(inches);
-                    spec.first_indent = get(paragraph, "FirstIndent").and_then(inches);
-                    spec.space_before = get(paragraph, "SpaceBefore").and_then(lines);
-                    spec.align = get(paragraph, "Alignment").and_then(align_from);
-                }
-                let target = match spec.name.as_str() {
-                    "Scene Heading" => Some(&mut layout.scene_heading),
-                    "Action" => Some(&mut layout.action),
-                    "Character" => Some(&mut layout.character),
-                    "Parenthetical" => Some(&mut layout.parenthetical),
-                    "Dialogue" => Some(&mut layout.dialogue),
-                    "Transition" => Some(&mut layout.transition),
-                    "Shot" => Some(&mut layout.shot),
-                    "Lyrics" => Some(&mut layout.lyrics),
-                    _ => None,
-                };
-                match target {
-                    Some(style) => spec.apply(style),
-                    None if !spec.name.is_empty() => {
-                        let mut style = layout.action;
-                        spec.apply(&mut style);
-                        layout.custom.retain(|(name, _)| *name != spec.name);
-                        layout.custom.push((spec.name.clone(), style));
-                    }
-                    None => {}
-                }
-            }
-            "PageLayout" => {
-                let height =
-                    tags.iter().find(|(name, _)| name == "PageSize").and_then(|(_, a)| get(a, "Height")).and_then(|h| h.trim().parse::<f32>().ok());
-                let width =
-                    tags.iter().find(|(name, _)| name == "PageSize").and_then(|(_, a)| get(a, "Width")).and_then(|w| w.trim().parse::<f32>().ok());
-                if let Some(height) = height.filter(|h| (5.0..=20.0).contains(h)) {
-                    layout.page_rows = (height * 6.0).round() as u16;
-                }
-                if let Some(width) = width.filter(|w| (4.0..=15.0).contains(w)) {
-                    layout.page_columns = (width * 10.0).round() as u16;
-                }
-                let top = get(root_attrs, "TopMargin").and_then(lines);
-                let bottom = get(root_attrs, "BottomMargin").and_then(lines);
-                if let Some(top) = top {
-                    layout.body_top = top;
-                }
-                // "Normal" document leading fills the page between the margins at 6 lines per inch.
-                let (top, bottom) = (top.unwrap_or(6), bottom.unwrap_or(6));
-                layout.lines_per_page = layout.page_rows.saturating_sub(top).saturating_sub(bottom).max(10);
-            }
-            "MoresAndContinueds" => {
-                if let Some((_, breaks)) = tags.iter().find(|(name, _)| name == "DialogueBreaks") {
-                    if let Some(more) = get(breaks, "DialogueBottom").filter(|v| !v.trim().is_empty()) {
-                        layout.more = more.to_string();
-                    }
-                    if let Some(contd) = get(breaks, "DialogueTop").filter(|v| !v.trim().is_empty()) {
-                        layout.contd = contd.to_string();
-                    }
-                    if let Some(auto) = get(breaks, "AutomaticCharacterContinueds") {
-                        layout.auto_contd = auto.trim().eq_ignore_ascii_case("yes") || auto.trim() == "1" || auto.trim().eq_ignore_ascii_case("true");
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
 }

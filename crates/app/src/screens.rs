@@ -65,7 +65,7 @@ fn draw(file: &Path, theme: egui::Theme, shot: &Shot) -> (u32, u32, Vec<u8>) {
         .with_pixels_per_point(PIXELS_PER_POINT)
         .with_theme(theme)
         .with_max_steps(64)
-        .build_eframe(|cc| StorytellerApp::without_menu(cc, Some(file), None, craft_settings::Location::Memory));
+        .build_eframe(|cc| StorytellerApp::without_menu(cc, Some(file), None, craft_settings::Location::Memory, Default::default()));
     for each in [egui::Theme::Light, egui::Theme::Dark] {
         harness.ctx.style_mut_of(each, |style| style.visuals.text_cursor.blink = false);
     }
@@ -133,12 +133,10 @@ fn gallery() {
     for theme in [egui::Theme::Light, egui::Theme::Dark] {
         let suffix = if theme == egui::Theme::Dark { "dark" } else { "light" };
         for (name, commands) in states {
-            let mut harness = Harness::builder()
-                .with_size(SIZE)
-                .with_pixels_per_point(PIXELS_PER_POINT)
-                .with_theme(theme)
-                .with_max_steps(64)
-                .build_eframe(|cc| StorytellerApp::without_menu(cc, Some(script.clone()), None, craft_settings::Location::Memory));
+            let mut harness =
+                Harness::builder().with_size(SIZE).with_pixels_per_point(PIXELS_PER_POINT).with_theme(theme).with_max_steps(64).build_eframe(|cc| {
+                    StorytellerApp::without_menu(cc, Some(script.clone()), None, craft_settings::Location::Memory, Default::default())
+                });
             for each in [egui::Theme::Light, egui::Theme::Dark] {
                 harness.ctx.style_mut_of(each, |style| style.visuals.text_cursor.blink = false);
             }

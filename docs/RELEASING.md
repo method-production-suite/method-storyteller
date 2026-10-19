@@ -43,7 +43,7 @@ website and in the README never go stale:
 | `Method-Storyteller-windows-x64-setup.exe` | Windows 10 or later, x64 | `cargo xtask package-windows` (Inno Setup 6) |
 | `Method-Storyteller-linux-amd64.deb` | Debian and Ubuntu, x86_64 | `cargo xtask package-linux` (`dpkg-deb`) |
 | `Method-Storyteller-linux-x86_64.AppImage` | Other Linux, x86_64 | `cargo xtask package-linux --appimagetool <path> --runtime <path>` |
-| `SHA256SUMS.txt` | | the draft job |
+| `SHA256SUMS` | | the draft job: one line per file of the release (installers, the updater archive and its signature, `latest.json`), checked before the draft is made |
 
 The packaging code is `xtask/src/package.rs`; the files it reads are in `packaging/`:
 `macos/Info.plist` (bundle id `com.methodstoryteller.desktop`, display name "Method
@@ -112,7 +112,8 @@ draft and refuses a release that is already published.
 - Open an invented sample script, type a scene, save it, reopen it.
 - Where you can, install the Windows setup and the `.deb` or AppImage and do the same; the
   README's platform table says which were tested.
-- Check the four installer names are version-free and `SHA256SUMS.txt` lists them.
+- Check the four installer names are version-free and `SHA256SUMS` lists every file of the
+  release (exactly one checksum file, under exactly that name).
 - Check the updater files are there: `Method-Storyteller_<version>_aarch64.app.tar.gz`, its
   `.sig`, and `latest.json` naming this version with a `darwin-aarch64` entry. The draft job
   already refused a signature that does not check against the app's public key. Once the
@@ -166,13 +167,18 @@ tested against. The public half is `PUBKEY` in `crates/app/src/updates.rs`; a ne
 new `PUBKEY` in a release first, or installed apps refuse the next update. Without the key,
 or without notarizing, the release has no updater files and installed apps do not see it.
 
+After the signing tools change (the `minisign` crate, the key format), and before the next tag,
+run Actions > updater-key-check > Run workflow on `main`. It signs a throwaway bundle with the
+real key and checks the signature against the app's `PUBKEY`, as a release does, without the key
+leaving GitHub. A red run means the next release's update would be refused: fix it first.
+
 ## The release workflow
 
 | Job | Permissions | What it does |
 |---|---|---|
 | `check` | contents: read | the tag is `v` plus the version in `Cargo.toml`, points at a commit on `main`, and `docs/releases/<version>.md` is written |
 | `build` (macOS arm64, Windows x64, Linux x64) | contents: read | compiles everything first, before any secret reaches the runner; then packages each platform with `--no-build`; on macOS signs, notarizes, staples and verifies (the binary must be arm64 only), each only when its secrets are there; then, with the update key, packs and signs the updater archive; on Windows signs the app and the installer only with a certificate |
-| `draft` | contents: write (the only job with it) | checks all four installers are there, writes `latest.json` after checking the archive's signature against the app's public key, writes `SHA256SUMS.txt`, and runs `gh release create --draft` with the notes |
+| `draft` | contents: write (the only job with it) | checks all four installers are there, writes `latest.json` after checking the archive's signature against the app's public key, writes and checks `SHA256SUMS` (one line per file of the release), and runs `gh release create --draft` with the notes |
 
 Only first-party actions are used, each pinned to the suite's full commit SHA. Each secret
 is given only to the steps that use it. The two AppImage tools (appimagetool and its

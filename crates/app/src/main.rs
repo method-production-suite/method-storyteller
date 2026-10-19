@@ -1,6 +1,7 @@
 //! Method Storyteller desktop app.
 //!
-//! `method-storyteller-app [script.fountain|script.fdx] [--control <port>]`
+//! `method-storyteller-app [script.osf|script.fountain|script.fdx] [--control <port>]
+//! [--open-sample] [--check-for-updates]`
 
 mod app;
 mod automation;
@@ -18,10 +19,14 @@ use std::path::PathBuf;
 fn main() -> eframe::Result {
     let mut control_port = None;
     let mut file = None;
+    let mut flags = app::StartFlags::default();
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--control" => control_port = args.next().and_then(|p| p.parse::<u16>().ok()),
+            // Method Launcher's requests (SUITE-STANDARDS.md §3).
+            "--open-sample" => flags.open_sample = true,
+            "--check-for-updates" => flags.check_for_updates = true,
             "-V" | "--version" => {
                 println!("{}", storyteller_engine::version_line());
                 return Ok(());
@@ -52,5 +57,9 @@ fn main() -> eframe::Result {
     // Files opened from the Finder arrive as an Apple Event while the app launches (macOS).
     storyteller_macos_open::install();
     let options = eframe::NativeOptions { viewport, ..Default::default() };
-    eframe::run_native(storyteller_engine::APP_NAME, options, Box::new(move |cc| Ok(Box::new(app::StorytellerApp::new(cc, file, control_port)))))
+    eframe::run_native(
+        storyteller_engine::APP_NAME,
+        options,
+        Box::new(move |cc| Ok(Box::new(app::StorytellerApp::new(cc, file, control_port, flags)))),
+    )
 }

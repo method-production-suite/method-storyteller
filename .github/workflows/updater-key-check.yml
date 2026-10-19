@@ -1,0 +1,56 @@
+# By hand only: proves the release's update key still signs what the app accepts, without the
+# key leaving GitHub (the model is Method Budget's). It signs a throwaway bundle with
+# TAURI_SIGNING_PRIVATE_KEY the way a release does (`cargo xtask updater-archive`), then checks
+# the signature the way a release's manifest step does (`cargo xtask update-manifest`, against
+# the public key the app itself carries, crates/app/src/updates.rs). Run it after the signing
+# tools change (the minisign crate, the key format) and before the next release tag.
+# Built before secrets (SUITE-STANDARDS.md §3): xtask is compiled first, and the step that holds
+# the key runs only that binary, never cargo. Least privilege; actions pinned to full SHAs.
+name: updater-key-check
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    # Only main's code ever runs with the key: a run started from another branch would compile
+    # that branch's xtask and hand it the secret, so it does nothing there.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Compile the release tooling (no secrets in reach)
+        run: cargo build --locked -p xtask
+
+      - name: A throwaway bundle, versioned as a release's
+        id: bundle
+        run: |
+          set -euo pipefail
+          v="$(target/debug/xtask version)"
+          app="$RUNNER_TEMP/throwaway/Method Storyteller.app"
+          mkdir -p "$app/Contents/MacOS"
+          printf '<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict/></plist>\n' > "$app/Contents/Info.plist"
+          head -c 65536 /dev/urandom > "$app/Contents/MacOS/method-storyteller-app"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Sign it with the release key
+        env:
+          UPDATER_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          UPDATER_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          VERSION: ${{ steps.bundle.outputs.version }}
+        run: |
+          set -euo pipefail
+          test -n "$UPDATER_PRIVATE_KEY" || { echo "::error::No TAURI_SIGNING_PRIVATE_KEY secret."; exit 1; }
+          target/debug/xtask updater-archive --app "$RUNNER_TEMP/throwaway/Method Storyteller.app" --version "$VERSION" --out-dir "$RUNNER_TEMP/updater"
+
+      - name: Check it the way a release does, against the app's public key
+        env:
+          VERSION: ${{ steps.bundle.outputs.version }}
+        run: |
+          set -euo pipefail
+          target/debug/xtask update-manifest --dir "$RUNNER_TEMP/updater" --version "$VERSION" --out "$RUNNER_TEMP/updater/latest.json"
+          echo "The release key signs what the app accepts (minisign $(grep -A1 '^name = "minisign"' Cargo.lock | sed -n 's/^version = "\(.*\)"/\1/p'))."

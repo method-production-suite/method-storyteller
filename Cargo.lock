@@ -3408,7 +3408,7 @@ dependencies = [
 name = "storyteller-core"
 version = "0.1.0"
 dependencies = [
- "quick-xml 0.41.0",
+ "quick-xml 0.42.0",
  "serde",
  "serde_json",
  "thiserror 2.0.21",

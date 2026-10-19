@@ -39,7 +39,7 @@ const GO_TO_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Alt+G" } else { "Cmd
 const FIND_NEXT_KEY: &str = if cfg!(target_os = "macos") { "Cmd+G" } else { "F3" };
 const FIND_PREVIOUS_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Shift+G" } else { "Shift+F3" };
 
-const APP_COMMANDS: [AppCommand; 26] = [
+const APP_COMMANDS: [AppCommand; 31] = [
     AppCommand { id: "app.title_page", label: "Title Page…", menu: "File/Title Page…", shortcut: Some("Cmd+Shift+T") },
     AppCommand { id: "prefs.new_fountain", label: "Save New Scripts as Fountain", menu: "File/Save New Scripts as Fountain", shortcut: None },
     AppCommand {
@@ -49,6 +49,12 @@ const APP_COMMANDS: [AppCommand; 26] = [
         shortcut: None,
     },
     AppCommand { id: "app.quit", label: "Quit", menu: "File/Quit", shortcut: Some("Cmd+Q") },
+    // No shortcuts here on purpose: ⌘X, ⌘C, ⌘V and ⌘A stay with the text fields, which handle
+    // them; the menu items do the same for a writer who reaches for the menu.
+    AppCommand { id: "app.cut", label: "Cut", menu: "Edit/Cut", shortcut: None },
+    AppCommand { id: "app.copy", label: "Copy", menu: "Edit/Copy", shortcut: None },
+    AppCommand { id: "app.paste", label: "Paste", menu: "Edit/Paste", shortcut: None },
+    AppCommand { id: "app.select_all", label: "Select All", menu: "Edit/Select All", shortcut: None },
     AppCommand { id: "app.spelling", label: "Spelling…", menu: "Edit/Spelling…", shortcut: Some("Cmd+Semicolon") },
     AppCommand { id: "prefs.check_spelling", label: "Check Spelling While Typing", menu: "View/Check Spelling While Typing", shortcut: None },
     AppCommand { id: "app.find", label: "Find…", menu: "Edit/Find…", shortcut: Some("Cmd+F") },
@@ -66,6 +72,7 @@ const APP_COMMANDS: [AppCommand; 26] = [
     AppCommand { id: "help.user_guide", label: "User Guide", menu: "Help/User Guide", shortcut: None },
     AppCommand { id: "help.shortcuts", label: "Keyboard Shortcuts", menu: "Help/Keyboard Shortcuts", shortcut: None },
     AppCommand { id: "help.whats_new", label: "What's New", menu: "Help/What's New", shortcut: None },
+    AppCommand { id: "help.open_sample", label: "Open Sample Script", menu: "Help/Open Sample Script", shortcut: None },
     AppCommand { id: "help.check_updates", label: "Check for Updates…", menu: "Help/Check for Updates…", shortcut: None },
     AppCommand {
         id: "prefs.check_updates_automatically",
@@ -99,6 +106,7 @@ enum Pending {
     Close,
     New,
     Open(Option<PathBuf>),
+    Sample,
 }
 
 struct TitleDraft {
@@ -156,6 +164,10 @@ pub struct StorytellerApp {
     updates: crate::updates::Updates,
     /// The last update line put in the status, to put it there only when it changes.
     update_line: Option<String>,
+    /// The open script is a fresh copy of the sample (see `sample.rs`).
+    sample: bool,
+    /// Input for the next frame: Edit > Cut and Copy, after the text field has its focus back.
+    next_frame_input: Vec<Event>,
     /// Drawn for the offscreen pictures: the window as a Mac shows it, menus in the menu bar.
     #[cfg(test)]
     pictures: bool,
@@ -170,15 +182,21 @@ struct MenuEntry {
 }
 
 impl StorytellerApp {
-    pub fn new(cc: &eframe::CreationContext<'_>, file: Option<PathBuf>, control_port: Option<u16>) -> Self {
-        let mut app = Self::without_menu(cc, file, control_port, Location::Auto);
+    pub fn new(cc: &eframe::CreationContext<'_>, file: Option<PathBuf>, control_port: Option<u16>, flags: sample::StartFlags) -> Self {
+        let mut app = Self::without_menu(cc, file, control_port, Location::Auto, flags);
         app.install_menu(&cc.egui_ctx);
         app
     }
 
     /// The app without the macOS menu bar, which offscreen tests and pictures leave out.
     /// Tests pass [`Location::Memory`] so they never touch real settings.
-    fn without_menu(cc: &eframe::CreationContext<'_>, file: Option<PathBuf>, control_port: Option<u16>, settings: Location) -> Self {
+    fn without_menu(
+        cc: &eframe::CreationContext<'_>,
+        file: Option<PathBuf>,
+        control_port: Option<u16>,
+        settings: Location,
+        flags: sample::StartFlags,
+    ) -> Self {
         editor::install_fonts(&cc.egui_ctx);
         theme::apply(&cc.egui_ctx);
         // Settings in memory (tests) keep the updater's switch in memory too.
@@ -233,6 +251,8 @@ impl StorytellerApp {
                 prefs_automatic,
             ),
             update_line: None,
+            sample: false,
+            next_frame_input: Vec::new(),
             #[cfg(test)]
             pictures: false,
         };
@@ -242,13 +262,23 @@ impl StorytellerApp {
             app.prefs.update(|p| p.general.last_seen_version = help::VERSION.to_string());
         }
         app.session.layout.show_scene_numbers = app.prefs.get().view.scene_numbers;
-        // A file opened from the Finder to launch the app arrives before the first frame.
-        let file = file.or_else(|| app.first_from_finder());
         let ctx = cc.egui_ctx.clone();
         storyteller_macos_open::set_wake(move || ctx.request_repaint());
-        if let Some(path) = file {
-            app.open_path(&path);
+        // What to open (sample::launch_choice). The first launch retires the sample whatever
+        // opens: a writer who starts with their own script never sees it unasked.
+        let from_finder = app.first_from_finder();
+        let general = &app.prefs.get().general;
+        let first_launch = !general.sample_seen;
+        let has_recent = !general.recent.is_empty();
+        if first_launch {
+            app.prefs.update(|p| p.general.sample_seen = true);
         }
+        match sample::launch_choice(file, from_finder, first_launch, has_recent, flags.open_sample) {
+            sample::LaunchOpen::File(path) => app.open_path(&path),
+            sample::LaunchOpen::Sample => app.open_sample(),
+            sample::LaunchOpen::Nothing => {}
+        }
+        app.queued.extend(flags.commands().into_iter().map(String::from));
         if let Some(port) = control_port {
             let ctx = cc.egui_ctx.clone();
             match storyteller_engine::control::serve(port, move || ctx.request_repaint()) {
@@ -304,6 +334,22 @@ impl StorytellerApp {
                 self.title_dialog = Some(TitleDraft { fields });
             }
             "app.go_to" => self.go_to = Some(GoToDraft::default()),
+            // The text field the caret is in acts on these as on its own keys. Clicking the menu
+            // drawn in the window can take its focus, so it gets the focus back first; its
+            // selection is kept with it. Paste asks the window, which reads the clipboard.
+            "app.cut" => {
+                self.focus_caret_field(ctx);
+                self.next_frame_input.push(Event::Cut);
+            }
+            "app.copy" => {
+                self.focus_caret_field(ctx);
+                self.next_frame_input.push(Event::Copy);
+            }
+            "app.paste" => {
+                self.focus_caret_field(ctx);
+                ctx.send_viewport_cmd(ViewportCommand::RequestPaste);
+            }
+            "app.select_all" => self.select_all(ctx),
             "app.rename_character" => {
                 let names: Vec<String> = storyteller_engine::commands::character_names(&self.session.script).into_iter().map(|(n, _)| n).collect();
                 // The cue the caret is in, if any, else the character with the most speeches.
@@ -362,6 +408,7 @@ impl StorytellerApp {
             "help.about" => self.help.about = true,
             "help.shortcuts" => self.help.shortcuts = true,
             "help.whats_new" => self.help.whats_new = true,
+            "help.open_sample" => self.guard_unsaved(ctx, Pending::Sample),
             "help.licenses" => self.help.licenses = Some(self.help.licenses.unwrap_or(0)),
             "help.user_guide" => self.open_link(help::USER_GUIDE, "Opened the user guide in your browser."),
             "help.website" => self.open_link(help::SUITE_WEBSITE, "Opened methodproduction.com in your browser."),
@@ -424,6 +471,31 @@ impl StorytellerApp {
         rows
     }
 
+    /// The keyboard focus back on the text field of the paragraph the caret is in, with the
+    /// selection it had when it last held the keyboard.
+    fn focus_caret_field(&mut self, ctx: &egui::Context) -> egui::Id {
+        self.session.clamp_caret();
+        let index = self.session.caret.element;
+        let id = egui::Id::new(("storyteller.element", index));
+        if let Some((_, range)) = self.editor.selection.filter(|(i, _)| *i == index) {
+            let mut state = egui::text_edit::TextEditState::load(ctx, id).unwrap_or_default();
+            state.cursor.set_char_range(Some(range));
+            state.store(ctx, id);
+        }
+        ctx.memory_mut(|m| m.request_focus(id));
+        id
+    }
+
+    /// Edit > Select All: the whole of the paragraph the caret is in, as ⌘A selects it.
+    fn select_all(&mut self, ctx: &egui::Context) {
+        let id = self.focus_caret_field(ctx);
+        let Some(text) = self.session.element(self.session.caret.element).map(|e| e.text.clone()) else { return };
+        let mut state = egui::text_edit::TextEditState::load(ctx, id).unwrap_or_default();
+        let range = egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(text.chars().count()));
+        state.cursor.set_char_range(Some(range));
+        state.store(ctx, id);
+    }
+
     fn refocus(&mut self) {
         self.session.clamp_caret();
         self.editor.pending_focus = Some((self.session.caret.element, self.session.caret.offset));
@@ -447,6 +519,7 @@ impl StorytellerApp {
                 self.run("file.new", Map::new());
                 self.after_open();
             }
+            Pending::Sample => self.open_sample(),
             Pending::Open(path) => {
                 let path = path
                     .or_else(|| rfd::FileDialog::new().add_filter("Screenplay", &["fountain", "spmd", "txt", "osf", "fadein", "fdx"]).pick_file());
@@ -475,6 +548,7 @@ impl StorytellerApp {
         self.editor = EditorState::default();
         self.editor.pending_focus = Some((0, 0));
         self.discard_confirmed = false;
+        self.sample = false;
     }
 
     /// Save, asking for a path when there is none (or `as_new`). Returns whether it saved.
@@ -483,13 +557,10 @@ impl StorytellerApp {
             (Some(path), false) => Some(path.clone()),
             _ => {
                 let preferred = self.preferred_extension();
-                let name = self
-                    .session
-                    .path
-                    .as_ref()
-                    .and_then(|p| p.file_name())
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| format!("Untitled.{preferred}"));
+                let name = self.session.path.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| {
+                    let stem = if self.showing_sample() { sample::SAMPLE_NAME } else { "Untitled" };
+                    format!("{stem}.{preferred}")
+                });
                 // The working format the writer chose comes first; the others stay one click away.
                 let fountain = ("Fountain", "fountain");
                 let osf = ("Open Screenplay Format", "osf");
@@ -1463,6 +1534,12 @@ impl eframe::App for StorytellerApp {
     }
 
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Edit > Cut and Copy, chosen last frame: the field has its focus back now.
+        let input = std::mem::take(&mut self.next_frame_input);
+        if !input.is_empty() {
+            ctx.input_mut(|i| i.events.extend(input));
+            ctx.request_repaint();
+        }
         self.handle_screenshot(ctx);
         self.handle_control(ctx);
         self.sync_native_menu();
@@ -1483,7 +1560,7 @@ impl eframe::App for StorytellerApp {
         if let Some(deadline) = tick.next_deadline {
             ctx.request_repaint_after(deadline.saturating_duration_since(Instant::now()));
         }
-        let title = format!("{} — {APP_NAME}", self.session.title());
+        let title = format!("{} — {APP_NAME}", self.display_title());
         if title != self.window_title {
             ctx.send_viewport_cmd(ViewportCommand::Title(title.clone()));
             self.window_title = title;
@@ -1517,6 +1594,9 @@ fn capitalise(text: &str) -> String {
 
 #[path = "find_bar.rs"]
 mod find_bar;
+#[path = "sample.rs"]
+mod sample;
+pub use sample::StartFlags;
 
 #[path = "spelling.rs"]
 mod spelling;

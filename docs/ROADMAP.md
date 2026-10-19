@@ -78,10 +78,16 @@ says otherwise.
   the navigator against what you expect; ⌘⌥G to a scene number and a page; ⌘F, Enter and ⇧Enter,
   Replace, Replace All and one ⌘Z; Production > Rename Character with and without "Also in
   action, dialogue and other text".
-- **Lossless `.fdx` (the final check).** Open our exported `.fdx` files in your licensed copy
-  and say whether the notes, revisions, locked pages and element settings came through. The
-  files and a click list (what to open, where to look, what you should see) come here when the
-  milestone's pieces have merged; about 20 minutes, nothing to type.
+- **Lossless `.fdx` (the final check).** Open `crates/core/tests/fixtures/lossless-check.fdx`
+  in your licensed copy and go down the ten-step click list in
+  [research/fdx-osf-fidelity.md](research/fdx-osf-fidelity.md#the-owners-final-check): notes,
+  revisions, locked pages and element settings, then save it and send it back. About 20 minutes,
+  nothing to type. Ready now: the whole milestone is on main.
+- **Opening files from the Finder (macOS).** Needs the app on screen, so it waits for your yes
+  through MOrg. With a build of `main`: double-click an `.osf`, a `.fountain` and an `.fdx`, and
+  drop one on the Dock icon. Each should open in the app, and on a first launch the file should
+  open instead of the Field Station sample. About 5 minutes; nothing is installed for good (the
+  build is registered with the Finder for the test and unregistered after).
 - **The parity check (M7).** One scripted session with a licensed reference app settles the eight open questions in
   the V1 inventory: whether our `.fdx` exports open cleanly, encodings never seen filled in
   (alternates, tags in text, A-page locks), A-page and A-scene lettering edge cases, pagination
@@ -96,10 +102,13 @@ says otherwise.
 
 ### Release go-aheads
 
-- **First release (v0.2.0)**, once the release workflow publishes the updater files: the signing,
-  notarization and update keys are in place (2026-10-18); the owner checks the draft `.dmg` and
-  `latest.json`, and publishes. Then the README platform
-  table and the website's status change.
+- **First release (v0.2.0)**, on or after **2026-10-22**: muda 0.21.2 (craft-quit's version) is
+  under 14 days old until then, and the release workflow refuses a young crate. Before the tag,
+  the weekly full build (`full.yml`) runs by hand on the release commit and must pass on macOS,
+  Windows and Linux. The signing, notarization and update keys are in place (2026-10-18). The
+  release pull request (version, notes, What's New) and a 20 to 30 minute hands-on test list
+  come first; then the owner checks the draft `.dmg`, `latest.json` and `SHA256SUMS`, and
+  publishes. Then the README platform table and the website's status change.
 
 ---
 
@@ -165,10 +174,11 @@ wait for a decision above.
    (decision 7 for Fountain), scene titles, summaries and colours, drag to reorder scenes in
    the navigator (one Undo), bookmarks for Go To, the character table, show and hide outline
    paragraphs.
-8. **Lossless `.fdx`** [partial] M (owner, 2026-10-18). Everything `.fdx` and Open Screenplay
+8. **Lossless `.fdx`** [in review] M (owner, 2026-10-18). Everything `.fdx` and Open Screenplay
    Format can both hold converts exactly both ways (OSF to `.fdx`, `.fdx` to OSF, `.fdx` to
    `.fdx`), proven by round-trip tests on files we write ourselves. Today an imported `.fdx`
-   keeps everything only when saved back as `.fdx`. One PR each, in order:
+   keeps everything only when saved back as `.fdx`. One PR each, in order (all in review; the
+   fidelity report lists what maps exactly and what cannot):
    - script notes: the three `.fdx` generations (a note inside its paragraph, the older
      unanchored list, the newer list with character ranges) into the model with range, colour
      and author, to OSF `note` and back (colour and author in a `method_storyteller` child, so
