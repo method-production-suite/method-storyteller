@@ -1,10 +1,13 @@
 name: ci
 # Pushes to main, and pull requests: a feature branch with a PR runs once, not twice
 # (the free plan runs few jobs at a time across the whole org; SUITE-STANDARDS.md §6).
+# A pull request opens as a draft and builds nothing; `gh pr ready` (ready_for_review) starts it,
+# and later pushes to a ready pull request run again (SUITE-STANDARDS.md §6).
 on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
 # A new push to a pull request cancels its stale run; runs on main always finish.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -12,7 +15,52 @@ concurrency:
 permissions:
   contents: read
 jobs:
+  # What changed: docs-only changes (Markdown, docs/, site/, the README pictures) skip the Rust
+  # build. Files the build compiles in or checks still build: CHANGELOG.md (What's New),
+  # ATTRIBUTION.md, the licences and NOTICE (the Licenses window), docs/releases/ (the updater). The build jobs are skipped with `if:`, not
+  # `paths-ignore`, so their required checks still report. Drafts run nothing at all.
+  changes:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      rust: ${{ steps.diff.outputs.rust }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = pull_request ]; then
+            base="$PR_BASE"
+          else
+            base="${BEFORE:-}"
+          fi
+          # With nothing to compare with (a new branch, a schedule), build.
+          if [ -z "$base" ] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          others="$(git diff --name-only "$base" HEAD \
+            | grep -Ev '(\.md$|^docs/|^site/|^assets/screens/)' || true)"
+          built="$(git diff --name-only "$base" HEAD \
+            | grep -E '^(CHANGELOG\.md|ATTRIBUTION\.md|docs/releases/)' || true)"
+          others="$others$built"
+          if [ -n "$others" ]; then
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Docs-only change: the Rust build is skipped."
+            echo "rust=false" >> "$GITHUB_OUTPUT"
+          fi
   gates:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -52,6 +100,7 @@ jobs:
             target
           key: gates-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
   cooldown:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     # Fails a change that adds crates published less than 14 days ago (scripts/check-crate-ages.py).
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -86,6 +135,7 @@ jobs:
             python3 scripts/check-crate-ages.py "${allow[@]}"
           fi
   deny:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     # deny.toml: known advisories, licences compatible with MIT OR Apache-2.0, known sources.
     runs-on: ubuntu-latest
     timeout-minutes: 15
