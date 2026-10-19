@@ -14,6 +14,9 @@ use storyteller_core::{ElementKind, Script};
 const AFF: &str = include_str!("../../../assets/dictionaries/en_US.aff");
 const DIC: &str = include_str!("../../../assets/dictionaries/en_US.dic");
 
+/// The endings of possessives and contractions: a word ending in one is right when its stem is.
+const CONTRACTION_ENDINGS: [&str; 5] = ["'s", "'ll", "'d", "'re", "'ve"];
+
 /// Words a screenplay uses that a general dictionary does not, in upper case.
 const SCREENPLAY_TERMS: [&str; 22] = [
     "INT", "EXT", "I/E", "CONT'D", "CONT", "CONTD", "V.O", "O.S", "O.C", "POV", "INSERT", "INTERCUT", "MONTAGE", "SUPER", "FADE", "DISSOLVE",
@@ -162,6 +165,17 @@ pub fn is_right(word: &str, names: &HashSet<String>, personal: &Personal, ignore
     if dictionary.check(&word) || (plain != word && dictionary.check(&plain)) {
         return true;
     }
+    // A possessive or a contraction of a right word ("else's", "there'll", "whoever's") is right,
+    // and so is a known name's ("Ansel's", when Ansel is ignored or a cue).
+    let lower = word.to_lowercase();
+    for ending in CONTRACTION_ENDINGS {
+        if let Some(stem) = lower.strip_suffix(ending).and_then(|_| word.get(..word.len() - ending.len()))
+            && stem.chars().count() >= 2
+            && is_right(stem, names, personal, ignored)
+        {
+            return true;
+        }
+    }
     let word = plain;
     let upper = word.to_uppercase();
     // A word in capitals (a heading, a cue, a first appearance) is right if its usual case is.
@@ -240,6 +254,9 @@ mod tests {
         assert!(is_right("Nora's", &names, &personal), "a character's name, possessive");
         assert!(is_right("café", &none, &personal), "accents are checked without them");
         assert!(is_right("CAFÉ", &none, &personal));
+        assert!(is_right("else's", &none, &personal) && is_right("there'll", &none, &personal), "contractions of right words");
+        assert!(is_right("whoever's", &none, &personal) && is_right("THEM'S", &none, &personal));
+        assert!(!is_right("glsas's", &none, &personal), "but not of a misspelling");
         assert!(suggestions("glsas", 5).iter().any(|s| s == "glass"));
         assert!(suggestions("GLSAS", 5).iter().any(|s| s == "GLASS"), "suggestions in the word's case");
     }

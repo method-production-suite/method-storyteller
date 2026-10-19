@@ -85,6 +85,15 @@ const APP_COMMANDS: [AppCommand; 31] = [
     AppCommand { id: "help.website", label: "methodproduction.com", menu: "Help/methodproduction.com", shortcut: None },
 ];
 
+/// The keys the text fields handle themselves for Edit > Cut, Copy, Paste and Select All:
+/// listed in Keyboard Shortcuts and shown beside the menu drawn in the window, but never bound
+/// as shortcuts (a binding would take them from the text fields).
+const TEXT_FIELD_KEYS: [(&str, &str); 4] = [("app.cut", "Cmd+X"), ("app.copy", "Cmd+C"), ("app.paste", "Cmd+V"), ("app.select_all", "Cmd+A")];
+
+fn text_field_key(id: &str) -> Option<&'static str> {
+    TEXT_FIELD_KEYS.iter().find(|(command, _)| *command == id).map(|(_, keys)| *keys)
+}
+
 /// Commands handled by the flow keys inside the editor, not as global shortcuts.
 const EDITOR_KEYS: [&str; 3] = ["Enter", "Tab", "Shift+Tab"];
 
@@ -133,6 +142,9 @@ struct GoToDraft {
     page: bool,
     error: Option<String>,
     focused: bool,
+    /// A tab was clicked: give the number field the keyboard on the next frame (egui drops it at
+    /// the end of a frame whose click landed outside a text field).
+    refocus: bool,
 }
 
 pub struct StorytellerApp {
@@ -475,7 +487,11 @@ impl StorytellerApp {
 
     /// Every command with a shortcut, grouped by menu, for Help > Keyboard Shortcuts.
     fn shortcut_rows(&self, ctx: &egui::Context) -> Vec<ShortcutRow> {
-        let commands = self.registry.iter().map(|c| (c.menu, c.label, c.shortcut)).chain(APP_COMMANDS.iter().map(|c| (c.menu, c.label, c.shortcut)));
+        let commands = self
+            .registry
+            .iter()
+            .map(|c| (c.menu, c.label, c.shortcut))
+            .chain(APP_COMMANDS.iter().map(|c| (c.menu, c.label, c.shortcut.or(text_field_key(c.id)))));
         let mut rows: Vec<ShortcutRow> = commands
             .filter_map(|(menu, label, shortcut)| {
                 let text = shortcut?;
@@ -569,6 +585,10 @@ impl StorytellerApp {
         self.editor.pending_focus = Some((0, 0));
         self.discard_confirmed = false;
         self.sample = false;
+        // The sample's line goes with the sample (open_sample sets it again after this).
+        if self.status == sample::SAMPLE_LINE {
+            self.status.clear();
+        }
     }
 
     /// Save, asking for a path when there is none (or `as_new`). Returns whether it saved.
@@ -588,7 +608,7 @@ impl StorytellerApp {
                 rfd::FileDialog::new()
                     .add_filter(first.0, &[first.1])
                     .add_filter(second.0, &[second.1])
-                    .add_filter("Open Screenplay Format in a .fadein archive", &["fadein"])
+                    .add_filter("Open Screenplay Format, in a ZIP archive", &["fadein"])
                     .add_filter("FDX", &["fdx"])
                     .set_file_name(name)
                     .save_file()
@@ -950,7 +970,7 @@ impl StorytellerApp {
                 let response = ui.menu_button(menu, |ui| {
                     for MenuEntry { id, label, shortcut, enabled } in &items {
                         let mut button = egui::Button::new(label.as_str());
-                        if let Some(shortcut) = shortcut.and_then(parse_shortcut) {
+                        if let Some(shortcut) = shortcut.or(text_field_key(id)).and_then(parse_shortcut) {
                             button = button.shortcut_text(ui.ctx().format_shortcut(&shortcut));
                         }
                         let mut response = match self.checked(id) {
@@ -993,7 +1013,7 @@ impl StorytellerApp {
                 ctx.send_viewport_cmd(ViewportCommand::Maximized(!maximized));
             }
         }
-        let title = self.session.title();
+        let title = self.display_title();
         let (name, edited) = match title.strip_suffix(" — edited") {
             Some(name) => (name.to_string(), true),
             None => (title, false),
@@ -1069,8 +1089,7 @@ impl StorytellerApp {
     fn navigator(&mut self, ui: &mut egui::Ui) {
         let scenes = self.session.paginated().scenes.clone();
         let lengths: std::collections::HashMap<usize, u32> = self.session.scene_lengths().iter().map(|l| (l.element, l.eighths)).collect();
-        let current =
-            self.session.script.elements.iter().take(self.session.caret.element + 1).filter(|e| e.kind == ElementKind::SceneHeading).count();
+        let current = self.current_scene();
         ui.add_space(theme::SPACE_2);
         ui.label(egui::RichText::new("SCENES").small().strong().color(ui.visuals().weak_text_color()));
         ui.add_space(theme::SPACE_1);
@@ -1135,6 +1154,12 @@ impl StorytellerApp {
             let ctx = ui.ctx().clone();
             self.copy_scene(&ctx, Some(heading));
         }
+    }
+
+    /// The scene the caret is in, counted from 1 (0 before the first heading): the row the
+    /// navigator highlights.
+    fn current_scene(&self) -> usize {
+        self.session.script.elements.iter().take(self.session.caret.element + 1).filter(|e| e.kind == ElementKind::SceneHeading).count()
     }
 
     fn status_bar(&mut self, ui: &mut egui::Ui) {
@@ -1342,12 +1367,19 @@ impl StorytellerApp {
         let Some(draft) = &mut self.go_to else { return };
         let mut go = false;
         let mut close = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+        if std::mem::take(&mut draft.refocus) {
+            draft.focused = false;
+        }
         egui::Window::new("Go To").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_TOP, [0.0, 120.0]).show(ctx, |ui| {
             ui.horizontal(|ui| {
                 let scene = ui.selectable_value(&mut draft.page, false, "Scene");
                 self.automation.add("dialog.go_to.scene", "radio", "Scene", &scene);
                 let page = ui.selectable_value(&mut draft.page, true, "Page");
                 self.automation.add("dialog.go_to.page", "radio", "Page", &page);
+                if scene.clicked() || page.clicked() {
+                    draft.refocus = true;
+                    ui.ctx().request_repaint();
+                }
             });
             let hint = if draft.page { "Page number" } else { "Scene number, such as 12 or 12A" };
             let response = ui.add(egui::TextEdit::singleline(&mut draft.text).hint_text(hint).desired_width(240.0));
@@ -1396,6 +1428,8 @@ impl StorytellerApp {
             Ok(_) => {
                 self.go_to = None;
                 self.editor.pending_focus = Some((self.session.caret.element, 0));
+                // Draw again now: this frame's navigator still shows the scene left.
+                ctx.request_repaint();
             }
             Err(error) => {
                 if let Some(draft) = &mut self.go_to {
@@ -1424,7 +1458,7 @@ impl StorytellerApp {
         let mut answer = None;
         egui::Modal::new(egui::Id::new("storyteller.unsaved")).frame(theme::modal_frame(&ctx.global_style())).show(ctx, |ui| {
             ui.heading("Save changes?");
-            ui.label(format!("“{}” has changes that are not saved.", self.session.title().trim_end_matches(" — edited")));
+            ui.label(format!("“{}” has changes that are not saved.", self.display_title().trim_end_matches(" — edited")));
             ui.add_space(theme::SPACE_2);
             ui.horizontal(|ui| {
                 for (id, label) in [("save", "Save"), ("discard", "Don't Save"), ("cancel", "Cancel")] {

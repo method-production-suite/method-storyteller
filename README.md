@@ -21,7 +21,8 @@ default, Fountain one choice away).
   `(CONT'D)` at page breaks, scene headings that never strand at the bottom of a page.
 - **Open formats, your choice.** New scripts are Open Screenplay Format (structured XML that keeps
   production detail); Fountain (plain text, diff-friendly) is fully supported and one choice away
-  (File > Save New Scripts as…). Opens and saves `.fdx` and `.fadein`; exports PDF.
+  (File > Save New Scripts as…). Opens and saves `.fdx`, and Open Screenplay Format in a ZIP
+  archive; exports PDF.
 - **Title page, scene navigator and scene numbers.**
 - **Scriptable.** Every action is a named command, every widget has an automation id, and a
   JSON-lines control channel drives the app or a headless engine.
