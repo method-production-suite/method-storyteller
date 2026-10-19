@@ -24,6 +24,8 @@ pub(super) struct SpellCache {
     cues: Option<u64>,
     /// What the cached answers also depended on: the learned and ignored words.
     words: (usize, usize),
+    /// The script's ignored words in lower case, built with the rest of the cache.
+    ignored: HashSet<String>,
 }
 
 fn hash_of(text: &str) -> u64 {
@@ -79,7 +81,13 @@ impl StorytellerApp {
         let words = (self.session.spelling.learned.len(), script.spelling_ignored.len());
         let cache = &mut self.spell_cache;
         if cache.cues != Some(cues) || cache.words != words {
-            *cache = SpellCache { rows: Vec::new(), names: storyteller_engine::spell::names(script), cues: Some(cues), words };
+            *cache = SpellCache {
+                rows: Vec::new(),
+                names: storyteller_engine::spell::names(script),
+                cues: Some(cues),
+                words,
+                ignored: storyteller_engine::spell::ignored_set(&script.spelling_ignored),
+            };
         }
         cache.rows.resize(script.elements.len(), None);
         let caret = self.session.caret;
@@ -91,7 +99,7 @@ impl StorytellerApp {
             }
             let hash = hash_of(&element.text);
             if slot.as_ref().is_none_or(|(h, _)| *h != hash) {
-                let ranges = storyteller_engine::spell::misspelled_in(&element.text, &cache.names, &self.session.spelling, &script.spelling_ignored);
+                let ranges = storyteller_engine::spell::misspelled_in(&element.text, &cache.names, &self.session.spelling, &cache.ignored);
                 *slot = Some((hash, ranges));
             }
             let Some((_, ranges)) = slot.as_ref() else { continue };

@@ -979,11 +979,12 @@ fn all_commands() -> Vec<Command> {
             enabled: always,
             run: |s, p| {
                 let word = string(p, "word")?;
+                let word = word.trim();
                 let lower = word.to_lowercase();
                 // Kept with the script as written, so it stays ignored when the file is saved and
                 // reopened; a word already there in any case is not added again.
                 if !s.script.spelling_ignored.iter().any(|w| w.to_lowercase() == lower) {
-                    s.script.spelling_ignored.push(word.trim().to_string());
+                    s.script.spelling_ignored.push(word.to_string());
                     s.dirty = true;
                 }
                 Ok(Outcome::message(format!("Ignoring “{word}” in this script")))

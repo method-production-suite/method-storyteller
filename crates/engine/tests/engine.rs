@@ -480,8 +480,18 @@ fn ignored_words_keep_their_case_and_match_any_case() {
     let mut s = storyteller_engine::session::Session::new(storyteller_core::fountain::parse("McKenzie waits. MCKENZIE waits.\n").unwrap());
     s.script.spelling_ignored = vec!["McKenzie".into()];
     assert!(
-        storyteller_engine::spell::misspelled_in(&s.script.elements[0].text, &Default::default(), &s.spelling, &s.script.spelling_ignored).is_empty()
+        storyteller_engine::spell::misspelled_in(
+            &s.script.elements[0].text,
+            &Default::default(),
+            &s.spelling,
+            &storyteller_engine::spell::ignored_set(&s.script.spelling_ignored)
+        )
+        .is_empty()
     );
     run(&registry, &mut s, "spell.ignore", json!({ "word": "mckenzie" }));
     assert_eq!(s.script.spelling_ignored, ["McKenzie"]);
+    // Spaces around a word are not part of it.
+    run(&registry, &mut s, "spell.ignore", json!({ "word": " Zorbly " }));
+    run(&registry, &mut s, "spell.ignore", json!({ "word": "zorbly" }));
+    assert_eq!(s.script.spelling_ignored, ["McKenzie", "Zorbly"]);
 }
