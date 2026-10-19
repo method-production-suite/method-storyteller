@@ -210,3 +210,30 @@ fn rename_onto_another_character_asks_to_merge() {
     assert!(harness.state().rename.is_none());
     assert_eq!(harness.state().session.script.elements[1].text, "EMMETT");
 }
+
+#[test]
+fn select_all_selects_the_paragraph_and_the_edit_menu_lists_the_clipboard() {
+    let (mut harness, _file) = harness(SCRIPT);
+    harness.state_mut().editor.pending_focus = Some((1, 0));
+    harness.run_steps(3);
+    harness.state_mut().queued.push("app.select_all".into());
+    harness.run_steps(3);
+    let id = egui::Id::new(("storyteller.element", 1));
+    let range = egui::text_edit::TextEditState::load(&harness.ctx, id).and_then(|s| s.cursor.char_range());
+    let (start, end) = range.map(|r| (r.primary.index.0.min(r.secondary.index.0), r.primary.index.0.max(r.secondary.index.0))).unwrap_or_default();
+    assert_eq!((start, end), (0, "One.".chars().count()), "the whole paragraph is selected");
+    assert!(harness.ctx.memory(|m| m.has_focus(id)), "and keeps the keyboard");
+    let labels: Vec<String> = harness.state().menu_entries("Edit").into_iter().map(|e| e.label).collect();
+    for wanted in ["Cut", "Copy", "Paste", "Select All"] {
+        assert!(labels.iter().any(|l| l == wanted), "Edit has {wanted}: {labels:?}");
+    }
+    assert!(
+        harness
+            .state()
+            .menu_entries("Edit")
+            .iter()
+            .filter(|e| ["app.cut", "app.copy", "app.paste", "app.select_all"].contains(&e.id.as_str()))
+            .all(|e| e.shortcut.is_none()),
+        "the keys stay with the text fields"
+    );
+}

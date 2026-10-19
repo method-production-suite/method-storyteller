@@ -1,8 +1,8 @@
 //! The macOS menu bar, built from the same menu entries the window menu shows (muda).
 //!
-//! Other systems keep the menu bar drawn inside the window. Cut, Copy, Paste and Select All are
-//! left out on purpose: as native items they would take ⌘C, ⌘V and the rest before the editor's
-//! text fields see them.
+//! Other systems keep the menu bar drawn inside the window. Cut, Copy, Paste and Select All have
+//! no accelerators on purpose: with them, the menu would take ⌘C, ⌘V and the rest before the
+//! editor's text fields see them. The keys go to the text fields; the items do the same.
 
 use std::cell::RefCell;
 use std::sync::mpsc::{Receiver, channel};

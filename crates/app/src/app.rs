@@ -39,7 +39,7 @@ const GO_TO_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Alt+G" } else { "Cmd
 const FIND_NEXT_KEY: &str = if cfg!(target_os = "macos") { "Cmd+G" } else { "F3" };
 const FIND_PREVIOUS_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Shift+G" } else { "Shift+F3" };
 
-const APP_COMMANDS: [AppCommand; 24] = [
+const APP_COMMANDS: [AppCommand; 28] = [
     AppCommand { id: "app.title_page", label: "Title Page…", menu: "File/Title Page…", shortcut: Some("Cmd+Shift+T") },
     AppCommand { id: "prefs.new_fountain", label: "Save New Scripts as Fountain", menu: "File/Save New Scripts as Fountain", shortcut: None },
     AppCommand {
@@ -49,6 +49,12 @@ const APP_COMMANDS: [AppCommand; 24] = [
         shortcut: None,
     },
     AppCommand { id: "app.quit", label: "Quit", menu: "File/Quit", shortcut: Some("Cmd+Q") },
+    // No shortcuts here on purpose: ⌘X, ⌘C, ⌘V and ⌘A stay with the text fields, which handle
+    // them; the menu items do the same for a writer who reaches for the menu.
+    AppCommand { id: "app.cut", label: "Cut", menu: "Edit/Cut", shortcut: None },
+    AppCommand { id: "app.copy", label: "Copy", menu: "Edit/Copy", shortcut: None },
+    AppCommand { id: "app.paste", label: "Paste", menu: "Edit/Paste", shortcut: None },
+    AppCommand { id: "app.select_all", label: "Select All", menu: "Edit/Select All", shortcut: None },
     AppCommand { id: "app.find", label: "Find…", menu: "Edit/Find…", shortcut: Some("Cmd+F") },
     AppCommand { id: "app.find_next", label: "Find Next", menu: "Edit/Find Next", shortcut: Some(FIND_NEXT_KEY) },
     AppCommand { id: "app.find_previous", label: "Find Previous", menu: "Edit/Find Previous", shortcut: Some(FIND_PREVIOUS_KEY) },
@@ -290,6 +296,11 @@ impl StorytellerApp {
                 self.title_dialog = Some(TitleDraft { fields });
             }
             "app.go_to" => self.go_to = Some(GoToDraft::default()),
+            // The focused text field acts on these as on its own keys.
+            "app.cut" => ctx.send_viewport_cmd(ViewportCommand::RequestCut),
+            "app.copy" => ctx.send_viewport_cmd(ViewportCommand::RequestCopy),
+            "app.paste" => ctx.send_viewport_cmd(ViewportCommand::RequestPaste),
+            "app.select_all" => self.select_all(ctx),
             "app.rename_character" => {
                 let names: Vec<String> = storyteller_engine::commands::character_names(&self.session.script).into_iter().map(|(n, _)| n).collect();
                 // The cue the caret is in, if any, else the character with the most speeches.
@@ -401,6 +412,19 @@ impl StorytellerApp {
         let rank = |group: &str| MENUS.iter().position(|m| *m == group).unwrap_or(MENUS.len());
         rows.sort_by_key(|row| rank(&row.group));
         rows
+    }
+
+    /// Edit > Select All: the whole of the paragraph the caret is in, as ⌘A selects it.
+    fn select_all(&mut self, ctx: &egui::Context) {
+        self.session.clamp_caret();
+        let index = self.session.caret.element;
+        let Some(text) = self.session.element(index).map(|e| e.text.clone()) else { return };
+        let id = egui::Id::new(("storyteller.element", index));
+        let mut state = egui::text_edit::TextEditState::load(ctx, id).unwrap_or_default();
+        let range = egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(text.chars().count()));
+        state.cursor.set_char_range(Some(range));
+        state.store(ctx, id);
+        ctx.memory_mut(|m| m.request_focus(id));
     }
 
     fn refocus(&mut self) {

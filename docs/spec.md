@@ -228,6 +228,9 @@ Limits: inputs over 32 MiB or 200 000 elements are refused with a message, not a
   (a white page column with real margins), a status bar (element type, page x of y, scene).
 - File: New, Open…, Save, Save As…, Import FDX…, Export FDX…, Export PDF…, Title Page…, Quit.
   Unsaved changes prompt on close (craft-quit on macOS).
+- Edit: Undo, Redo, Cut, Copy, Paste, Select All (the paragraph the caret is in), Find…, Go To….
+  Cut, Copy, Paste and Select All carry no menu shortcut on purpose: ⌘X, ⌘C, ⌘V and ⌘A go
+  straight to the text being edited, and the menu items do the same.
 - Settings (craft-settings): recent files, show scene numbers, navigator visibility, zoom.
 
 ## 8. CLI
