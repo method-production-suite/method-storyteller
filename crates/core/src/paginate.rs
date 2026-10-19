@@ -326,6 +326,10 @@ fn groups(script: &Script, layout: &Layout) -> Vec<Group> {
                 }
             }
             kind => {
+                // A new act starts a new page (a break on an empty page adds nothing).
+                if kind == ElementKind::NewAct {
+                    groups.push(Group::Break);
+                }
                 // Imported types such as `New Act` or `General` use their own settings.
                 let custom = element.fdx.as_ref().filter(|f| f.kind == kind).and_then(|f| layout.custom_style(&f.type_name));
                 if let Some(block) = block_for(script, index, layout, custom.unwrap_or_else(|| layout.style(kind))) {

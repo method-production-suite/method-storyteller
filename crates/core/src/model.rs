@@ -18,11 +18,15 @@ pub enum ElementKind {
     Section,
     Synopsis,
     PageBreak,
+    /// A television act's opening line (TEASER, ACT ONE, TAG): its own page.
+    NewAct,
+    /// The line that closes an act (END OF ACT ONE).
+    EndOfAct,
 }
 
 impl ElementKind {
     /// Every kind, in menu order.
-    pub const ALL: [ElementKind; 12] = [
+    pub const ALL: [ElementKind; 14] = [
         ElementKind::SceneHeading,
         ElementKind::Action,
         ElementKind::Character,
@@ -32,6 +36,8 @@ impl ElementKind {
         ElementKind::Shot,
         ElementKind::Centered,
         ElementKind::Lyrics,
+        ElementKind::NewAct,
+        ElementKind::EndOfAct,
         ElementKind::Section,
         ElementKind::Synopsis,
         ElementKind::PageBreak,
@@ -52,6 +58,8 @@ impl ElementKind {
             ElementKind::Section => "section",
             ElementKind::Synopsis => "synopsis",
             ElementKind::PageBreak => "page_break",
+            ElementKind::NewAct => "new_act",
+            ElementKind::EndOfAct => "end_of_act",
         }
     }
 
@@ -75,12 +83,22 @@ impl ElementKind {
             ElementKind::Section => "Section",
             ElementKind::Synopsis => "Synopsis",
             ElementKind::PageBreak => "Page Break",
+            ElementKind::NewAct => "New Act",
+            ElementKind::EndOfAct => "End of Act",
         }
     }
 
     /// Kinds whose text is always shown and saved in capitals.
     pub fn is_caps(self) -> bool {
-        matches!(self, ElementKind::SceneHeading | ElementKind::Character | ElementKind::Transition | ElementKind::Shot)
+        matches!(
+            self,
+            ElementKind::SceneHeading
+                | ElementKind::Character
+                | ElementKind::Transition
+                | ElementKind::Shot
+                | ElementKind::NewAct
+                | ElementKind::EndOfAct
+        )
     }
 
     /// Kinds that hold exactly one line of text.
@@ -95,6 +113,8 @@ impl ElementKind {
                 | ElementKind::Section
                 | ElementKind::Synopsis
                 | ElementKind::PageBreak
+                | ElementKind::NewAct
+                | ElementKind::EndOfAct
         )
     }
 
@@ -107,6 +127,21 @@ impl ElementKind {
     pub fn is_printed(self) -> bool {
         !matches!(self, ElementKind::Section | ElementKind::Synopsis | ElementKind::PageBreak)
     }
+}
+
+/// The act line a centred line stands for, if any: `TEASER`, `COLD OPEN`, `ACT ONE` (or `ACT 1`),
+/// `TAG`, `PROLOGUE` and `EPILOGUE` open an act; `END OF …` closes one. Fountain has no act
+/// element, so this is how a Fountain file's centred act lines read back as acts.
+pub fn act_kind(text: &str) -> Option<ElementKind> {
+    let line = text.trim().trim_matches(|c: char| c == '_' || c == '*').trim().to_uppercase();
+    if line.starts_with("END OF ") && line.len() > "END OF ".len() {
+        return Some(ElementKind::EndOfAct);
+    }
+    let opens = matches!(line.as_str(), "TEASER" | "COLD OPEN" | "TAG" | "PROLOGUE" | "EPILOGUE")
+        || line
+            .strip_prefix("ACT ")
+            .is_some_and(|rest| !rest.is_empty() && rest.split_whitespace().count() <= 2 && rest.chars().all(|c| c.is_alphanumeric() || c == ' '));
+    opens.then_some(ElementKind::NewAct)
 }
 
 /// One script paragraph.

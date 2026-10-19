@@ -202,6 +202,8 @@ fn builtin_kind(name: &str) -> Option<ElementKind> {
         "dialogue" => ElementKind::Dialogue,
         "transition" => ElementKind::Transition,
         "shot" => ElementKind::Shot,
+        "new act" => ElementKind::NewAct,
+        "end of act" => ElementKind::EndOfAct,
         _ => return None,
     })
 }
@@ -1034,6 +1036,8 @@ fn style_for(kind: ElementKind) -> &'static str {
         ElementKind::Transition => "Transition",
         ElementKind::Shot => "Shot",
         ElementKind::Lyrics => "Lyrics",
+        ElementKind::NewAct => "New Act",
+        ElementKind::EndOfAct => "End of Act",
         ElementKind::Action | ElementKind::Centered | ElementKind::PageBreak | ElementKind::Section | ElementKind::Synopsis => "Action",
     }
 }
@@ -1050,6 +1054,8 @@ const DEFAULT_STYLES: &str = r#"  <styles>
     <style name="Transition" builtin="1" builtin_index="6" basestylename="Normal Text" style_enter="Scene Heading" style_tab_after="Action" font="Courier Prime" size="12" spacebefore="1.0" align="right" leftindent="1016" rightindent="102" allcaps="1"/>
     <style name="Shot" builtin="1" builtin_index="7" basestylename="Normal Text" style_enter="Action" style_tab_after="Action" font="Courier Prime" size="12" spacebefore="2.0" keepwithnext="1" allcaps="1"/>
     <style name="Lyrics" basestylename="Dialogue" italic="1"/>
+    <style name="New Act" basestylename="Normal Text" style_enter="Scene Heading" style_tab_after="Scene Heading" font="Courier Prime" size="12" spacebefore="1.0" align="center" allcaps="1"/>
+    <style name="End of Act" basestylename="Normal Text" style_enter="New Act" style_tab_after="New Act" font="Courier Prime" size="12" spacebefore="2.0" align="center" allcaps="1"/>
   </styles>"#;
 
 const DEFAULT_SETTINGS: &str = r##"  <settings page_width="2159" page_height="2794" margin_top="254" margin_bottom="254" margin_left="381" margin_right="254" normal_linesperinch="6.0" element_spacing="1.00" break_on_sentences="true" dialogue_continues="true" dialogue_pagebreaks="true" cont_text="(CONT'D)" more_text="(MORE)" scenes_continue="false" scene_time_separator=" - " page_header="#." header_alignment="3" header_first_page="false"/>"##;

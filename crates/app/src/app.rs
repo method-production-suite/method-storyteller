@@ -1172,7 +1172,17 @@ impl StorytellerApp {
             let response = egui::ComboBox::from_id_salt("storyteller.element_kind").selected_text(kind.label()).show_ui(ui, |ui| {
                 for (n, option) in SHORTCUT_KINDS
                     .iter()
-                    .chain([ElementKind::Centered, ElementKind::Lyrics, ElementKind::Section, ElementKind::Synopsis].iter())
+                    .chain(
+                        [
+                            ElementKind::Centered,
+                            ElementKind::Lyrics,
+                            ElementKind::NewAct,
+                            ElementKind::EndOfAct,
+                            ElementKind::Section,
+                            ElementKind::Synopsis,
+                        ]
+                        .iter(),
+                    )
                     .enumerate()
                 {
                     let r = ui.selectable_value(&mut chosen, *option, option.label());

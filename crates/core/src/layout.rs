@@ -134,7 +134,11 @@ impl Default for Layout {
                 parenthetical: ElementStyle::new(49, 22, Align::Left, 0),
                 dialogue: ElementStyle::new(46, 28, Align::Left, 0),
             },
-            custom: Vec::new(),
+            // Act lines: centred capitals; End of Act sits two lines below the act's last scene.
+            custom: vec![
+                ("New Act".to_string(), ElementStyle::new(15, 61, Align::Center, 1)),
+                ("End of Act".to_string(), ElementStyle::new(15, 61, Align::Center, 2)),
+            ],
         }
     }
 }
@@ -168,6 +172,9 @@ impl Layout {
             ElementKind::Shot => self.shot,
             ElementKind::Centered => self.centered,
             ElementKind::Lyrics => self.lyrics,
+            // Act lines use the script's New Act and End of Act styles, centred when it has none.
+            ElementKind::NewAct => self.custom_style("New Act").unwrap_or(self.centered),
+            ElementKind::EndOfAct => self.custom_style("End of Act").unwrap_or(self.centered),
             ElementKind::Action | ElementKind::Section | ElementKind::Synopsis | ElementKind::PageBreak => self.action,
         }
     }

@@ -238,7 +238,9 @@ fn parse_body(source: &str) -> Result<(Script, Vec<usize>), CoreError> {
                 text.push(current.get(1..current.len() - 1).unwrap_or("").trim().to_string());
                 i += 1;
             }
-            builder.push(Element::new(ElementKind::Centered, text.join("\n")))?;
+            let text = text.join("\n");
+            let kind = crate::model::act_kind(&text).unwrap_or(ElementKind::Centered);
+            builder.push(Element::new(kind, text))?;
         } else if let Some(rest) = trimmed.strip_prefix('>') {
             builder.push(Element::new(ElementKind::Transition, rest.trim()))?;
             i += 1;
@@ -458,7 +460,8 @@ pub fn write(script: &Script) -> String {
                 }
                 out.push_str(text);
             }
-            ElementKind::Centered => push_lines(&mut out, text, ">", "<"),
+            // Fountain has no act element: acts are centred lines, read back by act_kind.
+            ElementKind::Centered | ElementKind::NewAct | ElementKind::EndOfAct => push_lines(&mut out, text, ">", "<"),
             ElementKind::Lyrics => push_lines(&mut out, text, "~", ""),
             ElementKind::Section => {
                 out.push_str(&"#".repeat(usize::from(element.level.clamp(1, 6))));
