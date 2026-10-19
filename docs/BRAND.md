@@ -3,7 +3,6 @@
 How Method Storyteller looks and sounds, in the app, in the README and anywhere else it
 shows up. It belongs to the same family as the other Method apps: the same voice, the same
 neutrals and type, the mark and name drawn the same way, and a rose accent that is its own.
-The mark is provisional for now.
 
 ## The name
 
@@ -59,11 +58,14 @@ muted line, centered where the content would be.
 
 ## The mark
 
-A screenplay page. The page is at full strength, with two brads down its left edge. The
-script's shape is at half strength: a scene heading, action, a cue and its dialogue. A
-text cursor sits after the last line at full strength, because this is the app you write
-in. The mark uses the family's box: 40 by 52 units on a 64-unit grid. A separate 16-unit
-drawing is used for favicons.
+A screenplay page. The page is solid; two brad holes are punched down its left edge, and
+the script's shape is cut out of it: a scene heading, action, a cue and its dialogue, each
+at its own indent, as a page prints. After the last line a text cursor is cut out too,
+taller than the lines, because this is the app you write in. Everything that is not page
+is empty, so the mark sits on any background, as Method Budget's page with its figures cut
+out does. The mark uses the family's box: 40 by 52 units on a 64-unit grid. A separate
+16-unit drawing on whole units (five lines, two brads, the cursor) is used for favicons and
+the smallest icons, so it stays sharp at 16 and 32 pixels.
 
 | File | Use |
 |---|---|
@@ -73,11 +75,16 @@ drawing is used for favicons.
 | `docs/brand/wordmark-dark.svg` | Mark and name, for dark backgrounds |
 | `docs/brand/favicon.svg` | The 16-unit mark; switches color with the browser's scheme |
 | `docs/brand/favicon.ico` | The 16-unit mark at 16 and 32 pixels |
-| `docs/brand/apple-touch-icon.png` | The touch icon |
+| `docs/brand/apple-touch-icon.png` | 180 pixels, the white mark on a rose square |
+| `packaging/icons/` | The app icon and the document icons (below) |
 
-While the mark is provisional, these files are drawn by the suite website's
-`tools/make-brand.py`. Change that script and copy the files here; don't edit them by
-hand. Once Storyteller has a site of its own, the script moves into this repository.
+The same files go to `site/` (`site/assets/brand/` for the mark and wordmark,
+`site/favicon.*` and `site/apple-touch-icon.png`), which methodstoryteller.com serves and
+the suite website reads for its suite bar. All of them are drawn by
+[scripts/make-brand.py](../scripts/make-brand.py); don't edit them by hand. Run
+`python3 scripts/make-brand.py` after changing it (`--check` changes nothing and exits 1
+when a file is out of date). The letters are `scripts/glyphs.py`, the family's strokes,
+copied unchanged from the suite website.
 
 Rules:
 
@@ -95,6 +102,27 @@ Rules:
 font. Because it's drawn, it looks the same everywhere and ships no font. The name is ink
 and the mark is rose.
 
+
+### The app icon
+
+The mark in white on a rose (`#AE3D56`) rounded square, the script's lines and the cursor
+showing the rose through, as Method Budget's and Method Schedule's icons are drawn from
+their marks. The square is the mark's 64-unit grid with corners of 14.3 units. From 48
+pixels up it sits inside the macOS icon grid's margin (100 of 1024 a side); at 16 and 32
+pixels it is full bleed and draws the 16-unit drawing.
+
+### Document icons
+
+A `.osf`, `.fountain` or `.fdx` file gets a white sheet with its top corner turned, the
+mark in rose, and the extension below it in the family's drawn letters (`f` and `x` are
+new for this and follow the same rules). Below 64 pixels the letters can't be read, so the
+sheet carries the 16-unit mark alone.
+
+`python3 scripts/make-icons.py` draws both from the mark's shapes (it loads
+`make-brand.py`, so the two can't drift), keeps the drawings in `packaging/icons/source/`,
+and renders every size on a Mac: `icon.icns` (16 to 1024), `icon.ico` (16 to 256),
+`icon-1024.png`, `icon-512.png` and `icon-256.png` for Linux, and for each document type
+`document-<ext>.icns`, `.ico` and `-512.png`.
 ## Color
 
 The neutrals, the amber and the token names are the family's, value for value with Method
