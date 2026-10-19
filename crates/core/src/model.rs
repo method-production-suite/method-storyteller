@@ -144,6 +144,30 @@ pub fn act_kind(text: &str) -> Option<ElementKind> {
     opens.then_some(ElementKind::NewAct)
 }
 
+/// The shape of a new television script.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TvShape {
+    /// Teaser, Acts One to Five, Tag.
+    #[default]
+    OneHour,
+    /// Cold Open, Acts One to Three, Tag.
+    HalfHour,
+}
+
+impl TvShape {
+    pub fn id(self) -> &'static str {
+        match self {
+            TvShape::OneHour => "one_hour",
+            TvShape::HalfHour => "half_hour",
+        }
+    }
+
+    pub fn from_id(id: &str) -> Option<Self> {
+        [TvShape::OneHour, TvShape::HalfHour].into_iter().find(|shape| shape.id() == id)
+    }
+}
+
 /// One script paragraph.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Element {
@@ -722,6 +746,22 @@ impl Script {
     /// A new, empty script with one scene heading to start typing in.
     pub fn blank() -> Self {
         Script { elements: vec![Element::new(ElementKind::SceneHeading, "")], ..Script::default() }
+    }
+
+    /// A new television script laid out in acts: each act's line, an empty scene heading to
+    /// start writing in, and the line that ends the act.
+    pub fn tv(shape: TvShape) -> Self {
+        let acts: &[&str] = match shape {
+            TvShape::OneHour => &["TEASER", "ACT ONE", "ACT TWO", "ACT THREE", "ACT FOUR", "ACT FIVE", "TAG"],
+            TvShape::HalfHour => &["COLD OPEN", "ACT ONE", "ACT TWO", "ACT THREE", "TAG"],
+        };
+        let mut elements = Vec::with_capacity(acts.len() * 3);
+        for act in acts {
+            elements.push(Element::new(ElementKind::NewAct, *act));
+            elements.push(Element::new(ElementKind::SceneHeading, ""));
+            elements.push(Element::new(ElementKind::EndOfAct, format!("END OF {act}")));
+        }
+        Script { elements, ..Script::default() }
     }
 
     /// Normalize every element (see [`Element::normalize`]).

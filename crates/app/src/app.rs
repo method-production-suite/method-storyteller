@@ -116,6 +116,7 @@ enum Pending {
     New,
     Open(Option<PathBuf>),
     Sample,
+    NewTv(storyteller_core::model::TvShape),
 }
 
 struct TitleDraft {
@@ -160,6 +161,8 @@ pub struct StorytellerApp {
     discard_confirmed: bool,
     title_dialog: Option<TitleDraft>,
     go_to: Option<GoToDraft>,
+    /// File > New TV Script: the shape chosen so far.
+    new_tv: Option<storyteller_core::model::TvShape>,
     rename: Option<RenameDraft>,
     find: Option<find_bar::FindBar>,
     spelling: Option<spelling::SpellDialog>,
@@ -247,6 +250,7 @@ impl StorytellerApp {
             discard_confirmed: false,
             title_dialog: None,
             go_to: None,
+            new_tv: None,
             rename: None,
             find: None,
             spelling: None,
@@ -424,6 +428,8 @@ impl StorytellerApp {
             "help.shortcuts" => self.help.shortcuts = true,
             "help.whats_new" => self.help.whats_new = true,
             "help.open_sample" => self.guard_unsaved(ctx, Pending::Sample),
+            // The menu asks the shape first; the control channel can run file.new_tv with one.
+            "file.new_tv" => self.new_tv = Some(self.prefs.get().general.tv_shape),
             "help.licenses" => self.help.licenses = Some(self.help.licenses.unwrap_or(0)),
             "help.user_guide" => self.open_link(help::USER_GUIDE, "Opened the user guide in your browser."),
             "help.website" => self.open_link(help::SUITE_WEBSITE, "Opened methodproduction.com in your browser."),
@@ -556,6 +562,13 @@ impl StorytellerApp {
                 self.after_open();
             }
             Pending::Sample => self.open_sample(),
+            Pending::NewTv(shape) => {
+                self.run("file.new_tv", params(&[("shape", json!(shape.id()))]));
+                let caret = self.session.caret;
+                self.after_open();
+                self.session.caret = caret;
+                self.editor.pending_focus = Some((caret.element, 0));
+            }
             Pending::Open(path) => {
                 let path = path
                     .or_else(|| rfd::FileDialog::new().add_filter("Screenplay", &["fountain", "spmd", "txt", "osf", "fadein", "fdx"]).pick_file());
@@ -1373,6 +1386,44 @@ impl StorytellerApp {
         }
     }
 
+    /// File > New TV Script: one-hour or half-hour, the last choice first.
+    fn new_tv_dialog(&mut self, ctx: &egui::Context) {
+        use storyteller_core::model::TvShape;
+        let Some(mut shape) = self.new_tv else { return };
+        let mut close = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
+        let mut create = false;
+        egui::Window::new("New TV Script").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_TOP, [0.0, 120.0]).show(ctx, |ui| {
+            for (option, label, acts) in [
+                (TvShape::OneHour, "One-hour", "Teaser, Acts One to Five, Tag"),
+                (TvShape::HalfHour, "Half-hour", "Cold Open, Acts One to Three, Tag"),
+            ] {
+                let choice = ui.radio_value(&mut shape, option, format!("{label}: {acts}"));
+                self.automation.add(format!("dialog.new_tv.{}", option.id()), "radio", label, &choice);
+                if choice.double_clicked() {
+                    create = true;
+                }
+            }
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                let ok = ui.button("Create");
+                self.automation.add("dialog.new_tv.create", "button", "Create", &ok);
+                create |= ok.clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter));
+                let cancel = ui.button("Cancel");
+                self.automation.add("dialog.new_tv.cancel", "button", "Cancel", &cancel);
+                close |= cancel.clicked();
+            });
+        });
+        self.new_tv = Some(shape);
+        if create {
+            self.new_tv = None;
+            self.prefs.update(|p| p.general.tv_shape = shape);
+            self.guard_unsaved(ctx, Pending::NewTv(shape));
+        } else if close {
+            self.new_tv = None;
+            self.refocus();
+        }
+    }
+
     fn go_to_dialog(&mut self, ctx: &egui::Context) {
         let Some(draft) = &mut self.go_to else { return };
         let mut go = false;
@@ -1522,6 +1573,7 @@ impl StorytellerApp {
         self.apply(actions);
         self.title_page_dialog(&ctx);
         self.go_to_dialog(&ctx);
+        self.new_tv_dialog(&ctx);
         self.spelling_dialog(&ctx);
         self.rename_dialog(&ctx);
         self.help_windows(&ctx);
@@ -1656,7 +1708,13 @@ impl eframe::App for StorytellerApp {
         self.handle_control(ctx);
         self.sync_native_menu();
         self.open_from_finder(ctx);
-        if self.prompt.is_none() && self.title_dialog.is_none() && self.go_to.is_none() && self.rename.is_none() && self.spelling.is_none() {
+        if self.prompt.is_none()
+            && self.title_dialog.is_none()
+            && self.go_to.is_none()
+            && self.rename.is_none()
+            && self.spelling.is_none()
+            && self.new_tv.is_none()
+        {
             for (shortcut, id) in self.shortcuts.clone() {
                 if self.menu_owns_shortcut(id) {
                     continue;

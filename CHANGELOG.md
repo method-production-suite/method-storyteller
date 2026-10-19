@@ -3,6 +3,19 @@
 What changed in each version of Method Storyteller, newest first. The app shows the section
 for its own version in Help > What's New, once after an update.
 
+## Unreleased
+
+### New
+
+- Television acts: New Act (TEASER, COLD OPEN, ACT ONE, TAG) and End of Act lines, in capitals
+  and centred, each act on a new page. In the element picker as B and E, and in Format.
+- File > New TV Script: a one-hour or half-hour script laid out in acts, ready to write.
+
+### Before you update
+
+- Scripts with act lines saved by this version show those lines as action in 0.2.0. Update
+  before opening them there.
+
 ## 0.2.0
 
 The first release.

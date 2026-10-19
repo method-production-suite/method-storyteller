@@ -25,6 +25,9 @@ or from [methodstoryteller.com](https://methodstoryteller.com).
   production detail); Fountain (plain text, diff-friendly) is fully supported and one choice away
   (File > Save New Scripts as…). Opens and saves `.fdx`, and Open Screenplay Format in a ZIP
   archive; exports PDF.
+- **Television structure.** File > New TV Script lays out a one-hour or half-hour script in
+  acts; New Act and End of Act lines start each act on a new page, and carry over in `.fdx`,
+  Open Screenplay Format and Fountain.
 - **Title page, scene navigator and scene numbers.**
 - **Scriptable.** Every action is a named command, every widget has an automation id, and a
   JSON-lines control channel drives the app or a headless engine.

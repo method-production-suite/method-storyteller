@@ -229,7 +229,10 @@ Limits: inputs over 32 MiB or 200 000 elements are refused with a message, not a
 
 - One window: menu bar, a scene navigator on the left (toggle), the script page view in the middle
   (a white page column with real margins), a status bar (element type, page x of y, scene).
-- File: New, Open…, Save, Save As…, Import FDX…, Export FDX…, Export PDF…, Title Page…, Quit.
+- File: New, New TV Script…, Open…, Save, Save As…, Import FDX…, Export FDX…, Export PDF…, Title
+  Page…, Quit. New TV Script asks one-hour (Teaser, Acts One to Five, Tag) or half-hour (Cold
+  Open, Acts One to Three, Tag), offering the writer's last choice first, and lays the acts out:
+  each act's line, an empty scene heading with the caret in the first, and its END OF line.
   Unsaved changes prompt on close (craft-quit on macOS).
 - Edit: Undo, Redo, Cut, Copy, Paste, Select All (the paragraph the caret is in), Find…, Go To….
   Cut, Copy, Paste and Select All carry no menu shortcut on purpose: ⌘X, ⌘C, ⌘V and ⌘A go

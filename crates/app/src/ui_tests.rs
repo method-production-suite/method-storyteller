@@ -484,3 +484,28 @@ fn cut_copy_paste_keys_are_listed_but_left_to_the_text_fields() {
         assert!(!bound.contains(&id), "{id} is not bound: the text fields keep its keys");
     }
 }
+
+#[test]
+fn new_tv_script_asks_the_shape_and_remembers_it() {
+    let (mut harness, _file) = harness(SCRIPT);
+    harness.state_mut().queued.push("file.new_tv".into());
+    harness.run_steps(3);
+    assert_eq!(harness.state().new_tv, Some(storyteller_core::model::TvShape::OneHour), "one-hour first, the default");
+    harness.get_by_label_contains("Half-hour").click();
+    harness.run_steps(2);
+    harness.get_by_label("Create").click();
+    harness.run_steps(4);
+    assert!(harness.state().new_tv.is_none(), "the dialog closes");
+    let acts: Vec<String> =
+        harness.state().session.script.elements.iter().filter(|e| e.kind == storyteller_core::ElementKind::NewAct).map(|e| e.text.clone()).collect();
+    assert_eq!(acts, ["COLD OPEN", "ACT ONE", "ACT TWO", "ACT THREE", "TAG"]);
+    assert_eq!(harness.state().session.caret.element, 1, "ready to write the cold open's first scene");
+    assert_eq!(harness.state().prefs.get().general.tv_shape, storyteller_core::model::TvShape::HalfHour, "and the choice is remembered");
+    // Next time it offers half-hour first.
+    harness.state_mut().queued.push("file.new_tv".into());
+    harness.run_steps(3);
+    assert_eq!(harness.state().new_tv, Some(storyteller_core::model::TvShape::HalfHour));
+    harness.key_press(egui::Key::Escape);
+    harness.run_steps(2);
+    assert!(harness.state().new_tv.is_none(), "Escape closes it");
+}
