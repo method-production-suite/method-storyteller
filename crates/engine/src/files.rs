@@ -62,6 +62,50 @@ pub enum FileError {
     Archive(String),
 }
 
+/// What kind of trouble a file error is, so the app can say it plainly without reading the
+/// operating system's message (which Windows translates, and which carries the path).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FileProblem {
+    /// The file, or the folder it was going into, is not there.
+    NotFound,
+    /// The system does not allow reading the file or writing to the folder.
+    PermissionDenied,
+    /// The disk is full.
+    StorageFull,
+    /// The disk or folder is read-only.
+    ReadOnly,
+    /// The file is over the size or element limit.
+    TooLarge,
+    /// The file is not a script in a format we read, or it is damaged.
+    NotAScript,
+    /// A PDF, which is a printed script and cannot be opened.
+    Pdf,
+    /// Anything else; the error's text says what.
+    Other,
+}
+
+impl FileError {
+    /// The kind of trouble, taken from the error's type and never from its text.
+    pub fn problem(&self) -> FileProblem {
+        match self {
+            FileError::Read { source, .. } | FileError::Write { source, .. } => match source.kind() {
+                std::io::ErrorKind::NotFound => FileProblem::NotFound,
+                std::io::ErrorKind::PermissionDenied => FileProblem::PermissionDenied,
+                std::io::ErrorKind::StorageFull | std::io::ErrorKind::QuotaExceeded => FileProblem::StorageFull,
+                std::io::ErrorKind::ReadOnlyFilesystem => FileProblem::ReadOnly,
+                _ => FileProblem::Other,
+            },
+            FileError::Format(error) => match error {
+                CoreError::TooLarge | CoreError::TooManyElements => FileProblem::TooLarge,
+                CoreError::NotUtf8 | CoreError::NotFdx(_) | CoreError::NotOsf(_) | CoreError::Xml(_) => FileProblem::NotAScript,
+            },
+            FileError::Archive(_) => FileProblem::NotAScript,
+            FileError::CannotOpenPdf => FileProblem::Pdf,
+            FileError::Pdf(_) => FileProblem::Other,
+        }
+    }
+}
+
 /// Read and parse a script; the format is sniffed from the content, then the extension.
 pub fn open(path: &Path) -> Result<(Script, FileFormat), FileError> {
     let read_error = |source| FileError::Read { path: path.display().to_string(), source };
@@ -145,6 +189,20 @@ pub fn save_warnings(script: &Script, format: FileFormat) -> Vec<String> {
                 warnings.push(format!(
                     "{} in more than one paragraph will become one paragraph each (Fountain has one per speech)",
                     plural(joined, "speech", "speeches")
+                ));
+            }
+            let revised = script.elements.iter().map(|e| e.revised.len()).sum::<usize>();
+            if revised > 0 || !script.revisions.sets.is_empty() {
+                warnings.push(format!(
+                    "{} will lose their revision marks (Fountain has no revisions)",
+                    plural(revised, "revised passage", "revised passages")
+                ));
+            }
+            let notes = script.elements.iter().map(|e| e.notes.len()).sum::<usize>();
+            if notes > 0 {
+                warnings.push(format!(
+                    "{} with a colour, author or range will be left out (Fountain keeps only plain [[notes]])",
+                    plural(notes, "script note", "script notes")
                 ));
             }
         }

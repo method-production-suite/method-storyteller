@@ -28,7 +28,7 @@ pub fn dictionary() -> Option<&'static spellbook::Dictionary> {
 
 /// The writer's own dictionary: words added with Learn, spelled right in every script (the app
 /// keeps them in its settings). Words ignored for one script live on the script itself
-/// ([`Script::spelling_ignored`]).
+/// ([`Script::spelling_ignored`]); no file format saves them yet, so they last the session.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Personal {
     pub learned: HashSet<String>,
@@ -167,13 +167,18 @@ pub fn is_right(word: &str, names: &HashSet<String>, personal: &Personal, ignore
     false
 }
 
+/// The misspelled words of one text, as byte ranges: what the editor underlines.
+pub fn misspelled_in(text: &str, names: &HashSet<String>, personal: &Personal, ignored: &[String]) -> Vec<(usize, usize)> {
+    words(text).into_iter().filter(|&(start, end)| text.get(start..end).is_some_and(|word| !is_right(word, names, personal, ignored))).collect()
+}
+
 /// Every misspelled word of the script, in reading order.
 pub fn misspelled(script: &Script, personal: &Personal) -> Vec<Miss> {
     let names = names(script);
     let mut out = Vec::new();
     for (index, element) in script.elements.iter().enumerate() {
-        // Page breaks and outline lines are not script text.
-        if matches!(element.kind, ElementKind::PageBreak) {
+        // Page breaks and outline lines (sections, synopses) are not script text.
+        if !element.kind.is_printed() {
             continue;
         }
         for (start, end) in words(&element.text) {

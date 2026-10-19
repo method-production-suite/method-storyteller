@@ -184,7 +184,7 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
             i = push_action(&mut builder, lines, i, line)?;
         }
     }
-    Ok(Script { title_page, elements: builder.elements, fdx: None, osf: None, spelling_ignored: Vec::new() })
+    Ok(Script { title_page, elements: builder.elements, ..Script::default() })
 }
 
 fn parse_title_page(lines: &[&str]) -> (TitlePage, usize) {
