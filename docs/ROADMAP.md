@@ -79,10 +79,10 @@ says otherwise.
   Replace, Replace All and one ⌘Z; Production > Rename Character with and without "Also in
   action, dialogue and other text".
 - **Lossless `.fdx` (the final check).** Open `crates/core/tests/fixtures/lossless-check.fdx`
-  in your licensed copy and say whether the notes, revisions, locked pages and element settings
-  came through. The click list (what to open, where to look, what you should see) is in the
-  fidelity report, `docs/research/fdx-osf-fidelity.md`, once its pull request (#44) and the rest
-  of the chain (#42, #43, #52, #55) have merged; about 20 minutes, nothing to type.
+  in your licensed copy and go down the ten-step click list in
+  [research/fdx-osf-fidelity.md](research/fdx-osf-fidelity.md#the-owners-final-check): notes,
+  revisions, locked pages and element settings, then save it and send it back. About 20 minutes,
+  nothing to type. Ready now: the whole milestone is on main.
 - **Opening files from the Finder (macOS).** Needs the app on screen, so it waits for your yes
   through MOrg. With a build of `main`: double-click an `.osf`, a `.fountain` and an `.fdx`, and
   drop one on the Dock icon. Each should open in the app, and on a first launch the file should
@@ -174,10 +174,11 @@ wait for a decision above.
    (decision 7 for Fountain), scene titles, summaries and colours, drag to reorder scenes in
    the navigator (one Undo), bookmarks for Go To, the character table, show and hide outline
    paragraphs.
-8. **Lossless `.fdx`** [partial] M (owner, 2026-10-18). Everything `.fdx` and Open Screenplay
+8. **Lossless `.fdx`** [in review] M (owner, 2026-10-18). Everything `.fdx` and Open Screenplay
    Format can both hold converts exactly both ways (OSF to `.fdx`, `.fdx` to OSF, `.fdx` to
    `.fdx`), proven by round-trip tests on files we write ourselves. Today an imported `.fdx`
-   keeps everything only when saved back as `.fdx`. One PR each, in order:
+   keeps everything only when saved back as `.fdx`. One PR each, in order (all in review; the
+   fidelity report lists what maps exactly and what cannot):
    - script notes: the three `.fdx` generations (a note inside its paragraph, the older
      unanchored list, the newer list with character ranges) into the model with range, colour
      and author, to OSF `note` and back (colour and author in a `method_storyteller` child, so

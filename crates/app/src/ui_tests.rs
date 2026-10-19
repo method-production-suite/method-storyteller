@@ -15,7 +15,7 @@ fn harness(script: &str) -> (Harness<'static, StorytellerApp>, tempfile::NamedTe
     let mut harness = Harness::builder()
         .with_size(egui::vec2(1280.0, 800.0))
         .with_max_steps(64)
-        .build_eframe(move |cc| StorytellerApp::without_menu(cc, Some(path), None, Location::Memory));
+        .build_eframe(move |cc| StorytellerApp::without_menu(cc, Some(path), None, Location::Memory, Default::default()));
     harness.run_steps(3);
     (harness, file)
 }
@@ -211,6 +211,78 @@ fn rename_onto_another_character_asks_to_merge() {
     assert_eq!(harness.state().session.script.elements[1].text, "EMMETT");
 }
 
+#[test]
+fn with_nothing_to_open_the_sample_is_shown_unsaved() {
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1280.0, 800.0))
+        .with_max_steps(64)
+        .build_eframe(|cc| StorytellerApp::without_menu(cc, None, None, Location::Memory, Default::default()));
+    harness.run_steps(3);
+    let app = harness.state();
+    assert!(app.showing_sample(), "the sample opens");
+    assert!(app.session.path.is_none(), "with no path, so Save never writes the bundled file");
+    assert!(!app.session.dirty);
+    assert!(app.session.script.elements.len() > 1000, "the whole of Field Station");
+    assert_eq!(app.display_title(), "Field Station (sample)");
+    assert_eq!(app.status, super::sample::SAMPLE_LINE);
+    assert!(app.prefs.get().general.sample_seen, "shown once");
+}
+
+#[test]
+fn help_opens_the_sample_any_time() {
+    let (mut harness, _file) = harness(SCRIPT);
+    assert!(!harness.state().showing_sample(), "a file given at launch opens instead of the sample");
+    assert!(harness.state().prefs.get().general.sample_seen, "and retires the first-launch sample unshown");
+    harness.state_mut().queued.push("help.open_sample".into());
+    harness.run_steps(3);
+    assert!(harness.state().showing_sample(), "Help > Open Sample Script");
+    assert!(harness.state().session.path.is_none());
+}
+
+#[test]
+fn select_all_selects_the_paragraph_and_the_edit_menu_lists_the_clipboard() {
+    let (mut harness, _file) = harness(SCRIPT);
+    harness.state_mut().editor.pending_focus = Some((1, 0));
+    harness.run_steps(3);
+    harness.state_mut().queued.push("app.select_all".into());
+    harness.run_steps(3);
+    let id = egui::Id::new(("storyteller.element", 1));
+    let range = egui::text_edit::TextEditState::load(&harness.ctx, id).and_then(|s| s.cursor.char_range());
+    let (start, end) = range.map(|r| (r.primary.index.0.min(r.secondary.index.0), r.primary.index.0.max(r.secondary.index.0))).unwrap_or_default();
+    assert_eq!((start, end), (0, "One.".chars().count()), "the whole paragraph is selected");
+    assert!(harness.ctx.memory(|m| m.has_focus(id)), "and keeps the keyboard");
+    let labels: Vec<String> = harness.state().menu_entries("Edit").into_iter().map(|e| e.label).collect();
+    for wanted in ["Cut", "Copy", "Paste", "Select All"] {
+        assert!(labels.iter().any(|l| l == wanted), "Edit has {wanted}: {labels:?}");
+    }
+    assert!(
+        harness
+            .state()
+            .menu_entries("Edit")
+            .iter()
+            .filter(|e| ["app.cut", "app.copy", "app.paste", "app.select_all"].contains(&e.id.as_str()))
+            .all(|e| e.shortcut.is_none()),
+        "the keys stay with the text fields"
+    );
+}
+
+#[test]
+fn edit_cut_from_the_window_menu_cuts_the_selection() {
+    let (mut harness, _file) = harness(SCRIPT);
+    harness.state_mut().editor.pending_focus = Some((1, 0));
+    harness.run_steps(3);
+    harness.state_mut().queued.push("app.select_all".into());
+    harness.run_steps(3);
+    // Through the menu drawn in the window, as on Linux and Windows: the click takes the focus.
+    harness.get_by_label("Edit").click();
+    harness.run_steps(2);
+    harness.get_by_label("Cut").click();
+    harness.run_steps(4);
+    assert_eq!(harness.state().session.script.elements[1].text, "", "the selected paragraph is cut");
+    let id = egui::Id::new(("storyteller.element", 1));
+    assert!(harness.ctx.memory(|m| m.has_focus(id)), "and the paragraph has the keyboard again");
+}
+
 const SPELL_SCRIPT: &str = "INT. HUT - DAY\n\nNora taps the glsas. The seismograf is still.\n\nNORA\nOkay.\n";
 
 #[test]
@@ -243,7 +315,7 @@ fn the_spelling_dialog_changes_ignores_and_learns() {
 }
 
 #[test]
-fn enter_in_change_to_changes_and_ignore_leaves_the_script_unedited() {
+fn enter_in_change_to_changes_and_ignore_is_kept_with_the_script() {
     let (mut harness, _file) = harness(SPELL_SCRIPT);
     harness.state_mut().queued.push("app.spelling".into());
     harness.run_steps(3);
@@ -256,7 +328,7 @@ fn enter_in_change_to_changes_and_ignore_leaves_the_script_unedited() {
     harness.state_mut().session.dirty = false;
     harness.get_by_label("Ignore").click();
     harness.run_steps(3);
-    assert!(!harness.state().session.dirty, "Ignore lasts the session and edits nothing");
+    assert!(harness.state().session.dirty, "Ignore is kept with the script, so there is something to save");
     assert_eq!(harness.state().spelling.as_ref().map(|d| d.status.clone()).as_deref(), Some("No misspellings."));
 }
 
@@ -270,4 +342,17 @@ fn the_word_being_typed_is_not_underlined_yet() {
     let text = &harness.state().session.script.elements[1].text;
     let words: Vec<&str> = marks.iter().map(|&(s, e)| &text[s..e]).collect();
     assert_eq!(words, ["seismograf"], "the caret is at the end of glsas");
+}
+
+#[test]
+fn open_sample_at_start() {
+    // --check-for-updates is covered in sample.rs without running it: here it would reach the
+    // network.
+    let flags = super::StartFlags { open_sample: true, check_for_updates: false };
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1280.0, 800.0))
+        .with_max_steps(64)
+        .build_eframe(move |cc| StorytellerApp::without_menu(cc, None, None, Location::Memory, flags));
+    harness.run_steps(3);
+    assert!(harness.state().showing_sample(), "--open-sample opens the sample");
 }

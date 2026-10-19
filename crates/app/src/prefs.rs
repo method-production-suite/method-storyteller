@@ -37,6 +37,9 @@ pub struct General {
     pub last_seen_version: String,
     /// Words the writer added to spell check with Learn, lower case: the writer's dictionary.
     pub learned_words: Vec<String>,
+    /// The first-launch sample has had its turn: shown once, or retired unshown because the
+    /// writer already had a script to open.
+    pub sample_seen: bool,
 }
 
 impl Default for General {
@@ -47,6 +50,7 @@ impl Default for General {
             smart_quotes: true,
             last_seen_version: String::new(),
             learned_words: Vec::new(),
+            sample_seen: false,
         }
     }
 }

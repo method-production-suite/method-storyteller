@@ -95,7 +95,7 @@ stderr) and will be removed in a future release.
 | Backspace at the start | Join with the previous element |
 | ⌘⌥G (Ctrl+Shift+G on Windows and Linux) | Go to a scene (by its number) or a page |
 | ⌘F, then Enter / Shift-Enter (⌘G / ⇧⌘G; F3 / Shift+F3 on Windows and Linux) | Find, next and previous; the find bar also replaces one match or all (one Undo) |
-| ⌘; | Spelling: step through words not in the dictionary, with suggestions; Change, Ignore (for this session) or Learn (yours, in every script). Misspelled words are underlined as you type (View > Check Spelling While Typing) |
+| ⌘; | Spelling: step through words not in the dictionary, with suggestions; Change, Ignore (kept with the script) or Learn (yours, in every script). Misspelled words are underlined as you type (View > Check Spelling While Typing) |
 
 The status bar always shows what Tab and Enter will do next.
 
@@ -110,6 +110,9 @@ cargo run -p method-storyteller -- script.fountain --control 9876
 then send JSON lines to `127.0.0.1:9876`; see [docs/control-protocol.md](docs/control-protocol.md).
 `method-storyteller serve --control 9876` runs the same protocol headless.
 
+The app also takes `--open-sample` (open the sample script, Field Station) and
+`--check-for-updates` (check at start, as Help > Check for Updates does).
+
 ## Development
 
 `cargo xtask ci` runs every gate: `cargo fmt --check`, `cargo clippy --workspace --all-targets
@@ -118,6 +121,9 @@ check. Read [AGENTS.md](AGENTS.md) before contributing, and [docs/BRAND.md](docs
 writing anything a person will read. Pagination changes are reviewed through
 the golden files in `crates/core/tests/golden/` (`UPDATE_GOLDEN=1 cargo test -p storyteller-core`
 regenerates them).
+
+The same script opens once on a first launch with nothing else to open, and from Help > Open
+Sample Script any time, as an unsaved copy.
 
 `cargo xtask screens` retakes every picture above from the invented script in
 [examples/field-station.osf](examples/field-station.osf), in light and dark, with the
