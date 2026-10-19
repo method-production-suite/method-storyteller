@@ -9,11 +9,18 @@ assets/fonts/CourierPrime-*.ttf: Courier Prime, Copyright 2015 The Courier Prime
   Authors (https://github.com/quoteunquoteapps/CourierPrime). SIL Open Font License 1.1,
   see assets/fonts/OFL.txt. Distributed unmodified.
 
+assets/dictionaries/en_US.*: the en_US Hunspell dictionary 2020.12.07, derived from SCOWL,
+  Copyright 2000-2018 Kevin Atkinson, with parts after Geoff Kuenning's Ispell (BSD) and the other
+  sources and notices listed in assets/dictionaries/README_en_US.txt, distributed verbatim and
+  unmodified.
+
 Dependencies
 
 craft-libs (https://github.com/storytold/craft-libs), Copyright (c) 2026 ArtCraft Team and the
   craft-libs contributors, MIT OR Apache-2.0, used as a git dependency. Its vendored
   third-party code (Krilla and others) keeps the licences listed in its NOTICE.
+spellbook (https://github.com/helix-editor/spellbook), the spell checker, MPL-2.0, used
+  unmodified.
 method-libs (https://github.com/method-production-suite/method-libs), Copyright (c) 2026 Method
   Production Suite Team and the method-libs contributors, MIT OR Apache-2.0, used as a git
   dependency for the updater (method-update). Through it, webpki-roots carries the Mozilla root

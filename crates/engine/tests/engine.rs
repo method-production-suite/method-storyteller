@@ -360,6 +360,33 @@ fn scene_lengths_follow_edits() {
     assert!(after > before[0].1, "{after} should be longer than {}", before[0].1);
 }
 
+/// Spell check steps through misspellings with suggestions; Ignore, Learn and Change.
+#[test]
+fn spell_check_steps_ignores_learns_and_changes() {
+    let registry = Registry::new();
+    let script = "INT. HUT - DAY\n\nNora taps the glsas. The seismograf is still.\n\nNORA\nZorbly.\n";
+    let mut s = Session::new(storyteller_core::fountain::parse(script).unwrap());
+    let next = |s: &mut Session| run(&registry, s, "spell.next", json!({}))["value"].clone();
+    let first = next(&mut s);
+    assert_eq!(first["word"], "glsas");
+    assert_eq!(first["total"], 3);
+    assert!(first["suggestions"].as_array().unwrap().iter().any(|w| w == "glass"), "{first}");
+    // Change it, undoably.
+    run(&registry, &mut s, "spell.change", json!({ "index": 1, "start": 14, "word": "glsas", "replacement": "glass" }));
+    assert_eq!(s.script.elements[1].text, "Nora taps the glass. The seismograf is still.");
+    assert_eq!(next(&mut s)["word"], "seismograf");
+    // Ignore for the session; learn for good.
+    s.dirty = false;
+    run(&registry, &mut s, "spell.ignore", json!({ "word": "seismograf" }));
+    assert_eq!(s.script.spelling_ignored, ["seismograf"], "ignored words stay with the script");
+    assert!(s.dirty, "so the file has something new to save");
+    let learned = run(&registry, &mut s, "spell.learn", json!({ "word": "Zorbly" }));
+    assert_eq!(learned["value"]["learned"], "zorbly");
+    assert_eq!(next(&mut s)["total"], 0, "nothing left");
+    run(&registry, &mut s, "edit.undo", json!({}));
+    assert!(s.script.elements[1].text.contains("glsas"), "Change is one Undo");
+}
+
 /// Saving says what a format will not keep, and nothing when it keeps everything.
 #[test]
 fn save_warnings_name_what_a_format_drops() {
