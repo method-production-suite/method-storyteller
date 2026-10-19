@@ -141,6 +141,10 @@ pub struct Element {
     /// Open Screenplay Format data this paragraph carried that the model does not use.
     #[serde(skip)]
     pub osf: Option<Box<OsfParagraph>>,
+    /// Fountain boneyard blocks (`/* … */`, kept verbatim) that come just before this paragraph:
+    /// text the writer set aside. Never printed or paginated; written back to Fountain.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub boneyard: Vec<String>,
 }
 
 /// A script note: a comment on a paragraph, or on part of it, that never prints.
@@ -372,6 +376,7 @@ impl Element {
             page_starts: Vec::new(),
             fdx: None,
             osf: None,
+            boneyard: Vec::new(),
         };
         if kind == ElementKind::Section {
             element.level = 1;
@@ -662,6 +667,9 @@ pub struct Script {
     /// Open Screenplay Format data from an imported `.osf` or `.fadein`; written back on OSF export.
     #[serde(skip)]
     pub osf: Option<Box<OsfDocument>>,
+    /// Fountain boneyard blocks after the last paragraph (see [`Element::boneyard`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub boneyard_end: Vec<String>,
     /// Words the writer told spell check to ignore in this script, lower case (`.fdx`
     /// SpellCheckIgnoreLists, OSF `<spelling><ignored>`; Fountain has no place for them).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

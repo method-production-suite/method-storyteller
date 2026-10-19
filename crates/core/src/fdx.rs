@@ -996,8 +996,7 @@ impl Importer {
             revisions: revisions.unwrap_or_default(),
             format,
             fdx: Some(Box::new(self.document)),
-            osf: None,
-            spelling_ignored: Vec::new(),
+            ..Script::default()
         })
     }
 }

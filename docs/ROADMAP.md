@@ -64,6 +64,11 @@ says otherwise.
    page), and an app icon of the white mark on a rose square like Method Budget's and Method
    Schedule's. Reversible: the drawing is one function in `scripts/make-brand.py`. Pictures
    are in the brand pull request.
+11. **`unsafe` for files opened from the Finder.** **Decided by the owner, 2026-10-18:**
+   `crates/macos-open` is the one crate allowed `unsafe`, with a SAFETY comment on every block
+   (enforced by clippy). Recorded in AGENTS.md.
+12. **Rank for `.osf` in the Finder.** **Decided by the owner, 2026-10-18: Default**, like
+   `.fountain` and `.fdx`: open formats, so the app claims none of them as their owner.
 
 ### Tests that need the owner's hands
 
@@ -137,6 +142,15 @@ says otherwise.
 5. **Brand** [have] S. docs/BRAND.md, the mark, the app icon.
 6. **Pictures** [have] M. A capture command retakes every README picture from an invented
    Field Station script, 1280×800, light and dark.
+7. **Method Launcher rules** (§2, §3, §6, adopted 2026-10-18) [missing] S each, after v0.2.0:
+   - every release attaches exactly one `SHA256SUMS` listing every downloadable asset (in the
+     release workflow before the first release);
+   - the app accepts `--check-for-updates` and `--open-sample`;
+   - `recent.json` in the data folder, `[{"path": "/abs", "opened": "<RFC 3339>"}]`, newest
+     first, replacing the recent list in settings;
+   - installed names: the Linux package `method-storyteller`, the Windows uninstall name
+     `Method Storyteller`;
+   - the whole-lock crate-age check on every push to main and weekly [in review].
 
 ### V1 milestones, worked continuously
 
@@ -200,6 +214,15 @@ signed `.app.tar.gz`), the OSF and Fountain study, and the design pass. Each is 
 - **Stored autocomplete lists** [missing] M. Lists kept in the document, learned as you type,
   editable; the extension-on-Tab option.
 - **Scene CONTINUED** [missing] S. Off by default; measured only if a corpus file turns it on.
+- **File > Open Recent and Close** [missing] S. Open Recent needs a menu built at run time (the
+  menu is fixed today); Close needs a decision on what it does in a one-window app (an empty
+  script, or the window). From the screen test.
+- **Recovery copies at launch** [missing] S. The app writes a recovery copy as the writer works
+  but never offers it after a crash. Offer it at launch, ahead of the first-launch sample.
+- **The editor lays out only the rows on screen** [missing] M. Every paragraph is laid out
+  each frame today; long scripts will feel it first in the spelling underline and find marks.
+- **British English dictionary** [missing] S. Field Station is written with British spellings
+  (grey, colour, tyres); the bundled dictionary is US English only.
 
 ---
 
