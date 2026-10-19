@@ -28,7 +28,8 @@ pub struct Prefs {
 #[serde(default)]
 pub struct General {
     pub recent: Vec<String>,
-    /// The format new scripts are saved in: `fountain` or `osf`.
+    /// The format new scripts are saved in: `osf` (the standard, the owner's decision of
+    /// 2026-10-18) or `fountain`.
     pub new_script_format: String,
     /// Curl straight quotes as they are typed.
     pub smart_quotes: bool,
@@ -38,7 +39,7 @@ pub struct General {
 
 impl Default for General {
     fn default() -> Self {
-        General { recent: Vec::new(), new_script_format: "fountain".into(), smart_quotes: true, last_seen_version: String::new() }
+        General { recent: Vec::new(), new_script_format: "osf".into(), smart_quotes: true, last_seen_version: String::new() }
     }
 }
 
@@ -74,9 +75,18 @@ impl Default for View {
 
 impl Settings for Prefs {
     const APP_ID: &'static str = APP_ID;
-    const SCHEMA_VERSION: u32 = 1;
+    const SCHEMA_VERSION: u32 = 2;
 
-    fn migrate(_from: u32, _doc: &mut DocumentMut) -> Result<(), MigrateError> {
+    /// 1 → 2: Open Screenplay Format became the standard for new scripts. Before, `fountain`
+    /// was written as the default by every first launch, so it moves to `osf` once; a writer
+    /// who wants Fountain chooses it again (File > Save New Scripts as Fountain).
+    fn migrate(from: u32, doc: &mut DocumentMut) -> Result<(), MigrateError> {
+        if from < 2
+            && let Some(general) = doc.get_mut("general").and_then(|g| g.as_table_like_mut())
+            && general.get("new_script_format").and_then(|v| v.as_str()) == Some("fountain")
+        {
+            general.insert("new_script_format", "osf".into());
+        }
         Ok(())
     }
 }
@@ -152,6 +162,21 @@ fn copy_tree(from: &Path, to: &Path, top: bool) -> io::Result<()> {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+
+    /// Settings written before OSF became the standard move to it once; a later choice of
+    /// Fountain stays.
+    #[test]
+    fn new_scripts_move_to_osf_once() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("config.toml"), "schema_version = 1\n\n[general]\nnew_script_format = \"fountain\"\n").unwrap();
+        let (mut store, _) = craft_settings::SettingsStore::<Prefs>::open(craft_settings::Location::Dir(dir.path().to_path_buf()));
+        assert_eq!(store.get().general.new_script_format, "osf");
+        store.update(|p| p.general.new_script_format = "fountain".into());
+        store.flush().unwrap();
+        let (again, _) = craft_settings::SettingsStore::<Prefs>::open(craft_settings::Location::Dir(dir.path().to_path_buf()));
+        assert_eq!(again.get().general.new_script_format, "fountain", "a choice made at version 2 is kept");
+        assert_eq!(Prefs::default().general.new_script_format, "osf");
+    }
 
     fn legacy(base: &Path) -> PathBuf {
         let old = base.join(LEGACY_APP_ID);

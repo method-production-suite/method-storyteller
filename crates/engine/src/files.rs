@@ -13,10 +13,10 @@ use crate::container;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FileFormat {
-    #[default]
     Fountain,
     Fdx,
-    /// Open Screenplay Format, plain XML (`.osf`).
+    /// Open Screenplay Format, plain XML (`.osf`): the standard for new scripts.
+    #[default]
     Osf,
     /// Open Screenplay Format in a ZIP archive (`.fadein`).
     FadeIn,
