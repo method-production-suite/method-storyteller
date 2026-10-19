@@ -45,6 +45,7 @@ named factually here; how other apps behave is not described.
 | Locked pages and A-pages | exact | `LockedPages` (`Position` counts like note ranges) and `pages_locked` with `para@page_number`; a page starting inside a paragraph carries `method_storyteller_page` |
 | Element settings: font, size, styles, alignment, indents, space before, line spacing, page break, Enter and Tab | exact | `ElementSettings` and `styles`, in thousandths of an inch |
 | Page size, top and bottom margins, (MORE), (CONT'D), automatic continueds | exact | `PageLayout`, `MoresAndContinueds` and `settings` |
+| Words spell check ignores | exact | `SpellCheckIgnoreLists/IgnoredWords` and `<spelling><ignored>`, in lower case; OSF's user dictionary stays in the file |
 | Pagination | exact | both formats paginate from the same model |
 | OSF revision colour names | approximated | OSF has a fixed palette without RGB: the name comes from the set's name, else the nearest page colour; the palette's RGB values are our choice |
 | `.fdx` lengths written to OSF | approximated | OSF counts tenths of a millimetre, coarser than `.fdx` hundredths of an inch; our own files bring the `.fdx` value back, and other apps get the nearest tenth |
@@ -54,6 +55,7 @@ named factually here; how other apps behave is not described.
 | OSF page margins, keep-with-next, header and footer styles | cannot map | `.fdx` has no place: they ride along in `StorytellerOsf` and come back to OSF |
 | `.fdx` shortcuts, outline levels, hidden text, scene CONTINUEDs, header margins | cannot map | OSF has no place: they ride along in `fdx_xml`, `fdx_page_layout`, `fdx_mores` and come back to `.fdx` |
 | Deleted-text marks | cannot map | `DeletedText` and OSF `marks` are kept in their own format; converting them waits for M5's revision mode |
+| Ranges spell check ignores | cannot map | `.fdx` `IgnoredRanges` are character spans OSF has no place for; kept in `.fdx` |
 | Run fonts, colours and highlights | cannot map | not kept yet in either format |
 | Beat Board, cast, tags, SmartType lists, header and footer, scene number options, spelling lists | cannot map | kept in the format they came in; not converted (OSF lists and spelling likewise) |
 | Scene page and length | cannot map | `.fdx` caches them and OSF does not; written from our pagination on every `.fdx` save |
@@ -89,8 +91,11 @@ licensed reference app and look at:
    A-page, since no real file had one.
 8. Format > Elements: Action and New Act have the indents, spacing and Enter key above; Page
    Layout is US Letter with 1" top and bottom margins.
-9. Save in the reference app, send the file back, and we check that it reads the same.
+9. The spelling check passes over MARA: it is on the script's ignore list.
+10. Save in the reference app, send the file back, and we check that it reads the same.
 
 Open questions this settles: how a dual-dialogue wrapper counts in `Range` and `Position`; how
 an A-page's `PageNumber` is spelled; whether notes without `DateTime` and indents with up to six
-decimals are accepted; whether the reference app keeps our `Storyteller…` attributes.
+decimals are accepted; whether the reference app keeps our `Storyteller…` attributes. One more
+is OSF's own: no public file shows a filled `<ignored>` list, so we write its entries like the
+user dictionary's (`<entry word="…"/>`) and read either shape.

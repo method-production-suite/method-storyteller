@@ -101,6 +101,10 @@ fn page_layout(s: &Script) -> String {
     format!("{:?} {:?} {:?} {:?} {:?} {:?} {:?}", page.width, page.height, page.top, page.bottom, page.more, page.contd, page.auto_contd)
 }
 
+fn spelling_ignored(s: &Script) -> String {
+    format!("{:?}", s.spelling_ignored)
+}
+
 fn pagination(s: &Script) -> String {
     format!("{:?}", Layout::for_script(s))
 }
@@ -155,6 +159,12 @@ const ROWS: &[Row] = &[
         how: "`PageLayout`, `MoresAndContinueds` and `settings`",
         check: Some(page_layout),
     },
+    Row {
+        what: "Words spell check ignores",
+        fidelity: Exact,
+        how: "`SpellCheckIgnoreLists/IgnoredWords` and `<spelling><ignored>`, in lower case; OSF's user dictionary stays in the file",
+        check: Some(spelling_ignored),
+    },
     Row { what: "Pagination", fidelity: Exact, how: "both formats paginate from the same model", check: Some(pagination) },
     Row {
         what: "OSF revision colour names",
@@ -202,6 +212,12 @@ const ROWS: &[Row] = &[
         what: "Deleted-text marks",
         fidelity: NotMapped,
         how: "`DeletedText` and OSF `marks` are kept in their own format; converting them waits for M5's revision mode",
+        check: None,
+    },
+    Row {
+        what: "Ranges spell check ignores",
+        fidelity: NotMapped,
+        how: "`.fdx` `IgnoredRanges` are character spans OSF has no place for; kept in `.fdx`",
         check: None,
     },
     Row { what: "Run fonts, colours and highlights", fidelity: NotMapped, how: "not kept yet in either format", check: None },
@@ -263,6 +279,7 @@ const DOC: &str = r##"<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
   <ElementSettings Type="New Act"><FontSpec Font="Courier Prime" Size="12" Style="Bold+Underline"/><ParagraphSpec Alignment="Center" LeftIndent="1.50" RightIndent="7.50" SpaceBefore="12"/><Behavior PaginateAs="Scene Heading" ReturnKey="Scene Heading"/></ElementSettings>
   <ElementSettings Type="Outline 1"><FontSpec Style="Bold+HiddenText"/><Outline Level="1"/></ElementSettings>
   <TitlePage><Content><Paragraph Alignment="Center" Type="Text"><Text>THE STATION</Text></Paragraph></Content></TitlePage>
+  <SpellCheckIgnoreLists><IgnoredRanges/><IgnoredWords><Word>Mara</Word></IgnoredWords></SpellCheckIgnoreLists>
   <MoresAndContinueds><DialogueBreaks AutomaticCharacterContinueds="Yes" DialogueBottom="(MORE)" DialogueTop="(CONT'D)"/></MoresAndContinueds>
   <LockedPages><LockedPage PageNumber="1" Position="0"/><LockedPage PageNumber="1A" Position="40"/></LockedPages>
   <Revisions ActiveSet="1" RevisionMode="Yes"><Revision Color="#00000000FFFF" ID="1" Mark="*" Name="Blue Rev." PageColor="#C6C6EDEDFEFE"/></Revisions>

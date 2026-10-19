@@ -282,6 +282,9 @@ pub struct OsfDocument {
     pub pages_locked: bool,
     /// The page layout and styles as read; written back as they were while they are the same.
     pub format: Option<crate::format::Format>,
+    /// The words `<spelling><ignored>` held as read; the section is written back as it was while
+    /// the script's list is the same.
+    pub spelling_ignored: Vec<String>,
 }
 
 /// A member of a ZIP archive, kept compressed exactly as read so it can be written back.
@@ -343,6 +346,9 @@ pub struct FdxDocument {
     /// The page layout and element settings as read; their sections are written back as they
     /// were while they are the same.
     pub format: Option<crate::format::Format>,
+    /// The words `SpellCheckIgnoreLists/IgnoredWords` held as read; the section is written back
+    /// as it was while the script's list is the same.
+    pub spelling_ignored: Vec<String>,
 }
 
 /// One top-level section of an imported Final Draft document.
