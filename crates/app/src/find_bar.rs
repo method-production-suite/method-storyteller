@@ -14,7 +14,7 @@ pub(super) struct FindBar {
     pub(super) whole_word: bool,
     /// The current match: element, start, end.
     pub(super) current: Option<(usize, usize, usize)>,
-    /// "2 of 5", "Not found", "Replaced 3 matches".
+    /// "2 of 5", "No matches for “x”", "Replaced 3 matches".
     pub(super) status: String,
     pub(super) focus: bool,
     /// The query the current match was found for, to search again when it changes.
@@ -171,7 +171,7 @@ impl StorytellerApp {
             }
             Ok(_) => {
                 bar.current = None;
-                bar.status = "Not found".into();
+                bar.status = crate::messages::nothing_found(&bar.text);
                 self.editor.highlight = None;
             }
             Err(error) => bar.status = error.to_string(),
