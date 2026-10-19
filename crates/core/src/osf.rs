@@ -416,7 +416,7 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
         .filter(|s| s.name.eq_ignore_ascii_case("settings"))
         .any(|s| tags(&s.raw).first().is_some_and(|(_, a)| truthy(get(a, "pages_locked"))));
     let section = |name: &str| top.iter().find(|s| s.name.eq_ignore_ascii_case(name)).map(|s| s.raw.as_str());
-    let format = crate::format::from_osf(section("settings"), section("styles"));
+    let format = crate::format::from_osf(section("settings"), section("styles"))?;
     let mut document = OsfDocument {
         version,
         sections: Vec::new(),
@@ -979,7 +979,8 @@ fn rebuild_styles(raw: &str, format: &crate::format::Format, spelling: Spelling)
     let mut out = String::from("  <styles>\n");
     for child in crate::fdx::child_elements(raw) {
         let (tag, attributes) = tags(child).into_iter().next().unwrap_or_default();
-        if tag.eq_ignore_ascii_case("style") {
+        // A style without a name is not in the format; it stays as it was.
+        if tag.eq_ignore_ascii_case("style") && get(&attributes, "name").is_some() {
             let name = get(&attributes, "name").unwrap_or_default();
             if let Some(index) = format.elements.iter().position(|e| e.name == name)
                 && let (Some(element), Some(done)) = (format.elements.get(index), written.get_mut(index))

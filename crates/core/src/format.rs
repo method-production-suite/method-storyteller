@@ -3,7 +3,8 @@
 //! [`Format`] is what the two formats share: page size and margins, the (MORE) and (CONT'D)
 //! texts, and for each element type its font, styles, alignment, indents, space before, line
 //! spacing, a page break before, and the elements Enter and Tab lead to. Lengths are kept in
-//! thousandths of an inch, which holds both `.fdx` inches and OSF tenths of a millimetre exactly.
+//! EMU (914 400 an inch), which holds `.fdx` inches and points and OSF tenths of a millimetre
+//! exactly.
 //!
 //! Everything else each format says about an element (`.fdx` Behavior shortcuts, outline levels,
 //! OSF keep-with-next …) is kept as the XML it came in, and rides along to the other format in an
@@ -16,8 +17,10 @@ use serde::{Deserialize, Serialize};
 use crate::fdx::{all_attrs, escape};
 use crate::layout::{Align, ElementStyle, Layout, chars_per_line};
 
-/// A length in thousandths of an inch.
-pub type Mils = i32;
+/// A length in EMU: 914 400 an inch, 12 700 a point, 3 600 a tenth of a millimetre.
+pub type Emu = i64;
+/// EMU in an inch.
+pub const INCH: Emu = 914_400;
 
 /// Page layout and element settings.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -42,13 +45,13 @@ impl Format {
 /// Page size, margins and the mores and continueds.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PageFormat {
-    pub width: Option<Mils>,
-    pub height: Option<Mils>,
-    pub top: Option<Mils>,
-    pub bottom: Option<Mils>,
+    pub width: Option<Emu>,
+    pub height: Option<Emu>,
+    pub top: Option<Emu>,
+    pub bottom: Option<Emu>,
     /// Left and right page margins (OSF; `.fdx` measures indents from the paper's edge instead).
-    pub left: Option<Mils>,
-    pub right: Option<Mils>,
+    pub left: Option<Emu>,
+    pub right: Option<Emu>,
     /// The text at the foot of a speech that breaks, such as `(MORE)`.
     pub more: Option<String>,
     /// The text after a cue continued from the page before, such as `(CONT'D)`.
@@ -83,11 +86,11 @@ pub struct ElementFormat {
     pub hidden: bool,
     pub align: Option<Align>,
     /// First column of the text, from the paper's left edge.
-    pub left: Option<Mils>,
+    pub left: Option<Emu>,
     /// End of the text, from the paper's left edge.
-    pub right: Option<Mils>,
+    pub right: Option<Emu>,
     /// First line's indent from `left` (negative hangs it to the left).
-    pub first: Option<Mils>,
+    pub first: Option<Emu>,
     /// Points before the paragraph (12 a line).
     pub space_before: Option<u32>,
     /// Line spacing in hundredths of a line (100 single).
@@ -241,29 +244,42 @@ fn number(value: &str) -> Option<f64> {
     value.trim().parse::<f64>().ok().filter(|v| v.is_finite() && v.abs() < 1_000_000.0)
 }
 
-fn mils_from_inches(value: &str) -> Option<Mils> {
-    number(value).map(|v| (v * 1000.0).round() as Mils)
+/// A length in `unit` EMU, refused outside -10 to 20 inches.
+fn length(value: &str, unit: f64) -> Option<Emu> {
+    let emu = (number(value)? * unit).round();
+    (-10.0 * INCH as f64..=20.0 * INCH as f64).contains(&emu).then_some(emu as Emu)
 }
 
-fn inches(mils: Mils) -> String {
-    if mils % 10 == 0 { format!("{:.2}", f64::from(mils) / 1000.0) } else { format!("{:.3}", f64::from(mils) / 1000.0) }
+fn emu_from_inches(value: &str) -> Option<Emu> {
+    length(value, INCH as f64)
 }
 
-fn mils_from_points(value: &str) -> Option<Mils> {
-    number(value).map(|v| (v * 1000.0 / 72.0).round() as Mils)
+fn inches(emu: Emu) -> String {
+    let value = emu as f64 / INCH as f64;
+    // Hundredths as `.fdx` writes them; a length from OSF needs up to six places to come back exact.
+    if emu % (INCH / 100) == 0 { format!("{value:.2}") } else { format!("{value:.6}").trim_end_matches('0').to_string() }
 }
 
-fn points(mils: Mils) -> String {
-    let value = f64::from(mils) * 72.0 / 1000.0;
-    if (value - value.round()).abs() < 1e-9 { format!("{}", value.round() as i64) } else { format!("{value:.2}") }
+fn emu_from_points(value: &str) -> Option<Emu> {
+    length(value, 12_700.0).filter(|e| *e >= 0)
 }
 
-fn mils_from_tenth_mm(value: &str) -> Option<Mils> {
-    number(value).map(|v| (v * 1000.0 / 254.0).round() as Mils)
+fn points(emu: Emu) -> String {
+    if emu % 12_700 == 0 { format!("{}", emu / 12_700) } else { format!("{:.2}", emu as f64 / 12_700.0) }
 }
 
-fn tenth_mm(mils: Mils) -> String {
-    format!("{}", (f64::from(mils) * 254.0 / 1000.0).round() as i64)
+fn emu_from_tenth_mm(value: &str) -> Option<Emu> {
+    length(value, 3_600.0)
+}
+
+fn tenth_mm(emu: Emu) -> String {
+    format!("{}", (emu as f64 / 3_600.0).round() as i64)
+}
+
+/// `emu` in units of `1 / per_inch` inch, rounded half away from zero.
+fn whole(emu: Emu, per_inch: i64) -> i64 {
+    let scaled = emu * per_inch;
+    if scaled >= 0 { (scaled * 2 + INCH) / (2 * INCH) } else { -((-scaled * 2 + INCH) / (2 * INCH)) }
 }
 
 /// A count in the format's own decimal spelling (`2`, `1.5`).
@@ -322,10 +338,10 @@ pub(crate) fn from_fdx<'a>(sections: impl Iterator<Item = &'a str>) -> Format {
             "PageLayout" => {
                 let page = format.page.get_or_insert_with(PageFormat::default);
                 let size = node.child("PageSize");
-                page.width = size.and_then(|s| s.get("Width")).and_then(mils_from_inches);
-                page.height = size.and_then(|s| s.get("Height")).and_then(mils_from_inches);
-                page.top = node.get("TopMargin").and_then(mils_from_points);
-                page.bottom = node.get("BottomMargin").and_then(mils_from_points);
+                page.width = size.and_then(|s| s.get("Width")).and_then(emu_from_inches);
+                page.height = size.and_then(|s| s.get("Height")).and_then(emu_from_inches);
+                page.top = node.get("TopMargin").and_then(emu_from_points);
+                page.bottom = node.get("BottomMargin").and_then(emu_from_points);
                 page.fdx_page_layout = xml.to_string();
                 if let Some(osf) = node.get(OSF_ATTR) {
                     page.osf_settings = osf.to_string();
@@ -333,8 +349,8 @@ pub(crate) fn from_fdx<'a>(sections: impl Iterator<Item = &'a str>) -> Format {
                     // written to OSF (which then carried this layout) do not count.
                     let carried = Node::parse(osf).unwrap_or_default();
                     if carried.get("fdx_page_layout").is_none() {
-                        page.left = carried.get("margin_left").and_then(mils_from_tenth_mm);
-                        page.right = carried.get("margin_right").and_then(mils_from_tenth_mm);
+                        page.left = carried.get("margin_left").and_then(emu_from_tenth_mm);
+                        page.right = carried.get("margin_right").and_then(emu_from_tenth_mm);
                     }
                 }
             }
@@ -369,9 +385,9 @@ fn element_from_fdx(node: &Node, xml: &str) -> ElementFormat {
         all_caps: has("AllCaps"),
         hidden: has("HiddenText"),
         align: paragraph.and_then(|p| p.get("Alignment")).and_then(align_from),
-        left: paragraph.and_then(|p| p.get("LeftIndent")).and_then(mils_from_inches),
-        right: paragraph.and_then(|p| p.get("RightIndent")).and_then(mils_from_inches),
-        first: paragraph.and_then(|p| p.get("FirstIndent")).and_then(mils_from_inches),
+        left: paragraph.and_then(|p| p.get("LeftIndent")).and_then(emu_from_inches),
+        right: paragraph.and_then(|p| p.get("RightIndent")).and_then(emu_from_inches),
+        first: paragraph.and_then(|p| p.get("FirstIndent")).and_then(emu_from_inches),
         space_before: paragraph.and_then(|p| p.get("SpaceBefore")).and_then(number).map(|v| v.max(0.0).round() as u32),
         spacing: paragraph.and_then(|p| p.get("Spacing")).and_then(hundredths),
         new_page: truthy(paragraph.and_then(|p| p.get("StartsNewPage"))),
@@ -417,7 +433,7 @@ pub(crate) fn fdx_element(element: &ElementFormat, page: Option<&PageFormat>) ->
     if let Some(paragraph) = node.child_mut("ParagraphSpec", &ELEMENT_ORDER) {
         paragraph.set("Alignment", element.align.map(|a| align_name(a, true).to_string()), |v| align_from(v) == element.align);
         for (key, value) in [("LeftIndent", element.left), ("RightIndent", element.right), ("FirstIndent", element.first)] {
-            paragraph.set(key, value.map(inches), |v| mils_from_inches(v) == value);
+            paragraph.set(key, value.map(inches), |v| emu_from_inches(v) == value);
         }
         let space = element.space_before;
         paragraph.set("SpaceBefore", space.map(|s| s.to_string()), |v| number(v).map(|n| n.max(0.0).round() as u32) == space);
@@ -442,16 +458,16 @@ pub(crate) fn fdx_element(element: &ElementFormat, page: Option<&PageFormat>) ->
 /// The `PageLayout`, from the one the page came with brought up to date.
 pub(crate) fn fdx_page_layout(page: &PageFormat) -> String {
     let mut node = Node::parse(&page.fdx_page_layout).filter(|n| n.name == "PageLayout").unwrap_or_else(|| Node::new("PageLayout"));
-    node.set("TopMargin", page.top.map(points), |v| mils_from_points(v) == page.top);
-    node.set("BottomMargin", page.bottom.map(points), |v| mils_from_points(v) == page.bottom);
+    node.set("TopMargin", page.top.map(points), |v| emu_from_points(v) == page.top);
+    node.set("BottomMargin", page.bottom.map(points), |v| emu_from_points(v) == page.bottom);
     let bare = PageFormat { osf_settings: String::new(), ..page.clone() };
     let carried = Some(page.osf_settings.clone()).filter(|x| !x.is_empty() && *x != osf_settings(&bare, "<settings/>"));
     node.set(OSF_ATTR, carried, |v| v == page.osf_settings);
     if (page.width.is_some() || page.height.is_some())
         && let Some(size) = node.child_mut("PageSize", &["PageSize", "AutoCastList"])
     {
-        size.set("Height", page.height.map(inches), |v| mils_from_inches(v) == page.height);
-        size.set("Width", page.width.map(inches), |v| mils_from_inches(v) == page.width);
+        size.set("Height", page.height.map(inches), |v| emu_from_inches(v) == page.height);
+        size.set("Width", page.width.map(inches), |v| emu_from_inches(v) == page.width);
     }
     node.to_xml()
 }
@@ -485,17 +501,19 @@ fn osf_get<'a>(attributes: &'a [(String, String)], name: &str) -> Option<&'a str
 }
 
 /// Default OSF page margins when a document gives none: 1.5" left, 1" right, top and bottom.
-const OSF_LEFT: Mils = 1500;
-const OSF_RIGHT: Mils = 1000;
+const OSF_LEFT: Emu = INCH * 3 / 2;
+const OSF_RIGHT: Emu = INCH;
+/// US Letter.
+const PAPER_WIDTH: Emu = INCH * 17 / 2;
 
 /// The format held by an OSF document's `settings` tag and `styles` section.
-pub(crate) fn from_osf(settings: Option<&str>, styles: Option<&str>) -> Format {
+pub(crate) fn from_osf(settings: Option<&str>, styles: Option<&str>) -> Result<Format, crate::CoreError> {
     let mut format = Format::default();
     if let Some(raw) = settings
         && let Some(node) = Node::parse(raw)
     {
         let a = &node.attributes;
-        let length = |name: &str| osf_get(a, name).and_then(mils_from_tenth_mm);
+        let length = |name: &str| osf_get(a, name).and_then(emu_from_tenth_mm);
         format.page = Some(PageFormat {
             width: length("page_width"),
             height: length("page_height"),
@@ -533,12 +551,20 @@ pub(crate) fn from_osf(settings: Option<&str>, styles: Option<&str>) -> Format {
     }
     let page = format.page.clone().unwrap_or_default();
     let margin_left = page.left.unwrap_or(OSF_LEFT);
-    let paper_right = page.width.unwrap_or(8500) - page.right.unwrap_or(OSF_RIGHT);
-    for xml in styles.map(crate::fdx::child_elements).unwrap_or_default().into_iter().take(1000) {
+    let paper_right = page.width.unwrap_or(PAPER_WIDTH) - page.right.unwrap_or(OSF_RIGHT);
+    let children = styles.map(crate::fdx::child_elements).unwrap_or_default();
+    if children.len() > crate::MAX_ELEMENTS {
+        return Err(crate::CoreError::TooManyElements);
+    }
+    for xml in children {
         let Some(node) = Node::parse(xml).filter(|n| n.name.eq_ignore_ascii_case("style")) else { continue };
         let a = &node.attributes;
+        // A style without a name has nothing to call it by; it stays in the styles section as it was.
         let Some(name) = osf_get(a, "name") else { continue };
-        let length = |name: &str| osf_get(a, name).and_then(mils_from_tenth_mm);
+        let length = |name: &str| osf_get(a, name).and_then(emu_from_tenth_mm);
+        // A built-in style without an indent sits on the page margin.
+        let implied = BUILTIN.iter().skip(1).any(|b| b.eq_ignore_ascii_case(name));
+        let margin = |indent: Option<Emu>| if implied { Some(indent.unwrap_or(0)) } else { indent };
         format.elements.push(ElementFormat {
             name: name.to_string(),
             based_on: osf_get(a, "basestylename").or_else(|| osf_get(a, "basestyle")).map(str::to_string),
@@ -550,8 +576,8 @@ pub(crate) fn from_osf(settings: Option<&str>, styles: Option<&str>) -> Format {
             all_caps: truthy(osf_get(a, "allcaps")),
             hidden: false,
             align: osf_get(a, "align").and_then(align_from),
-            left: length("leftindent").map(|l| margin_left + l),
-            right: length("rightindent").map(|r| paper_right - r),
+            left: margin(length("leftindent")).map(|l| margin_left + l),
+            right: margin(length("rightindent")).map(|r| paper_right - r),
             first: length("firstlineindent"),
             space_before: osf_get(a, "spacebefore").and_then(number).map(|v| (v.max(0.0) * 12.0).round() as u32),
             spacing: osf_get(a, "linespacing").and_then(hundredths),
@@ -571,16 +597,16 @@ pub(crate) fn from_osf(settings: Option<&str>, styles: Option<&str>) -> Format {
         // OSF has no hidden text.
         element.hidden = fdx.hidden;
     }
-    format
+    Ok(format)
 }
 
 /// `value` replaced by `finer` when the two are the same length in OSF's tenths of a millimetre.
-fn refine(value: &mut Option<Mils>, finer: Option<Mils>) {
+fn refine(value: &mut Option<Emu>, finer: Option<Emu>) {
     refine_by(value, finer, |v| v);
 }
 
 /// [`refine`], comparing the lengths as `osf` turns them into what OSF writes.
-fn refine_by(value: &mut Option<Mils>, finer: Option<Mils>, osf: impl Fn(Mils) -> Mils) {
+fn refine_by(value: &mut Option<Emu>, finer: Option<Emu>, osf: impl Fn(Emu) -> Emu) {
     if let (Some(v), Some(f)) = (*value, finer)
         && tenth_mm(osf(v)) == tenth_mm(osf(f))
     {
@@ -600,7 +626,7 @@ pub(crate) struct OsfSpelling {
 pub(crate) fn osf_style(element: &ElementFormat, page: Option<&PageFormat>, spelling: &OsfSpelling) -> String {
     let page = page.cloned().unwrap_or_default();
     let margin_left = page.left.unwrap_or(OSF_LEFT);
-    let paper_right = page.width.unwrap_or(8500) - page.right.unwrap_or(OSF_RIGHT);
+    let paper_right = page.width.unwrap_or(PAPER_WIDTH) - page.right.unwrap_or(OSF_RIGHT);
     let fresh = element.osf_xml.is_empty();
     let mut node = Node::parse(&element.osf_xml).unwrap_or_else(|| Node::new("style"));
     let set = |node: &mut Node, name: &str, value: Option<String>, means: &dyn Fn(&str) -> bool| {
@@ -623,12 +649,19 @@ pub(crate) fn osf_style(element: &ElementFormat, page: Option<&PageFormat>, spel
     let space = element.space_before;
     set(&mut node, "spacebefore", space.map(|s| format!("{:.1}", f64::from(s) / 12.0)), &|v| number(v).map(|n| (n * 12.0).round() as u32) == space);
     set(&mut node, "align", element.align.map(|a| align_name(a, false).to_string()), &|v| align_from(v) == element.align);
+    // An indent on the margin is left unsaid where the style did not say it.
+    let builtin = BUILTIN.iter().skip(1).any(|b| b.eq_ignore_ascii_case(&element.name));
+    let unsaid = |node: &Node, name: &str, value: Option<Emu>| builtin && value == Some(0) && osf_get(&node.attributes, name).is_none();
     let left = element.left.map(|l| l - margin_left);
-    set(&mut node, "leftindent", left.map(tenth_mm), &|v| mils_from_tenth_mm(v) == left);
+    if !unsaid(&node, "leftindent", left) {
+        set(&mut node, "leftindent", left.map(tenth_mm), &|v| emu_from_tenth_mm(v) == left);
+    }
     let first = element.first;
-    set(&mut node, "firstlineindent", first.map(tenth_mm), &|v| mils_from_tenth_mm(v) == first);
+    set(&mut node, "firstlineindent", first.map(tenth_mm), &|v| emu_from_tenth_mm(v) == first);
     let right = element.right.map(|r| paper_right - r);
-    set(&mut node, "rightindent", right.map(tenth_mm), &|v| mils_from_tenth_mm(v) == right);
+    if !unsaid(&node, "rightindent", right) {
+        set(&mut node, "rightindent", right.map(tenth_mm), &|v| emu_from_tenth_mm(v) == right);
+    }
     set(&mut node, "linespacing", element.spacing.map(|s| format!("{:.1}", f64::from(s) / 100.0)), &|v| hundredths(v) == element.spacing);
     let present = osf_get(&node.attributes, "pagebreakbefore").is_some();
     set(&mut node, "pagebreakbefore", (element.new_page || present).then(|| if element.new_page { "1" } else { "0" }.to_string()), &|v| {
@@ -659,7 +692,7 @@ pub(crate) fn osf_settings(page: &PageFormat, base: &str) -> String {
     ] {
         // A value the page does not say is left as it was.
         if value.is_some() {
-            set(&mut node, name, value.map(tenth_mm), &|v| mils_from_tenth_mm(v) == value);
+            set(&mut node, name, value.map(tenth_mm), &|v| emu_from_tenth_mm(v) == value);
         }
     }
     if let Some(more) = &page.more {
@@ -682,30 +715,21 @@ pub(crate) fn osf_settings(page: &PageFormat, base: &str) -> String {
 // ---------------------------------------------------------------------------------------------
 // Layout
 
-/// Mils to character columns (10 an inch).
-fn columns(mils: Mils) -> u16 {
-    (f64::from(mils.max(0)) / 100.0).round() as u16
-}
-
 /// Applies a script's format to `layout`: page size and margins, mores and continueds, and the
 /// built-in and custom element styles.
 pub fn apply(format: &Format, layout: &mut Layout) {
-    let page = format.page.clone().unwrap_or_default();
+    let to_u16 = |v: i64| u16::try_from(v.max(0)).unwrap_or(u16::MAX);
     if let Some(page) = &format.page {
-        let (width, height) = (page.width.unwrap_or(8500), page.height.unwrap_or(11000));
-        if (5000..=20000).contains(&height) && (4000..=15000).contains(&width) {
-            layout.page_rows = (f64::from(height) * 6.0 / 1000.0).round() as u16;
-            layout.page_columns = (f64::from(width) / 100.0).round() as u16;
-        } else if (5000..=20000).contains(&height) {
-            layout.page_rows = (f64::from(height) * 6.0 / 1000.0).round() as u16;
+        if let Some(height) = page.height.filter(|h| (5 * INCH..=20 * INCH).contains(h)) {
+            layout.page_rows = to_u16(whole(height, 6));
         }
-        let rows = |mils: Mils| (f64::from(mils.clamp(0, 10000)) * 6.0 / 1000.0).round() as u16;
-        let top = page.top.map_or(6, rows);
-        let bottom = page.bottom.map_or(6, rows);
-        if page.top.is_some() || page.height.is_some() {
-            layout.body_top = top;
-            layout.lines_per_page = layout.page_rows.saturating_sub(top).saturating_sub(bottom).max(10);
+        if let Some(width) = page.width.filter(|w| (4 * INCH..=15 * INCH).contains(w)) {
+            layout.page_columns = to_u16(whole(width, 10));
         }
+        let rows = |margin: Option<Emu>| margin.filter(|m| (0..=10 * INCH).contains(m)).map_or(6, |m| to_u16(whole(m, 6)));
+        let (top, bottom) = (rows(page.top), rows(page.bottom));
+        layout.body_top = top;
+        layout.lines_per_page = layout.page_rows.saturating_sub(top).saturating_sub(bottom).max(10);
         if let Some(more) = page.more.as_deref().filter(|m| !m.trim().is_empty()) {
             layout.more = more.to_string();
         }
@@ -716,17 +740,14 @@ pub fn apply(format: &Format, layout: &mut Layout) {
             layout.auto_contd = auto;
         }
     }
-    let margin_left = page.left.unwrap_or(OSF_LEFT);
-    let paper_right = page.width.unwrap_or(8500) - page.right.unwrap_or(OSF_RIGHT);
     for element in &format.elements {
         let apply_to = |style: &mut ElementStyle| {
-            if element.left.is_some() || element.right.is_some() || page.left.is_some() {
-                let left = element.left.unwrap_or(margin_left);
-                let right = element.right.unwrap_or(paper_right);
-                if right > left {
-                    style.left = columns(left + element.first.unwrap_or(0).min(0));
-                    style.width = chars_per_line((f64::from(right - left) / 1000.0) as f32);
-                }
+            // Indents apply only when both edges are known; a type with one edge keeps the default.
+            if let (Some(left), Some(right)) = (element.left, element.right)
+                && right > left
+            {
+                style.left = to_u16(whole(left + element.first.unwrap_or(0).min(0), 10));
+                style.width = chars_per_line(((right - left) as f64 / INCH as f64) as f32);
             }
             if let Some(space) = element.space_before {
                 style.space_before = (f64::from(space.min(720)) / 12.0).round() as u16;
@@ -748,7 +769,8 @@ pub fn apply(format: &Format, layout: &mut Layout) {
         };
         match target {
             Some(style) => apply_to(style),
-            None if !element.name.is_empty() => {
+            // OSF's base style is no paragraph type of its own.
+            None if !element.name.is_empty() && !element.name.eq_ignore_ascii_case("normal text") => {
                 let mut style = layout.action;
                 apply_to(&mut style);
                 layout.custom.retain(|(name, _)| *name != element.name);
