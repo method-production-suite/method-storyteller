@@ -22,8 +22,9 @@ pub(super) struct SpellCache {
     /// The character names, and the hash of the cues they came from.
     names: HashSet<String>,
     cues: Option<u64>,
-    /// What the cached answers also depended on: the learned and ignored words.
-    words: (usize, usize),
+    /// What the cached answers also depended on: how many words are learned (they only grow),
+    /// and the ignored list itself, hashed (another script can hold as many different words).
+    words: (usize, u64),
     /// The script's ignored words in lower case, built with the rest of the cache.
     ignored: HashSet<String>,
 }
@@ -78,7 +79,9 @@ impl StorytellerApp {
             element.text.hash(&mut cues);
         }
         let cues = cues.finish();
-        let words = (self.session.spelling.learned.len(), script.spelling_ignored.len());
+        let mut ignored = std::collections::hash_map::DefaultHasher::new();
+        script.spelling_ignored.hash(&mut ignored);
+        let words = (self.session.spelling.learned.len(), ignored.finish());
         let cache = &mut self.spell_cache;
         if cache.cues != Some(cues) || cache.words != words {
             *cache = SpellCache {
