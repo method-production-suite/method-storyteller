@@ -160,6 +160,9 @@ fn packaging(relative: &str) -> PathBuf {
     root().join("packaging").join(relative)
 }
 
+/// The file types the macOS bundle declares, each with its document icon.
+const DOCUMENT_KINDS: [&str; 3] = ["osf", "fountain", "fdx"];
+
 /// `cargo xtask bundle-macos [--target <triple>] [--sign <identity>] [--no-build]`: builds
 /// `target/bundle/macos/Method Storyteller.app` and signs it, with the Developer ID identity
 /// (hardened runtime and a secure timestamp, ready to notarize) or ad hoc without one.
@@ -177,6 +180,11 @@ pub fn bundle_macos(options: &Options) -> Result<(), String> {
     copy(&binary, &contents.join("MacOS").join(APP_BIN))?;
     set_mode(&contents.join("MacOS").join(APP_BIN), 0o755)?;
     copy(&packaging("icons/icon.icns"), &contents.join("Resources").join("AppIcon.icns"))?;
+    // The document icons the Info.plist names for .osf, .fountain and .fdx files.
+    for kind in DOCUMENT_KINDS {
+        let icon = format!("document-{kind}.icns");
+        copy(&packaging(&format!("icons/{icon}")), &contents.join("Resources").join(&icon))?;
+    }
     let plist = read(&packaging("macos/Info.plist"))?;
     if !plist.contains("{{VERSION}}") {
         return Err("packaging/macos/Info.plist has no {{VERSION}} placeholder".into());
@@ -415,5 +423,20 @@ mod tests {
         assert!(plist.contains("<string>com.methodstoryteller.desktop</string>"));
         assert!(plist.contains(&format!("<string>{APP_BIN}</string>")));
         assert!(plist.contains("{{VERSION}}"));
+    }
+
+    #[test]
+    fn the_plist_declares_each_document_type_with_its_icon() {
+        let plist = read(&packaging("macos/Info.plist")).unwrap_or_default();
+        assert!(plist.contains("<key>CFBundleDocumentTypes</key>"));
+        for kind in DOCUMENT_KINDS {
+            assert!(plist.contains(&format!("<string>{kind}</string>")), "{kind} is declared as an extension");
+            assert!(plist.contains(&format!("<string>document-{kind}</string>")), "{kind} names its icon");
+            assert!(packaging(&format!("icons/document-{kind}.icns")).is_file(), "{kind}'s icon is in packaging/icons");
+        }
+        // Each declared type is an Editor at Default rank: open formats, so the app claims none.
+        assert_eq!(plist.matches("<string>Editor</string>").count(), DOCUMENT_KINDS.len());
+        assert_eq!(plist.matches("<string>Default</string>").count(), DOCUMENT_KINDS.len());
+        assert!(!plist.contains("<string>Owner</string>"));
     }
 }

@@ -6,6 +6,53 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
+	<!-- Matched by extension, not by type identifier, so the app is offered for these files
+	     whichever app's declaration of their type the system uses. -->
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Open Screenplay Format</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Default</string>
+			<key>CFBundleTypeIconFile</key>
+			<string>document-osf</string>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>osf</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Fountain Screenplay</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Default</string>
+			<key>CFBundleTypeIconFile</key>
+			<string>document-fountain</string>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>fountain</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>FDX Screenplay</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Default</string>
+			<key>CFBundleTypeIconFile</key>
+			<string>document-fdx</string>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>fdx</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleDisplayName</key>
 	<string>Method Storyteller</string>
 	<key>CFBundleExecutable</key>
@@ -34,5 +81,66 @@
 	<string>Copyright (c) 2026 Method Production Suite Team and the Method Storyteller contributors. MIT OR Apache-2.0.</string>
 	<key>NSSupportsAutomaticGraphicsSwitching</key>
 	<true/>
+	<!-- Imported, not exported: the app reads and writes these formats but does not define them. -->
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.methodstoryteller.osf</string>
+			<key>UTTypeDescription</key>
+			<string>Open Screenplay Format</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.xml</string>
+			</array>
+			<key>UTTypeIconFile</key>
+			<string>document-osf</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>osf</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.methodstoryteller.fountain</string>
+			<key>UTTypeDescription</key>
+			<string>Fountain Screenplay</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+			</array>
+			<key>UTTypeIconFile</key>
+			<string>document-fountain</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>fountain</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.methodstoryteller.fdx</string>
+			<key>UTTypeDescription</key>
+			<string>FDX Screenplay</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.xml</string>
+			</array>
+			<key>UTTypeIconFile</key>
+			<string>document-fdx</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>fdx</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
 </dict>
 </plist>

@@ -879,8 +879,7 @@ impl Importer {
             elements: self.elements,
             revisions: revisions.unwrap_or_default(),
             fdx: Some(Box::new(self.document)),
-            osf: None,
-            spelling_ignored: Vec::new(),
+            ..Script::default()
         }
     }
 }
