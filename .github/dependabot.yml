@@ -1,20 +1,9 @@
 # Dependabot version updates (SUITE-STANDARDS.md §6): grouped, weekly. Security updates are not
 # grouped: each arrives as its own pull request as soon as an advisory is published (enable them
-# in Settings > Code security).
+# in Settings > Code security). GitHub Actions are left out: the suite's pinned SHAs move in
+# every repository at once, together.
 version: 2
 updates:
-  # Actions are pinned to full SHAs; Dependabot bumps the hash and keeps the version comment true.
-  - package-ecosystem: github-actions
-    directory: /
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
-    commit-message:
-      prefix: "ci"
-    groups:
-      actions:
-        patterns: ["*"]
-
   # The Rust workspace. The cooldown matches the 14-day crate-age check, so a version bump never
   # proposes a crate the check would refuse; majors wait longer.
   - package-ecosystem: cargo
