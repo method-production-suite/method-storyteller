@@ -439,10 +439,27 @@ impl StorytellerApp {
                 let show = self.session.layout.show_scene_numbers;
                 self.prefs.update(|p| p.view.scene_numbers = show);
             }
+            "edit.copy_scene" => self.copy_scene(ctx, None),
             _ => {
                 self.run(id, Map::new());
                 self.refocus();
             }
+        }
+    }
+
+    /// Edit > Copy Scene, or Copy Scene on a navigator row: the scene as Fountain text, which
+    /// pastes back into Storyteller as the same elements and into anything else as a screenplay.
+    fn copy_scene(&mut self, ctx: &egui::Context, heading: Option<usize>) {
+        let index = heading.unwrap_or(self.session.caret.element);
+        match self.registry.run("edit.copy_scene", &mut self.session, &params(&[("index", json!(index))])) {
+            Ok(outcome) => {
+                if let Some(text) = outcome.value.get("text").and_then(Value::as_str) {
+                    ctx.copy_text(text.to_string());
+                }
+                self.status = outcome.message.unwrap_or_default();
+                self.error = None;
+            }
+            Err(error) => self.error = Some(error.to_string()),
         }
     }
 
@@ -678,6 +695,18 @@ impl StorytellerApp {
                             self.editor.picker = Some(editor::Picker { index, selected });
                         }
                         Ok(_) => self.error = None,
+                        Err(error) => self.error = Some(error.to_string()),
+                    }
+                    self.refocus();
+                }
+                EditAction::PasteScreenplay { index, start, end, text } => {
+                    let request = params(&[("index", json!(index)), ("start", json!(start)), ("end", json!(end)), ("text", json!(text))]);
+                    match self.registry.run("edit.paste_screenplay", &mut self.session, &request) {
+                        Ok(outcome) => {
+                            let n = outcome.value.get("elements").and_then(Value::as_u64).unwrap_or(0);
+                            self.status = format!("Pasted {n} elements");
+                            self.error = None;
+                        }
                         Err(error) => self.error = Some(error.to_string()),
                     }
                     self.refocus();
@@ -1045,6 +1074,7 @@ impl StorytellerApp {
         ui.add_space(theme::SPACE_2);
         ui.label(egui::RichText::new("SCENES").small().strong().color(ui.visuals().weak_text_color()));
         ui.add_space(theme::SPACE_1);
+        let mut copy_from = None;
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             // A new script's one empty heading is not a scene yet.
             let blank = matches!(self.session.script.elements.as_slice(), [only] if only.text.trim().is_empty());
@@ -1084,6 +1114,13 @@ impl StorytellerApp {
                 };
                 let response = response.on_hover_text(detail);
                 self.automation.add(format!("navigator.scene.{n}"), "listitem", heading.to_string(), &response);
+                let element = scene.element;
+                response.context_menu(|ui| {
+                    if ui.button("Copy Scene").clicked() {
+                        copy_from = Some(element);
+                        ui.close();
+                    }
+                });
                 if response.clicked() {
                     // Straight into the scene's action, ready to read or write on.
                     let entry = scene_entry(&self.session.script, scene.element);
@@ -1094,6 +1131,10 @@ impl StorytellerApp {
                 }
             }
         });
+        if let Some(heading) = copy_from {
+            let ctx = ui.ctx().clone();
+            self.copy_scene(&ctx, Some(heading));
+        }
     }
 
     fn status_bar(&mut self, ui: &mut egui::Ui) {

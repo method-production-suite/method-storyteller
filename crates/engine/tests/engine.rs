@@ -517,3 +517,56 @@ fn ignored_words_keep_their_case_and_match_any_case() {
     run(&registry, &mut s, "spell.ignore", json!({ "word": "zorbly" }));
     assert_eq!(s.script.spelling_ignored, ["McKenzie", "Zorbly"]);
 }
+
+#[test]
+fn pasting_screenplay_text_makes_elements() {
+    let registry = Registry::new();
+    let pasted = "EXT. RIDGE - DAWN\n\nWind.\n\nNORA\n(quietly)\nIt held.\n";
+    assert!(storyteller_engine::commands::is_screenplay_paste(pasted));
+    assert!(!storyteller_engine::commands::is_screenplay_paste("one line\nand its second line"), "no blank line: an ordinary paste");
+
+    // Into an empty line: the line becomes the pasted elements.
+    let mut s = Session::new(storyteller_core::fountain::parse("INT. HUT - DAY\n\nShe waits.\n").unwrap());
+    run(&registry, &mut s, "element.insert", json!({ "index": 1, "kind": "action" }));
+    let empty = 2;
+    let out = run(&registry, &mut s, "edit.paste_screenplay", json!({ "index": empty, "text": pasted }));
+    assert_eq!(out["value"]["elements"], 5);
+    assert_eq!(kinds(&s), [K::SceneHeading, K::Action, K::SceneHeading, K::Action, K::Character, K::Parenthetical, K::Dialogue]);
+    assert_eq!(s.caret.element, 6, "the caret ends the paste");
+    run(&registry, &mut s, "edit.undo", json!({}));
+    assert_eq!(kinds(&s), [K::SceneHeading, K::Action, K::Action], "one Undo takes the whole paste back");
+
+    // Into the middle of a line: it splits around the paste, and a selection is replaced.
+    let mut s = Session::new(storyteller_core::fountain::parse("INT. HUT - DAY\n\nShe waits by the door.\n").unwrap());
+    let line = "She waits by the door.";
+    let (start, end) = (line.find("by").unwrap(), line.find(" the door").unwrap());
+    run(&registry, &mut s, "edit.paste_screenplay", json!({ "index": 1, "start": start, "end": end, "text": "NORA\nNow.\n\nThe kettle sings." }));
+    let texts: Vec<&str> = s.script.elements.iter().map(|e| e.text.as_str()).collect();
+    assert_eq!(texts, ["INT. HUT - DAY", "She waits", "NORA", "Now.", "The kettle sings.", "the door."]);
+    assert_eq!(s.script.elements[5].kind, K::Action, "the rest keeps the line's type");
+
+    // A title-page-looking line is script text, not a title page.
+    let mut s = Session::default();
+    run(&registry, &mut s, "edit.paste_screenplay", json!({ "index": 0, "text": "Title: the sign says\n\nNORA\nHi." }));
+    assert!(s.script.title_page.get("Title").is_none());
+    assert_eq!(s.script.elements[0].text, "Title: the sign says");
+}
+
+#[test]
+fn copy_scene_gives_fountain_that_pastes_back_the_same() {
+    let registry = Registry::new();
+    let mut s = Session::new(
+        storyteller_core::fountain::parse(
+            "INT. HUT - DAY\n\nOne.\n\nEXT. RIDGE - DAWN\n\nWind.\n\nNORA\n(quietly)\nIt held.\n\nINT. HUT - NIGHT\n\nTwo.\n",
+        )
+        .unwrap(),
+    );
+    let copied = run(&registry, &mut s, "edit.copy_scene", json!({ "index": 4 }));
+    let text = copied["value"]["text"].as_str().unwrap().to_string();
+    assert!(text.starts_with("EXT. RIDGE - DAWN") && text.contains("NORA\n(quietly)\nIt held.") && !text.contains("HUT"), "{text}");
+    let scene: Vec<(K, String)> = s.script.elements[2..7].iter().map(|e| (e.kind, e.text.clone())).collect();
+    let mut t = Session::default();
+    run(&registry, &mut t, "edit.paste_screenplay", json!({ "index": 0, "text": text }));
+    let back: Vec<(K, String)> = t.script.elements.iter().map(|e| (e.kind, e.text.clone())).collect();
+    assert_eq!(back, scene, "element types and text come back the same");
+}

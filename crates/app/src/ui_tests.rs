@@ -389,3 +389,48 @@ fn a_scene_in_the_navigator_jumps_to_its_action() {
     harness.run_steps(3);
     assert_eq!(harness.state().session.script.elements[waits].text, "Rain. She waits.");
 }
+
+#[test]
+fn pasting_screenplay_text_into_a_line_makes_elements() {
+    let (mut harness, _file) = harness("INT. HUT - DAY\n\nShe waits.\n");
+    harness.state_mut().editor.pending_focus = Some((1, 0));
+    harness.run_steps(3);
+    harness.input_mut().events.push(egui::Event::Paste("EXT. RIDGE - DAWN\n\nNORA\nIt held.\n\n".into()));
+    harness.run_steps(4);
+    let kinds: Vec<storyteller_core::ElementKind> = harness.state().session.script.elements.iter().map(|e| e.kind).collect();
+    use storyteller_core::ElementKind as K;
+    assert_eq!(
+        kinds,
+        [K::SceneHeading, K::SceneHeading, K::Character, K::Dialogue, K::Action],
+        "pasted at the start of the line: the elements, then the line"
+    );
+    assert_eq!(harness.state().session.script.elements[4].text, "She waits.");
+    assert_eq!(harness.state().status, "Pasted 3 elements");
+    // A paste within one paragraph stays an ordinary paste.
+    harness.state_mut().editor.pending_focus = Some((4, 0));
+    harness.run_steps(3);
+    harness.input_mut().events.push(egui::Event::Paste("Still ".into()));
+    harness.run_steps(3);
+    assert_eq!(harness.state().session.script.elements[4].text, "Still She waits.");
+    assert_eq!(harness.state().session.script.elements.len(), 5);
+}
+
+#[test]
+fn copy_scene_puts_the_scene_on_the_clipboard() {
+    let (mut harness, _file) = harness("INT. HUT - DAY\n\nOne.\n\nEXT. RIDGE - DAWN\n\nNORA\nIt held.\n");
+    harness.state_mut().editor.pending_focus = Some((3, 0));
+    harness.run_steps(3);
+    harness.state_mut().queued.push("edit.copy_scene".into());
+    harness.step();
+    let copied: Vec<String> = harness
+        .output()
+        .platform_output
+        .commands
+        .iter()
+        .filter_map(|c| if let egui::OutputCommand::CopyText(t) = c { Some(t.clone()) } else { None })
+        .collect();
+    assert_eq!(copied.len(), 1, "one copy");
+    assert!(copied[0].starts_with("EXT. RIDGE - DAWN") && copied[0].contains("NORA\nIt held.") && !copied[0].contains("HUT"), "{copied:?}");
+    harness.run_steps(2);
+    assert_eq!(harness.state().status, "Copied the scene (3 elements)");
+}

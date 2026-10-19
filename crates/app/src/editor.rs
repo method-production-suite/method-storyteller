@@ -112,6 +112,13 @@ pub enum EditAction {
         index: usize,
         kind: ElementKind,
     },
+    /// Screenplay text in several paragraphs pasted over `start..end` (bytes): it becomes elements.
+    PasteScreenplay {
+        index: usize,
+        start: usize,
+        end: usize,
+        text: String,
+    },
 }
 
 pub fn char_to_byte(text: &str, chars: usize) -> usize {
@@ -415,6 +422,18 @@ fn handle_keys(
     let caret = char_to_byte(text, caret_char);
     let popup = editor.completion.visible_for(index);
     ui.input_mut(|input| {
+        // Screenplay text in several paragraphs (from Copy Scene, a Fountain file, another app)
+        // becomes elements; a paste within one paragraph stays the text field's own.
+        let screenplay =
+            input.events.iter().position(|e| matches!(e, egui::Event::Paste(text) if storyteller_engine::commands::is_screenplay_paste(text)));
+        if let Some(egui::Event::Paste(pasted)) = screenplay.map(|at| input.events.remove(at)) {
+            let (from, to) = range.map_or((caret_char, caret_char), |r| {
+                let (a, b): (usize, usize) = (r.primary.index.into(), r.secondary.index.into());
+                (a.min(b), a.max(b))
+            });
+            actions.push(EditAction::PasteScreenplay { index, start: char_to_byte(text, from), end: char_to_byte(text, to), text: pasted });
+            return;
+        }
         if popup {
             let items = editor.completion.items.len();
             if input.consume_key(Modifiers::NONE, Key::ArrowDown) {

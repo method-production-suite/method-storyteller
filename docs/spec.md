@@ -232,6 +232,13 @@ Limits: inputs over 32 MiB or 200 000 elements are refused with a message, not a
 - Edit: Undo, Redo, Cut, Copy, Paste, Select All (the paragraph the caret is in), Find…, Go To….
   Cut, Copy, Paste and Select All carry no menu shortcut on purpose: ⌘X, ⌘C, ⌘V and ⌘A go
   straight to the text being edited, and the menu items do the same.
+- Edit > Copy Scene, and Copy Scene on a right-click in the navigator, put the scene on the
+  clipboard as Fountain text: pasted back into Storyteller it is the same elements, pasted
+  anywhere else it reads as a screenplay. Pasting text in several paragraphs (a blank line
+  between two) makes elements, read as Fountain, as one Undo: the text before the caret stays
+  in the line, the pasted elements follow, and the text after it becomes a line of its own. A
+  paste within one paragraph is an ordinary paste. Copying any range of elements, across
+  paragraphs, comes with a selection that spans them (next).
 - Settings (craft-settings): recent files, show scene numbers, navigator visibility, zoom.
 - The first launch with nothing to open (no file given, no recent files) shows the sample script,
   Field Station, once, as an unsaved copy, with a quiet line saying so. A writer who already has
