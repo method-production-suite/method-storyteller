@@ -32,7 +32,6 @@ use quick_xml::events::Event;
 
 use crate::fdx::{all_attrs, default_note_form, escape, locked_page_attributes, note_attributes, revision_set_attributes, revisions_attributes};
 use crate::inline::{self, Run, Style};
-use crate::layout::{Align, ElementStyle, Layout, chars_per_line};
 use crate::model::{
     Element, ElementKind, FdxNote, FdxNoteForm, OsfDocument, OsfParagraph, OsfSection, PageStart, Revised, RevisionSet, Revisions, Script,
     ScriptNote, TitleField, TitlePage, mark_revised,
@@ -416,7 +415,16 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
         .iter()
         .filter(|s| s.name.eq_ignore_ascii_case("settings"))
         .any(|s| tags(&s.raw).first().is_some_and(|(_, a)| truthy(get(a, "pages_locked"))));
-    let mut document = OsfDocument { version, sections: Vec::new(), archive_entries: Vec::new(), revisions: Some(revisions.clone()), pages_locked };
+    let section = |name: &str| top.iter().find(|s| s.name.eq_ignore_ascii_case(name)).map(|s| s.raw.as_str());
+    let format = crate::format::from_osf(section("settings"), section("styles"))?;
+    let mut document = OsfDocument {
+        version,
+        sections: Vec::new(),
+        archive_entries: Vec::new(),
+        revisions: Some(revisions.clone()),
+        pages_locked,
+        format: Some(format.clone()),
+    };
     // The page the paragraphs read so far end on, while pages are locked.
     let mut page: Option<Option<String>> = pages_locked.then_some(None);
     let mut elements: Vec<Element> = Vec::new();
@@ -437,7 +445,7 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
             document.sections.push(OsfSection::Raw(section.raw.clone()));
         }
     }
-    Ok(Script { title_page, elements, revisions, osf: Some(Box::new(document)), ..Script::default() })
+    Ok(Script { title_page, elements, revisions, format, osf: Some(Box::new(document)), ..Script::default() })
 }
 
 fn read_para(
@@ -666,81 +674,6 @@ fn read_title_page(paras: &[Para]) -> TitlePage {
         current = Some(key);
     }
     page
-}
-
-// ---------------------------------------------------------------------------------------------
-// Layout
-
-/// Tenths of a millimetre to inches.
-fn inches(tenths_mm: f32) -> f32 {
-    tenths_mm / 254.0
-}
-
-fn number(attributes: &[(String, String)], name: &str) -> Option<f32> {
-    get(attributes, name).and_then(|v| v.trim().parse::<f32>().ok()).filter(|v| v.is_finite() && v.abs() < 100_000.0)
-}
-
-/// Applies an imported document's page size, margins and built-in element styles to `layout`.
-pub fn apply_layout(document: &OsfDocument, layout: &mut Layout) {
-    let raw: Vec<&str> = document.sections.iter().filter_map(|s| if let OsfSection::Raw(raw) = s { Some(raw.as_str()) } else { None }).collect();
-    let settings = raw.iter().flat_map(|r| tags(r)).find(|(tag, _)| tag.eq_ignore_ascii_case("settings")).map(|(_, a)| a).unwrap_or_default();
-    let width = number(&settings, "page_width").unwrap_or(2159.0);
-    let height = number(&settings, "page_height").unwrap_or(2794.0);
-    let (top, bottom) = (number(&settings, "margin_top").unwrap_or(254.0), number(&settings, "margin_bottom").unwrap_or(254.0));
-    let (left_margin, right_margin) = (number(&settings, "margin_left").unwrap_or(381.0), number(&settings, "margin_right").unwrap_or(254.0));
-    if (1000.0..=5000.0).contains(&width) && (1000.0..=5000.0).contains(&height) {
-        layout.page_columns = (inches(width) * 10.0).round() as u16;
-        layout.page_rows = (inches(height) * 6.0).round() as u16;
-        let top_rows = (inches(top) * 6.0).round() as u16;
-        let bottom_rows = (inches(bottom) * 6.0).round() as u16;
-        layout.body_top = top_rows;
-        layout.lines_per_page = layout.page_rows.saturating_sub(top_rows).saturating_sub(bottom_rows).max(10);
-    }
-    if let Some(more) = get(&settings, "more_text").filter(|t| !t.trim().is_empty()) {
-        layout.more = more.to_string();
-    }
-    if let Some(auto) = get(&settings, "dialogue_continues") {
-        layout.auto_contd = truthy(Some(auto));
-    }
-    if let Some(contd) = get(&settings, "cont_text").filter(|t| !t.trim().is_empty()) {
-        layout.contd = format!("({})", contd.trim().trim_start_matches('(').trim_end_matches(')'));
-    }
-    for (tag, attributes) in raw.iter().flat_map(|r| tags(r)) {
-        if !tag.eq_ignore_ascii_case("style") {
-            continue;
-        }
-        let Some(name) = get(&attributes, "name") else { continue };
-        let target = match name.to_ascii_lowercase().as_str() {
-            "scene heading" => &mut layout.scene_heading,
-            "action" => &mut layout.action,
-            "character" => &mut layout.character,
-            "parenthetical" => &mut layout.parenthetical,
-            "dialogue" => &mut layout.dialogue,
-            "transition" => &mut layout.transition,
-            "shot" => &mut layout.shot,
-            _ => continue,
-        };
-        apply_style(&attributes, target, width, left_margin, right_margin);
-    }
-}
-
-fn apply_style(attributes: &[(String, String)], style: &mut ElementStyle, width: f32, left_margin: f32, right_margin: f32) {
-    let left = left_margin + number(attributes, "leftindent").unwrap_or(0.0);
-    let right = width - right_margin - number(attributes, "rightindent").unwrap_or(0.0);
-    let first = number(attributes, "firstlineindent").unwrap_or(0.0).min(0.0);
-    if right > left {
-        style.left = (inches(left + first) * 10.0).round().max(0.0) as u16;
-        style.width = chars_per_line(inches(right - left));
-    }
-    if let Some(space) = number(attributes, "spacebefore") {
-        style.space_before = space.round().clamp(0.0, 10.0) as u16;
-    }
-    match get(attributes, "align").map(str::to_ascii_lowercase).as_deref() {
-        Some("left") => style.align = Align::Left,
-        Some("right") => style.align = Align::Right,
-        Some("center") => style.align = Align::Center,
-        _ => {}
-    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1035,6 +968,41 @@ fn page_element(page: &PageStart) -> String {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Styles
+
+/// A `<styles>` section with a style for each of the format's elements: one the section had is
+/// replaced where it was, others follow; header and footer styles stay as they were.
+fn rebuild_styles(raw: &str, format: &crate::format::Format, spelling: Spelling) -> String {
+    let osf_spelling = crate::format::OsfSpelling { base_style: spelling.base_style() };
+    let page = format.page.as_ref();
+    let mut written = vec![false; format.elements.len()];
+    let mut out = String::from("  <styles>\n");
+    for child in crate::fdx::child_elements(raw) {
+        let (tag, attributes) = tags(child).into_iter().next().unwrap_or_default();
+        // A style without a name is not in the format; it stays as it was.
+        if tag.eq_ignore_ascii_case("style") && get(&attributes, "name").is_some() {
+            let name = get(&attributes, "name").unwrap_or_default();
+            if let Some(index) = format.elements.iter().position(|e| e.name == name)
+                && let (Some(element), Some(done)) = (format.elements.get(index), written.get_mut(index))
+                && !*done
+            {
+                out.push_str(&format!("    {}\n", crate::format::osf_style(element, page, &osf_spelling)));
+                *done = true;
+            }
+            continue;
+        }
+        out.push_str(&format!("    {}\n", child.trim()));
+    }
+    for (element, done) in format.elements.iter().zip(written) {
+        if !done {
+            out.push_str(&format!("    {}\n", crate::format::osf_style(element, page, &osf_spelling)));
+        }
+    }
+    out.push_str("  </styles>");
+    out
+}
+
+// ---------------------------------------------------------------------------------------------
 // Writing
 
 /// The OSF style a kind is written as when the paragraph brought no style of its own.
@@ -1323,6 +1291,8 @@ pub fn write(script: &Script) -> String {
             let mut title_written = false;
             let mut paragraphs_written = false;
             let revisions_same = document.revisions.as_ref() == Some(&script.revisions);
+            let format_same = document.format.as_ref() == Some(&script.format);
+            let (mut settings_written, mut styles_written) = (false, false);
             let mut lists_written = false;
             for section in &document.sections {
                 match section {
@@ -1349,8 +1319,17 @@ pub fn write(script: &Script) -> String {
                                 with_revision_colors(raw, &script.revisions, spelling)
                             }
                             "settings" => {
-                                let raw = if revisions_same { raw.to_string() } else { with_active_revision(raw, script.revisions.active) };
+                                let raw = match script.format.page.as_ref().filter(|_| !format_same) {
+                                    Some(page) => crate::format::osf_settings(page, raw),
+                                    None => raw.to_string(),
+                                };
+                                settings_written = true;
+                                let raw = if revisions_same { raw } else { with_active_revision(&raw, script.revisions.active) };
                                 if script.pages_locked() == document.pages_locked { raw } else { with_pages_locked(&raw, script.pages_locked()) }
+                            }
+                            "styles" if !format_same => {
+                                styles_written = true;
+                                rebuild_styles(raw, &script.format, spelling)
                             }
                             _ => raw.to_string(),
                         };
@@ -1369,13 +1348,31 @@ pub fn write(script: &Script) -> String {
             if !revisions_same && !lists_written && !script.revisions.sets.is_empty() {
                 out.push_str(&format!("  <lists>{}</lists>\n", revision_colors(&script.revisions, spelling)));
             }
+            if !format_same
+                && !settings_written
+                && let Some(page) = &script.format.page
+            {
+                out.push_str(&format!("  {}\n", crate::format::osf_settings(page, "<settings/>")));
+            }
+            if !format_same && !styles_written && !script.format.elements.is_empty() {
+                out.push_str(&rebuild_styles("<styles/>", &script.format, spelling));
+                out.push('\n');
+            }
         }
         None => {
             out.push_str("<document type=\"Open Screenplay Format document\" version=\"30\">\n");
-            let settings = with_active_revision(DEFAULT_SETTINGS, script.revisions.active);
+            let settings = match &script.format.page {
+                Some(page) => format!("  {}", crate::format::osf_settings(page, DEFAULT_SETTINGS)),
+                None => DEFAULT_SETTINGS.to_string(),
+            };
+            let settings = with_active_revision(&settings, script.revisions.active);
             out.push_str(&if script.pages_locked() { with_pages_locked(&settings, true) } else { settings });
             out.push('\n');
-            out.push_str(DEFAULT_STYLES);
+            if script.format.elements.is_empty() {
+                out.push_str(DEFAULT_STYLES);
+            } else {
+                out.push_str(&rebuild_styles("<styles/>", &script.format, Spelling::Snake));
+            }
             out.push('\n');
             write_paragraphs(script, Spelling::Snake, true, &mut out);
             write_title_page(&script.title_page, Spelling::Snake, &mut out);

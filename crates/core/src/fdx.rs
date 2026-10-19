@@ -368,8 +368,29 @@ pub fn write_with_layout(script: &Script, layout: &Layout) -> String {
     let read_locks = script.fdx.as_deref().map(|d| d.locked_pages.as_slice()).unwrap_or_default();
     let locks_same = locks.len() == read_locks.len() && locks.iter().zip(read_locks).all(|((p, s), (rp, rs))| p == rp && *s == rs);
     let mut title_written = false;
+    let format_same = script.fdx.as_ref().and_then(|d| d.format.as_ref()) == Some(&script.format);
+    let (mut elements_written, mut layout_written, mut mores_written) = (false, false, false);
     for section in sections {
         match section {
+            // A changed format is written from the model, all element settings where the first was.
+            FdxSection::Raw(xml) if !format_same && section_is(xml, "ElementSettings") => {
+                if !elements_written {
+                    write_element_settings(&script.format, &mut out);
+                    elements_written = true;
+                }
+            }
+            FdxSection::Raw(xml) if !format_same && section_is(xml, "PageLayout") => {
+                if let Some(page) = script.format.page.as_ref().filter(|_| !layout_written) {
+                    out.push_str(&format!("  {}\n", crate::format::fdx_page_layout(page)));
+                }
+                layout_written = true;
+            }
+            FdxSection::Raw(xml) if !format_same && section_is(xml, "MoresAndContinueds") => {
+                if let Some(page) = script.format.page.as_ref().filter(|_| !mores_written) {
+                    out.push_str(&format!("  {}\n", crate::format::fdx_mores(page)));
+                }
+                mores_written = true;
+            }
             FdxSection::Raw(xml) if section_is(xml, "ScriptNotes") => {
                 if ranged_same {
                     out.push_str("  ");
@@ -433,6 +454,19 @@ pub fn write_with_layout(script: &Script, layout: &Layout) -> String {
     if !title_written {
         write_title_page(&script.title_page, &mut out);
     }
+    if !format_same {
+        if !elements_written {
+            write_element_settings(&script.format, &mut out);
+        }
+        if let Some(page) = &script.format.page {
+            if !layout_written {
+                out.push_str(&format!("  {}\n", crate::format::fdx_page_layout(page)));
+            }
+            if !mores_written {
+                out.push_str(&format!("  {}\n", crate::format::fdx_mores(page)));
+            }
+        }
+    }
     if !locks_written && !locks.is_empty() {
         write_locked_pages(&[], &locks, &mut out);
     }
@@ -447,6 +481,12 @@ pub fn write_with_layout(script: &Script, layout: &Layout) -> String {
     }
     out.push_str("</FinalDraft>\n");
     out
+}
+
+fn write_element_settings(format: &crate::format::Format, out: &mut String) {
+    for element in &format.elements {
+        out.push_str(&format!("  {}\n", crate::format::fdx_element(element, format.page.as_ref())));
+    }
 }
 
 fn write_title_page(title: &TitlePage, out: &mut String) {
@@ -945,10 +985,16 @@ impl Importer {
                 FdxSection::Raw(_) => None,
             })
             .unwrap_or_default();
+        let format = crate::format::from_fdx(self.document.sections.iter().filter_map(|s| match s {
+            FdxSection::Raw(xml) => Some(xml.as_str()),
+            FdxSection::TitlePage { .. } => None,
+        }));
+        self.document.format = Some(format.clone());
         Ok(Script {
             title_page,
             elements: self.elements,
             revisions: revisions.unwrap_or_default(),
+            format,
             fdx: Some(Box::new(self.document)),
             ..Script::default()
         })
@@ -1160,7 +1206,7 @@ fn section_is(xml: &str, name: &str) -> bool {
 }
 
 /// The raw XML of each direct child element of a fragment's root.
-fn child_elements(xml: &str) -> Vec<&str> {
+pub(crate) fn child_elements(xml: &str) -> Vec<&str> {
     let mut reader = quick_xml::Reader::from_str(xml);
     let mut depth = 0usize;
     let mut start = 0usize;
@@ -1618,7 +1664,6 @@ fn lines(points: &str) -> Option<u16> {
 /// One element's settings as Final Draft wrote them.
 #[derive(Default)]
 struct ElementSpec {
-    name: String,
     left: Option<f32>,
     first_indent: Option<f32>,
     right: Option<f32>,
@@ -1661,7 +1706,6 @@ pub fn paragraph_style(fdx: &FdxParagraph, base: ElementStyle) -> ElementStyle {
         return base;
     }
     let spec = ElementSpec {
-        name: String::new(),
         left: get(attributes, "LeftIndent").and_then(inches),
         right: get(attributes, "RightIndent").and_then(inches),
         first_indent: get(attributes, "FirstIndent").and_then(inches),
@@ -1691,80 +1735,4 @@ fn tags(xml: &str) -> Vec<(String, Vec<(String, String)>)> {
 
 fn get<'a>(attributes: &'a [(String, String)], key: &str) -> Option<&'a str> {
     attributes.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
-}
-
-/// Applies an imported file's page layout, element settings and mores-and-continueds to `layout`.
-pub fn apply_layout(document: &FdxDocument, layout: &mut Layout) {
-    for section in &document.sections {
-        let FdxSection::Raw(xml) = section else { continue };
-        let tags = tags(xml);
-        let Some((root, root_attrs)) = tags.first() else { continue };
-        match root.as_str() {
-            "ElementSettings" => {
-                let mut spec = ElementSpec { name: get(root_attrs, "Type").unwrap_or_default().to_string(), ..ElementSpec::default() };
-                if let Some((_, paragraph)) = tags.iter().find(|(name, _)| name == "ParagraphSpec") {
-                    spec.left = get(paragraph, "LeftIndent").and_then(inches);
-                    spec.right = get(paragraph, "RightIndent").and_then(inches);
-                    spec.first_indent = get(paragraph, "FirstIndent").and_then(inches);
-                    spec.space_before = get(paragraph, "SpaceBefore").and_then(lines);
-                    spec.align = get(paragraph, "Alignment").and_then(align_from);
-                }
-                let target = match spec.name.as_str() {
-                    "Scene Heading" => Some(&mut layout.scene_heading),
-                    "Action" => Some(&mut layout.action),
-                    "Character" => Some(&mut layout.character),
-                    "Parenthetical" => Some(&mut layout.parenthetical),
-                    "Dialogue" => Some(&mut layout.dialogue),
-                    "Transition" => Some(&mut layout.transition),
-                    "Shot" => Some(&mut layout.shot),
-                    "Lyrics" => Some(&mut layout.lyrics),
-                    _ => None,
-                };
-                match target {
-                    Some(style) => spec.apply(style),
-                    None if !spec.name.is_empty() => {
-                        let mut style = layout.action;
-                        spec.apply(&mut style);
-                        layout.custom.retain(|(name, _)| *name != spec.name);
-                        layout.custom.push((spec.name.clone(), style));
-                    }
-                    None => {}
-                }
-            }
-            "PageLayout" => {
-                let height =
-                    tags.iter().find(|(name, _)| name == "PageSize").and_then(|(_, a)| get(a, "Height")).and_then(|h| h.trim().parse::<f32>().ok());
-                let width =
-                    tags.iter().find(|(name, _)| name == "PageSize").and_then(|(_, a)| get(a, "Width")).and_then(|w| w.trim().parse::<f32>().ok());
-                if let Some(height) = height.filter(|h| (5.0..=20.0).contains(h)) {
-                    layout.page_rows = (height * 6.0).round() as u16;
-                }
-                if let Some(width) = width.filter(|w| (4.0..=15.0).contains(w)) {
-                    layout.page_columns = (width * 10.0).round() as u16;
-                }
-                let top = get(root_attrs, "TopMargin").and_then(lines);
-                let bottom = get(root_attrs, "BottomMargin").and_then(lines);
-                if let Some(top) = top {
-                    layout.body_top = top;
-                }
-                // "Normal" document leading fills the page between the margins at 6 lines per inch.
-                let (top, bottom) = (top.unwrap_or(6), bottom.unwrap_or(6));
-                layout.lines_per_page = layout.page_rows.saturating_sub(top).saturating_sub(bottom).max(10);
-            }
-            "MoresAndContinueds" => {
-                if let Some((_, breaks)) = tags.iter().find(|(name, _)| name == "DialogueBreaks") {
-                    if let Some(more) = get(breaks, "DialogueBottom").filter(|v| !v.trim().is_empty()) {
-                        layout.more = more.to_string();
-                    }
-                    if let Some(contd) = get(breaks, "DialogueTop").filter(|v| !v.trim().is_empty()) {
-                        layout.contd = contd.to_string();
-                    }
-                    if let Some(auto) = get(breaks, "AutomaticCharacterContinueds") {
-                        layout.auto_contd = auto.trim().eq_ignore_ascii_case("yes") || auto.trim() == "1" || auto.trim().eq_ignore_ascii_case("true");
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
 }

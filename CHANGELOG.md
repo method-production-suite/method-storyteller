@@ -21,6 +21,9 @@ for its own version in Help > What's New, once after an update.
   files are kept when saving in either format.
 - Locked pages and A-pages from `.fdx` and Open Screenplay Format files are kept when saving in
   either format.
+- Element settings and page layout (fonts, indents, spacing, Enter and Tab flow, paper size,
+  margins, (MORE) and (CONT'D)) carry over between `.fdx` and Open Screenplay Format, and a script
+  paginates the same in both.
 - Title page, scene navigator, scene numbers, page view and draft view, zoom.
 - A Help menu: user guide, keyboard shortcuts, this list, bug reports and licences.
 - A command line tool, `method-storyteller`, that converts, paginates and exports without a

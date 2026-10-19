@@ -7,9 +7,11 @@ use storyteller_core::layout::Layout;
 use storyteller_core::model::{ElementKind as K, Script};
 use storyteller_core::{fountain, osf};
 
-/// The script without the OSF data an import keeps for writing back.
+/// The script without the OSF data an import keeps for writing back, and without the page
+/// layout and styles every new OSF document is written with.
 fn model(mut script: Script) -> Script {
     script.osf = None;
+    script.format = Default::default();
     for element in &mut script.elements {
         element.osf = None;
     }
