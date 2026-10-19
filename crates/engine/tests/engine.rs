@@ -360,6 +360,31 @@ fn scene_lengths_follow_edits() {
     assert!(after > before[0].1, "{after} should be longer than {}", before[0].1);
 }
 
+/// File errors carry their kind from the error's type, so the app can word them without
+/// reading the operating system's text.
+#[test]
+fn file_errors_carry_their_kind() {
+    use storyteller_engine::files::FileProblem;
+    let registry = Registry::new();
+    let dir = tempfile::tempdir().expect("temp dir");
+    let problem = |session: &mut Session, id: &str, path: std::path::PathBuf| {
+        let mut params = Map::new();
+        params.insert("path".into(), json!(path.display().to_string()));
+        registry.run(id, session, &params).err().and_then(|e| e.file_problem())
+    };
+    let mut session = Session::default();
+    assert_eq!(problem(&mut session, "file.open", dir.path().join("missing.fountain")), Some(FileProblem::NotFound));
+    let pdf = dir.path().join("draft.pdf");
+    std::fs::write(&pdf, b"%PDF-1.7\n").expect("write");
+    assert_eq!(problem(&mut session, "file.open", pdf), Some(FileProblem::Pdf));
+    let not_text = dir.path().join("binary.fountain");
+    std::fs::write(&not_text, [0xFF, 0xFE, 0xFD, 0x00, 0xC3]).expect("write");
+    assert_eq!(problem(&mut session, "file.open", not_text), Some(FileProblem::NotAScript));
+    assert_eq!(problem(&mut session, "file.save_as", dir.path().join("no folder/x.fountain")), Some(FileProblem::NotFound));
+    // Other commands' errors are not file errors.
+    assert_eq!(registry.run("app.nothing", &mut session, &Map::new()).err().and_then(|e| e.file_problem()), None);
+}
+
 /// Spell check steps through misspellings with suggestions; Ignore, Learn and Change.
 #[test]
 fn spell_check_steps_ignores_learns_and_changes() {
@@ -378,8 +403,8 @@ fn spell_check_steps_ignores_learns_and_changes() {
     // Ignore for the session; learn for good.
     s.dirty = false;
     run(&registry, &mut s, "spell.ignore", json!({ "word": "seismograf" }));
-    assert_eq!(s.script.spelling_ignored, ["seismograf"], "ignored words stay with the script");
-    assert!(s.dirty, "so the file has something new to save");
+    assert_eq!(s.script.spelling_ignored, ["seismograf"], "ignored on the script, for this session");
+    assert!(!s.dirty, "no file format saves the list yet, so nothing new to save");
     let learned = run(&registry, &mut s, "spell.learn", json!({ "word": "Zorbly" }));
     assert_eq!(learned["value"]["learned"], "zorbly");
     assert_eq!(next(&mut s)["total"], 0, "nothing left");
