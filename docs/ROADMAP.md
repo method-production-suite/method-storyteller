@@ -58,6 +58,12 @@ says otherwise.
 9. **Copy and paste between apps.** Inside Storyteller a copy keeps element types. **Recommend:
    also put Fountain text on the clipboard**, so a paste into any text editor or another
    screenwriting app keeps the screenplay's shape. Reversible; built on this.
+10. **The final mark (design pass).** The provisional mark was a page outline with the script
+   at half strength. **Built on the recommendation: a solid page with the script, the brads
+   and a cursor cut out of it**, the language of Method Budget's mark (figures cut out of its
+   page), and an app icon of the white mark on a rose square like Method Budget's and Method
+   Schedule's. Reversible: the drawing is one function in `scripts/make-brand.py`. Pictures
+   are in the brand pull request.
 
 ### Tests that need the owner's hands
 
@@ -124,7 +130,7 @@ says otherwise.
    to the suite SHAs.
 4. **Release workflow** [have] M. Draft releases, a signed and notarized Apple
    silicon `.dmg`, Windows and Linux installers, version-free names.
-5. **Brand** [have] S. docs/BRAND.md, the provisional mark, the app icon.
+5. **Brand** [have] S. docs/BRAND.md, the mark, the app icon.
 6. **Pictures** [have] M. A capture command retakes every README picture from an invented
    Field Station script, 1280×800, light and dark.
 
