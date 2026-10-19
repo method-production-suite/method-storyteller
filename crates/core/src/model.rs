@@ -124,12 +124,64 @@ pub struct Element {
     /// Outline depth of a section (1 = `#`).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub level: u8,
+    /// Script notes on this paragraph or part of it (see [`ScriptNote`]). Plain `[[notes]]` in
+    /// the text are separate: they hold text only.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<ScriptNote>,
     /// Final Draft data this paragraph carried that the model does not use (see [`FdxParagraph`]).
     #[serde(skip)]
     pub fdx: Option<Box<FdxParagraph>>,
     /// Open Screenplay Format data this paragraph carried that the model does not use.
     #[serde(skip)]
     pub osf: Option<Box<OsfParagraph>>,
+}
+
+/// A script note: a comment on a paragraph, or on part of it, that never prints.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScriptNote {
+    /// The note itself, paragraphs separated by `\n`.
+    pub text: String,
+    /// What it covers, in characters of the paragraph's printed text: `start..end`, a point when
+    /// the two are equal. An `end` past the paragraph runs on into the paragraphs after it, each
+    /// paragraph break counting one character. `None` is the whole paragraph.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range: Option<(u32, u32)>,
+    /// Colour as `#RRGGBB`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    /// Tied to no text (a Final Draft unanchored note); kept with the script's first paragraph.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub unanchored: bool,
+    /// Final Draft data the note carried that the model does not use.
+    #[serde(skip)]
+    pub fdx: Option<Box<FdxNote>>,
+}
+
+/// How a Final Draft file stores a script note.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FdxNoteForm {
+    /// A `ScriptNote` inside its paragraph, placed among the text runs.
+    Inline,
+    /// An entry of the top-level `ScriptNotes` list, placed by `Range` (Version 5 and later).
+    Ranged,
+    /// An entry of the top-level `UnanchoredScriptNotes` list (Versions 3 and 4).
+    Unanchored,
+}
+
+/// What an imported Final Draft script note carried beyond the model.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FdxNote {
+    pub form: FdxNoteForm,
+    /// Every attribute in file order. `Range` is kept as a place holder: it is worked out again
+    /// from the note's range when writing.
+    pub attributes: Vec<(String, String)>,
+    /// The note's XML as read, written back while its text, colour and author are unchanged.
+    /// Empty when the note came through another format.
+    pub raw: String,
+    /// The note as read, to tell whether it changed.
+    pub as_read: Option<Box<ScriptNote>>,
 }
 
 /// What an imported Open Screenplay Format paragraph carried beyond the model, kept so the file
@@ -205,6 +257,11 @@ pub struct FdxDocument {
     pub root_attributes: Vec<(String, String)>,
     /// Top-level sections after `Content`, in file order.
     pub sections: Vec<FdxSection>,
+    /// The `ScriptNotes` list as read: each note with its `Range` in the document. The list is
+    /// written back as it was while the script's ranged notes are the same.
+    pub ranged_notes: Vec<(u32, u32, ScriptNote)>,
+    /// The `UnanchoredScriptNotes` list as read.
+    pub unanchored_notes: Vec<ScriptNote>,
 }
 
 /// One top-level section of an imported Final Draft document.
@@ -223,7 +280,7 @@ fn is_zero(value: &u8) -> bool {
 
 impl Element {
     pub fn new(kind: ElementKind, text: impl Into<String>) -> Self {
-        let mut element = Element { kind, text: text.into(), scene_number: None, dual: false, level: 0, fdx: None, osf: None };
+        let mut element = Element { kind, text: text.into(), scene_number: None, dual: false, level: 0, notes: Vec::new(), fdx: None, osf: None };
         if kind == ElementKind::Section {
             element.level = 1;
         }

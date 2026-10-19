@@ -46,7 +46,9 @@ writer can save to Fountain or FDX, export a PDF, and open those files again wit
 
 Inline emphasis (`*italic*`, `**bold**`, `_underline_`) and notes (`[[ ]]`) are stored as Fountain
 markup inside element text. The PDF and FDX writers turn emphasis into styled runs; notes are not
-printed.
+printed. Script notes from an `.fdx` (with a range, a colour or an author) are kept on their
+paragraph beside the text: what they cover in characters of the printed text, or the whole
+paragraph.
 
 ## 4. Editing (MVP)
 
@@ -209,8 +211,8 @@ files.
 | Format | Read | Write | Notes |
 | --- | --- | --- | --- |
 | Fountain (`.fountain`, `.spmd`, `.txt`) | ✓ | ✓ | A working format (the default). Round-trip is lossless for everything we model. |
-| Final Draft XML (`.fdx`) | ✓ | ✓ | Paragraph types, text styles, scene numbers, dual dialogue, title page. v1 keeps every part it does not model (revisions, tags, settings, Beat Board and so on) and writes it back unchanged. Only direct children of `Content` and `DualDialogue` are script paragraphs. Outline and summary text is written as Final Draft's `Outline 1–4` and `Summary` types, not `Section` and `Synopsis`. |
-| Open Screenplay Format (`.osf`, and `.fadein`, a ZIP holding it) | ✓ | ✓ | Elements, emphasis, scene numbers, dual dialogue, notes, synopses, title page, page layout and element styles. Reads versions 1.2 to 4.0 in all their spellings; writes 3.0 for new documents and an imported document's own version otherwise. Keeps every part it does not model (settings, styles, lists, revision marks, vendor data) and writes it back. Sections, and synopses not attached to a paragraph, carry a `<method_storyteller kind="…"/>` marker. |
+| Final Draft XML (`.fdx`) | ✓ | ✓ | Paragraph types, text styles, scene numbers, dual dialogue, title page. v1 keeps every part it does not model (revisions, tags, settings, Beat Board and so on) and writes it back unchanged. Only direct children of `Content` and `DualDialogue` are script paragraphs. Outline and summary text is written as Final Draft's `Outline 1–4` and `Summary` types, not `Section` and `Synopsis`. Script notes in all three forms (inside the paragraph, the `ScriptNotes` list placed by `Range`, the older `UnanchoredScriptNotes`) are read onto their paragraph and written back in the form they came in; a plain `[[note]]` is written as a script note where it sits. |
+| Open Screenplay Format (`.osf`, and `.fadein`, a ZIP holding it) | ✓ | ✓ | Elements, emphasis, scene numbers, dual dialogue, notes, synopses, title page, page layout and element styles. Reads versions 1.2 to 4.0 in all their spellings; writes 3.0 for new documents and an imported document's own version otherwise. Keeps every part it does not model (settings, styles, lists, revision marks, vendor data) and writes it back. Sections, and synopses not attached to a paragraph, carry a `<method_storyteller kind="…"/>` marker. Script notes go into the paragraph's plain `note`, with their range, colour, author and Final Draft data in `<method_storyteller_note …/>` children. |
 | PDF | – | ✓ | Courier Prime embedded, selectable text, a bookmark per scene. |
 
 Limits: inputs over 32 MiB or 200 000 elements are refused with a message, not a crash.
