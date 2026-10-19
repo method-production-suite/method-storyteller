@@ -21,9 +21,11 @@ says otherwise.
 1. **Where production data lives** (revisions, locked pages, tags). Fountain cannot hold it;
    Open Screenplay Format holds more (revision marks, locked page numbers) but has no revision
    dates or tag placement. Options: OSF with `method_` extension data as the production format;
-   Fountain plus a small sidecar file; a package format of our own. **Recommend: OSF with
-   extensions**: OSF is now the standard (decision 2), so production data goes there. Needed
-   before M5.
+   Fountain plus a small sidecar file; a package format of our own. **Decided by the owner,
+   2026-10-19: a package format of our own, `.mstory`**: one ZIP file holding the script as Open
+   Screenplay Format and a production data file (revisions with their dates and who made them,
+   locked pages, tags), so it works the same on every system, travels as one file, and the script
+   inside stays readable by other apps. Unblocks M5.
 2. **Default working format for new scripts.** **Decided by the owner, 2026-10-18: Open
    Screenplay Format is the standard and the default for new scripts.** Fountain stays fully
    supported: open, Save As, File > Save New Scripts as Fountain, and copy as Fountain. Existing
@@ -47,14 +49,13 @@ says otherwise.
 
 7. **Script notes in Fountain.** Fountain has `[[notes]]` inline; they cannot carry a colour,
    an author or a range. Options: keep Fountain notes as plain `[[…]]` and keep full notes only in
-   OSF and `.fdx`; or add a `method_` convention inside the note text. **Recommend: plain `[[…]]`
-   in Fountain**, full notes in OSF and `.fdx`, and a one-line warning when saving notes with
-   colours to Fountain. Changes what a Fountain file holds, so it waits for the owner.
+   OSF and `.fdx`; or add a `method_` convention inside the note text. **Decided by the owner,
+   2026-10-19: plain `[[…]]` in Fountain**, full notes in OSF and `.fdx`; saving to Fountain
+   already warns what it leaves out.
 8. **The title page.** `.fdx` stores the title page as free layout (aligned paragraphs, tab
    stops); Fountain and the app use fields. Options: keep fields and lay them out the industry
-   way; or add a free-layout title page editor. **Recommend: fields for V1**, an imported free
-   layout kept and printed as it came, a layout editor after V1. Changes how writers work, so it
-   waits for the owner.
+   way; or add a free-layout title page editor. **Decided by the owner, 2026-10-19: fields for
+   V1**, an imported free layout kept and printed as it came, a layout editor after V1.
 9. **Copy and paste between apps.** Inside Storyteller a copy keeps element types. **Recommend:
    also put Fountain text on the clipboard**, so a paste into any text editor or another
    screenwriting app keeps the screenplay's shape. Reversible; built on this.
@@ -67,6 +68,10 @@ says otherwise.
 11. **`unsafe` for files opened from the Finder.** **Decided by the owner, 2026-10-18:**
    `crates/macos-open` is the one crate allowed `unsafe`, with a SAFETY comment on every block
    (enforced by clippy). Recorded in AGENTS.md.
+13. **TV structure (new, 2026-10-19).** **Decided by the owner: build it all** (act breaks,
+   End of Act, Teaser, Cold Open and Tag, a New TV Script layout, acts in the navigator and Go
+   To, and acts in every format). A new TV script asks each time: one-hour (Teaser, Acts One to
+   Five, Tag) or half-hour (Cold Open, Acts One to Three, Tag), remembering the last choice.
 12. **Rank for `.osf` in the Finder.** **Decided by the owner, 2026-10-18: Default**, like
    `.fountain` and `.fdx`: open formats, so the app claims none of them as their owner.
 
@@ -189,10 +194,23 @@ wait for a decision above.
    - the fidelity report, `docs/research/fdx-osf-fidelity.md`: what maps exactly, what is
      approximated, what cannot map and why, checked by a test;
    - the final check with the owner (above).
+8a. **TV structure** [in progress] M (owner, 2026-10-19; decision 13). One PR each, in order:
+   - New Act and End of Act as element types (caps, centred, a new act starts a new page),
+     read and written as `.fdx` New Act and End of Act, OSF styles, and centred Fountain lines;
+   - New TV Script: Teaser or Cold Open, the acts and Tag laid out, one-hour or half-hour;
+   - acts in the navigator (each act heading its scenes) and in Go To;
+   - an automatic END OF ACT line, and act-aware scene numbering.
+8b. **Bold, italic and underline in the editor** [missing] S (owner, 2026-10-19). The files
+   already keep them (Fountain markup, `.fdx` and OSF runs); the editor shows the markup as typed.
+   Format > Bold, Italic and Underline (⌘B, ⌘I, ⌘U) on a selection, and the editor drawing the
+   styles.
+8c. **The `.mstory` package** [missing] M (decision 1). One ZIP file: the script as Open
+   Screenplay Format, and a production data file. Open and save, File > Save As, the Finder's
+   document type and icon. Comes first in M5.
 9. **M5, production I** L. Full scene numbering (A-suffix inserts, prefix schemes, left and
    right), omit and unomit, revision sets (name, mark, colour), revision mode, mark and clear,
    deleted-text markers, revisions drawn in the editor and the PDF, the revised-pages header,
-   revised-pages-only and range PDFs, clean copies. Needs decision 1.
+   revised-pages-only and range PDFs, clean copies. Kept in the `.mstory` package (decision 1).
 10. **M6, production II and reports** L. Locked pages as imported, then lock pages, A-pages, lock
    and unlock; scene, location, character and cast reports with CSV; plain-text export; the
    structured export Method Schedule reads.
