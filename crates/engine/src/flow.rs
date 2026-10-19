@@ -99,7 +99,8 @@ pub fn convert_text(text: &str, from: K, to: K) -> (String, isize) {
 }
 
 /// Whether an edit of action text from `old` to `new` turns it into a scene heading: the line
-/// held nothing yet, or only the start of `int.`/`ext.`/`i/e`, and now opens with one of them.
+/// held nothing yet, or only the start of `int.`/`ext.`/`i/e` (not the whole of one), and now
+/// opens with one of them.
 /// So several keys arriving in one frame, or a whole heading pasted into an empty line
 /// (`EXT. RIDGE - DAWN`), still make a heading, while existing action that starts that way
 /// is left alone, and so is `Est. 1962`.
@@ -107,7 +108,9 @@ pub fn becomes_heading(old: &str, new: &str) -> bool {
     const INTROS: [&str; 3] = ["int.", "ext.", "i/e"];
     let old = old.trim_start().to_lowercase();
     let new = new.trim_start().to_lowercase();
-    let unfinished = old.trim_end().is_empty() || INTROS.iter().any(|intro| intro.starts_with(old.as_str()) || old.starts_with(intro));
+    // Only the start of an intro: action that already opens with one (edited, or a heading
+    // turned back into action) stays action.
+    let unfinished = old.trim_end().is_empty() || INTROS.iter().any(|intro| intro.len() > old.len() && intro.starts_with(old.as_str()));
     let opens = INTROS.iter().any(|intro| new.strip_prefix(intro).is_some_and(|rest| *intro != "i/e" || rest.is_empty() || rest.starts_with(' ')));
     unfinished && opens
 }
@@ -200,6 +203,9 @@ mod tests {
         assert!(!becomes_heading("", "Interior design."));
         assert!(!becomes_heading("", "I/Eat"));
         assert!(!becomes_heading("She drives.", "Ext. of the car: she drives."), "existing action is left alone");
+        assert!(!becomes_heading("Ext. of the car", "Ext. of the car:"), "action already opening with an intro, typed on");
+        assert!(!becomes_heading("INT. HUT - DAY", "INT. HUT - DAY."), "a heading turned back into action stays action");
+        assert!(!becomes_heading("int.", "int. "), "once action, the next key does not promote it");
     }
 
     #[test]

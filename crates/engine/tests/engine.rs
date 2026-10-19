@@ -172,6 +172,11 @@ fn tab_starts_the_next_element_and_shortcuts_insert() {
     run(&registry, &mut s, "element.set_text", json!({ "text": "int.", "typing": true }));
     assert_eq!(s.current().unwrap().kind, K::SceneHeading, "a scene heading stays one");
     run(&registry, &mut s, "element.set_kind", json!({ "kind": "action" }));
+    // Turned back into action, it stays action as the writer types on; cleared and retyped, it
+    // becomes a heading again.
+    run(&registry, &mut s, "element.set_text", json!({ "text": "INT. ", "typing": true }));
+    assert_eq!(s.current().unwrap().kind, K::Action, "a heading turned back into action stays action");
+    run(&registry, &mut s, "element.set_text", json!({ "text": "", "typing": true }));
     run(&registry, &mut s, "element.set_text", json!({ "text": "ext.", "typing": true }));
     assert_eq!((s.current().unwrap().kind, s.current().unwrap().text.as_str()), (K::SceneHeading, "EXT."), "typing ext. in action makes a heading");
     run(&registry, &mut s, "edit.undo", json!({}));
