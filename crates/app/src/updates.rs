@@ -1,9 +1,8 @@
 //! Help > Check for Updates, the automatic checks and "Restart to Update", through the suite's
 //! updater (`method-update`, SUITE-STANDARDS.md §1). Apple silicon Macs only.
 //!
-//! The updater stays inactive, with no timer and no network, until Storyteller has an updater
-//! key: [`PUBKEY`] is empty, so `AppConfig::unavailable_reason` reports "no updater key" and the
-//! menu item says updates arrive with the first release.
+//! Releases are signed with Storyteller's update key ([`PUBKEY`], key ID C4D0E2230F7A95FB); an
+//! update whose signature does not check against it is never installed.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -15,9 +14,9 @@ use method_update::{AppConfig, Said, Status, Updater, baked};
 
 /// Where this app looks for a new version.
 const ENDPOINT: &str = "https://github.com/method-production-suite/method-storyteller/releases/latest/download/latest.json";
-/// The minisign public key the releases are signed with. Empty until the key exists (MOrg
-/// arranges it): the updater then never checks.
-const PUBKEY: &str = "";
+/// The minisign public key the releases are signed with (key ID C4D0E2230F7A95FB), as the
+/// base64 of its key box. The private half lives with the release workflow's secrets.
+const PUBKEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM0RDBFMjIzMEY3QTk1RkIKUldUN2xYb1BJK0xReEVwSTBubzBOOGlaUjM0OGRLV2tvcGk2ZmdFWm1NMUxnbEQ0M2NHN2JzNzYK";
 
 /// The bundle as the installer names it.
 pub const BUNDLE_NAME: &str = "Method Storyteller.app";
@@ -25,10 +24,10 @@ pub const BUNDLE_NAME: &str = "Method Storyteller.app";
 /// The updater has one target, `darwin-aarch64`: any other build never touches the network.
 const APPLE_SILICON: bool = cfg!(all(target_os = "macos", target_arch = "aarch64"));
 
-/// What the menu says while this build cannot update itself.
-pub const UPDATES_LATER: &str = "Updates arrive with the first release";
+/// What the menu says when this build cannot update itself (a version that is not semver, say).
+pub const UPDATES_LATER: &str = "This build cannot update itself; download new versions from methodstoryteller.com";
 /// Anywhere but an Apple silicon Mac.
-pub const MAC_ONLY: &str = "Updates come through the app on Apple silicon Macs; elsewhere, download new versions from methodproduction.com";
+pub const MAC_ONLY: &str = "Updates come through the app on Apple silicon Macs; elsewhere, download new versions from methodstoryteller.com";
 
 pub fn update_config() -> AppConfig {
     AppConfig::new(
@@ -172,8 +171,10 @@ mod tests {
     }
 
     #[test]
-    fn this_build_has_no_updater_key_yet() {
-        assert!(update_config().unavailable_reason().is_some_and(|r| r.contains("no updater key")));
+    fn this_build_can_update_itself() {
+        let config = update_config();
+        assert_eq!(config.unavailable_reason(), None, "the key decodes and the endpoint is https");
+        assert!(config.endpoint.starts_with("https://github.com/method-production-suite/method-storyteller/"));
     }
 
     #[test]
