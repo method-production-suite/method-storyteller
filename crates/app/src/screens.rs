@@ -97,3 +97,87 @@ fn write_png(path: &Path, width: u32, height: u32, rgba: &[u8]) -> Result<(), St
     }
     std::fs::write(path, out).map_err(|e| e.to_string())
 }
+
+/// Every surface in light and dark, for the design pass: the dialogs, the Help windows, the
+/// find bar and a selection on the page. Written to `STORYTELLER_GALLERY_OUT` (default
+/// `target/gallery`); nothing is committed. Run with
+/// `cargo test -p method-storyteller --release gallery -- --ignored`.
+#[test]
+#[ignore = "pictures for the design pass"]
+fn gallery() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let out = var("STORYTELLER_GALLERY_OUT").unwrap_or_else(|| root.join("target/gallery"));
+    if let Err(error) = std::fs::create_dir_all(&out) {
+        panic!("{}: {error}", out.display());
+    }
+    let script = root.join("examples/field-station.fountain");
+    let states: [(&str, &[&str]); 13] = [
+        ("find", &["app.find"]),
+        ("go-to", &["app.go_to"]),
+        ("rename", &["app.rename_character"]),
+        ("title-page", &["app.title_page"]),
+        ("about", &["help.about"]),
+        ("shortcuts", &["help.shortcuts"]),
+        ("whats-new", &["help.whats_new"]),
+        ("unsaved", &[]),
+        ("selection", &[]),
+        ("empty-script", &["file.new"]),
+        ("nothing-found", &["app.find"]),
+        ("open-failed", &[]),
+        ("save-failed", &[]),
+    ];
+    for theme in [egui::Theme::Light, egui::Theme::Dark] {
+        let suffix = if theme == egui::Theme::Dark { "dark" } else { "light" };
+        for (name, commands) in states {
+            let mut harness = Harness::builder()
+                .with_size(SIZE)
+                .with_pixels_per_point(PIXELS_PER_POINT)
+                .with_theme(theme)
+                .with_max_steps(64)
+                .build_eframe(|cc| StorytellerApp::without_menu(cc, Some(script.clone()), None, craft_settings::Location::Memory));
+            for each in [egui::Theme::Light, egui::Theme::Dark] {
+                harness.ctx.style_mut_of(each, |style| style.visuals.text_cursor.blink = false);
+            }
+            harness.state_mut().status.clear();
+            harness.run_steps(4);
+            harness.state_mut().editor.pending_focus = Some((6, 0));
+            harness.run_steps(6);
+            for command in commands {
+                harness.state_mut().queued.push((*command).into());
+            }
+            match name {
+                "find" | "nothing-found" => {
+                    harness.run_steps(3);
+                    if let Some(bar) = harness.state_mut().find.as_mut() {
+                        bar.text = if name == "find" { "drum" } else { "lighthouse" }.into();
+                    }
+                }
+                "open-failed" => harness.state_mut().open_path(&root.join("examples/Missing Draft.fdx")),
+                "save-failed" => {
+                    let app = harness.state_mut();
+                    app.session.path = Some(root.join("examples/no such folder/Field Station.fountain"));
+                    app.save(false);
+                }
+                "unsaved" => {
+                    harness.state_mut().session.dirty = true;
+                    harness.state_mut().prompt = Some(super::Pending::Close);
+                }
+                "selection" => {
+                    harness.run_steps(2);
+                    harness.key_press_modifiers(egui::Modifiers::SHIFT, egui::Key::End);
+                }
+                _ => {}
+            }
+            harness.run_steps(12);
+            let image = match harness.render() {
+                Ok(image) => image,
+                Err(error) => panic!("rendering {name}: {error}"),
+            };
+            let path = out.join(format!("{name}-{suffix}.png"));
+            if let Err(error) = write_png(&path, image.width(), image.height(), &image.into_raw()) {
+                panic!("{}: {error}", path.display());
+            }
+            println!("  {}", path.display());
+        }
+    }
+}

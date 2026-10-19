@@ -68,10 +68,10 @@ timestamp instead, ready to notarize; `--no-build` packages the binary already i
 
 ### The icon
 
-The icon is provisional, like the brand: `packaging/icons/mark.svg` is a copy of the mark in
-the website's `brand/storyteller` folder. When the brand changes, copy the new mark there
-and run `packaging/icons/make-icons.sh` on a Mac; it remakes `icon.icns`, `icon.ico` and the
-PNGs. Commit them together.
+The app icon and the document icons are drawn from the mark by `scripts/make-icons.py`
+(docs/BRAND.md says how). After the mark changes, run `python3 scripts/make-brand.py`, then
+`python3 scripts/make-icons.py` on a Mac; it remakes everything in `packaging/icons/`.
+Commit them together.
 
 ## Cutting a release
 

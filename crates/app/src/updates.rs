@@ -150,10 +150,8 @@ pub fn status_line(status: &Status) -> Option<String> {
     match (status.phase, status.said) {
         (_, Some(Said::Current)) => Some(format!("{} {} is up to date.", storyteller_engine::APP_NAME, env!("CARGO_PKG_VERSION"))),
         (_, Some(Said::ReadOnly)) | ("read-only", _) if status.manual || status.said.is_some() => status.message.clone(),
-        (_, Some(Said::Failed)) | ("failed", _) => {
-            Some(format!("Could not check for updates: {}", status.message.as_deref().unwrap_or("unknown error")))
-        }
-        (_, Some(Said::InstallFailed)) => Some("The update could not be installed; it is still ready to try again.".into()),
+        (_, Some(Said::Failed)) | ("failed", _) => Some(crate::messages::update_check_failed(status.message.as_deref())),
+        (_, Some(Said::InstallFailed)) => Some(crate::messages::update_install_failed(None)),
         ("checking", _) if status.manual => Some("Checking for updates…".into()),
         ("downloading", _) if status.manual => Some(format!("Downloading {version}…")),
         ("ready", _) => Some(format!("Version {version} is ready.")),
@@ -180,7 +178,10 @@ mod tests {
     #[test]
     fn status_lines() {
         assert_eq!(status_line(&status("idle", Some(Said::Current))).as_deref().map(|s| s.ends_with("is up to date.")), Some(true));
-        assert_eq!(status_line(&status("failed", Some(Said::Failed))).as_deref(), Some("Could not check for updates: offline"));
+        assert_eq!(
+            status_line(&status("failed", Some(Said::Failed))).as_deref(),
+            Some("Could not check for updates (offline). Help > Check for Updates tries again.")
+        );
         assert_eq!(status_line(&status("checking", None)).as_deref(), Some("Checking for updates…"));
         assert_eq!(status_line(&status("ready", None)).as_deref(), Some("Version 0.3.0 is ready."));
         assert_eq!(status_line(&Status { manual: false, ..status("checking", None) }), None, "automatic checks are quiet");
