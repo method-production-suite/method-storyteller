@@ -15,7 +15,7 @@ fn harness(script: &str) -> (Harness<'static, StorytellerApp>, tempfile::NamedTe
     let mut harness = Harness::builder()
         .with_size(egui::vec2(1280.0, 800.0))
         .with_max_steps(64)
-        .build_eframe(move |cc| StorytellerApp::without_menu(cc, Some(path), None, Location::Memory));
+        .build_eframe(move |cc| StorytellerApp::without_menu(cc, Some(path), None, Location::Memory, Default::default()));
     harness.run_steps(3);
     (harness, file)
 }
@@ -216,7 +216,7 @@ fn with_nothing_to_open_the_sample_is_shown_unsaved() {
     let mut harness = Harness::builder()
         .with_size(egui::vec2(1280.0, 800.0))
         .with_max_steps(64)
-        .build_eframe(|cc| StorytellerApp::without_menu(cc, None, None, Location::Memory));
+        .build_eframe(|cc| StorytellerApp::without_menu(cc, None, None, Location::Memory, Default::default()));
     harness.run_steps(3);
     let app = harness.state();
     assert!(app.showing_sample(), "the sample opens");
@@ -342,4 +342,17 @@ fn the_word_being_typed_is_not_underlined_yet() {
     let text = &harness.state().session.script.elements[1].text;
     let words: Vec<&str> = marks.iter().map(|&(s, e)| &text[s..e]).collect();
     assert_eq!(words, ["seismograf"], "the caret is at the end of glsas");
+}
+
+#[test]
+fn open_sample_at_start() {
+    // --check-for-updates is covered in sample.rs without running it: here it would reach the
+    // network.
+    let flags = super::StartFlags { open_sample: true, check_for_updates: false };
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1280.0, 800.0))
+        .with_max_steps(64)
+        .build_eframe(move |cc| StorytellerApp::without_menu(cc, None, None, Location::Memory, flags));
+    harness.run_steps(3);
+    assert!(harness.state().showing_sample(), "--open-sample opens the sample");
 }

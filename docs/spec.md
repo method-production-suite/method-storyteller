@@ -237,6 +237,12 @@ Limits: inputs over 32 MiB or 200 000 elements are refused with a message, not a
   Field Station, once, as an unsaved copy, with a quiet line saying so. A writer who already has
   scripts never sees it unasked. Save asks where to keep a copy; the bundled sample is never
   written. Help > Open Sample Script brings it back at any time.
+- At launch, a file named on the command line opens first, then a file opened from the Finder
+  (macOS hands a launch's files to the app before it finishes launching, so the sample never
+  shows first and is retired unshown), then the first-launch sample.
+- Command-line requests, for Method Launcher (SUITE-STANDARDS.md §3): `--open-sample` opens
+  the sample at start, unless a file was given; `--check-for-updates` runs Help > Check for
+  Updates on the first frame.
 
 ## 8. CLI
 

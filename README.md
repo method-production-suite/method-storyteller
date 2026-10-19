@@ -110,6 +110,9 @@ cargo run -p method-storyteller -- script.fountain --control 9876
 then send JSON lines to `127.0.0.1:9876`; see [docs/control-protocol.md](docs/control-protocol.md).
 `method-storyteller serve --control 9876` runs the same protocol headless.
 
+The app also takes `--open-sample` (open the sample script, Field Station) and
+`--check-for-updates` (check at start, as Help > Check for Updates does).
+
 ## Development
 
 `cargo xtask ci` runs every gate: `cargo fmt --check`, `cargo clippy --workspace --all-targets

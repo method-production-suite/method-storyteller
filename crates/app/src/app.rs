@@ -182,15 +182,21 @@ struct MenuEntry {
 }
 
 impl StorytellerApp {
-    pub fn new(cc: &eframe::CreationContext<'_>, file: Option<PathBuf>, control_port: Option<u16>) -> Self {
-        let mut app = Self::without_menu(cc, file, control_port, Location::Auto);
+    pub fn new(cc: &eframe::CreationContext<'_>, file: Option<PathBuf>, control_port: Option<u16>, flags: sample::StartFlags) -> Self {
+        let mut app = Self::without_menu(cc, file, control_port, Location::Auto, flags);
         app.install_menu(&cc.egui_ctx);
         app
     }
 
     /// The app without the macOS menu bar, which offscreen tests and pictures leave out.
     /// Tests pass [`Location::Memory`] so they never touch real settings.
-    fn without_menu(cc: &eframe::CreationContext<'_>, file: Option<PathBuf>, control_port: Option<u16>, settings: Location) -> Self {
+    fn without_menu(
+        cc: &eframe::CreationContext<'_>,
+        file: Option<PathBuf>,
+        control_port: Option<u16>,
+        settings: Location,
+        flags: sample::StartFlags,
+    ) -> Self {
         editor::install_fonts(&cc.egui_ctx);
         theme::apply(&cc.egui_ctx);
         // Settings in memory (tests) keep the updater's switch in memory too.
@@ -256,23 +262,23 @@ impl StorytellerApp {
             app.prefs.update(|p| p.general.last_seen_version = help::VERSION.to_string());
         }
         app.session.layout.show_scene_numbers = app.prefs.get().view.scene_numbers;
-        // A file opened from the Finder to launch the app arrives before the first frame.
-        let file = file.or_else(|| app.first_from_finder());
         let ctx = cc.egui_ctx.clone();
         storyteller_macos_open::set_wake(move || ctx.request_repaint());
-        // The first launch with nothing to open shows the sample, once. A writer who already has
-        // scripts (a file given, or recent files) retires it unshown.
+        // What to open (sample::launch_choice). The first launch retires the sample whatever
+        // opens: a writer who starts with their own script never sees it unasked.
+        let from_finder = app.first_from_finder();
         let general = &app.prefs.get().general;
         let first_launch = !general.sample_seen;
-        let show_sample = first_launch && general.recent.is_empty() && file.is_none();
+        let has_recent = !general.recent.is_empty();
         if first_launch {
             app.prefs.update(|p| p.general.sample_seen = true);
         }
-        if let Some(path) = file {
-            app.open_path(&path);
-        } else if show_sample {
-            app.open_sample();
+        match sample::launch_choice(file, from_finder, first_launch, has_recent, flags.open_sample) {
+            sample::LaunchOpen::File(path) => app.open_path(&path),
+            sample::LaunchOpen::Sample => app.open_sample(),
+            sample::LaunchOpen::Nothing => {}
         }
+        app.queued.extend(flags.commands().into_iter().map(String::from));
         if let Some(port) = control_port {
             let ctx = cc.egui_ctx.clone();
             match storyteller_engine::control::serve(port, move || ctx.request_repaint()) {
@@ -1590,6 +1596,7 @@ fn capitalise(text: &str) -> String {
 mod find_bar;
 #[path = "sample.rs"]
 mod sample;
+pub use sample::StartFlags;
 
 #[path = "spelling.rs"]
 mod spelling;
