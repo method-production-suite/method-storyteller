@@ -35,11 +35,19 @@ pub struct General {
     pub smart_quotes: bool,
     /// The version that last ran, so What's New opens once after an update.
     pub last_seen_version: String,
+    /// Words the writer added to spell check with Learn, lower case: the writer's dictionary.
+    pub learned_words: Vec<String>,
 }
 
 impl Default for General {
     fn default() -> Self {
-        General { recent: Vec::new(), new_script_format: "osf".into(), smart_quotes: true, last_seen_version: String::new() }
+        General {
+            recent: Vec::new(),
+            new_script_format: "osf".into(),
+            smart_quotes: true,
+            last_seen_version: String::new(),
+            learned_words: Vec::new(),
+        }
     }
 }
 
@@ -65,11 +73,13 @@ pub struct View {
     pub zoom: f32,
     /// Show the script as separate pages (on) or as one continuous column (off).
     pub page_view: bool,
+    /// Underline misspelled words as the writer types.
+    pub check_spelling: bool,
 }
 
 impl Default for View {
     fn default() -> Self {
-        View { navigator: true, scene_numbers: true, zoom: 1.0, page_view: true }
+        View { navigator: true, scene_numbers: true, zoom: 1.0, page_view: true, check_spelling: true }
     }
 }
 

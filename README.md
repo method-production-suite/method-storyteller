@@ -95,6 +95,7 @@ stderr) and will be removed in a future release.
 | Backspace at the start | Join with the previous element |
 | ⌘⌥G (Ctrl+Shift+G on Windows and Linux) | Go to a scene (by its number) or a page |
 | ⌘F, then Enter / Shift-Enter (⌘G / ⇧⌘G; F3 / Shift+F3 on Windows and Linux) | Find, next and previous; the find bar also replaces one match or all (one Undo) |
+| ⌘; | Spelling: step through words not in the dictionary, with suggestions; Change, Ignore (kept with the script) or Learn (yours, in every script). Misspelled words are underlined as you type (View > Check Spelling While Typing) |
 
 The status bar always shows what Tab and Enter will do next.
 

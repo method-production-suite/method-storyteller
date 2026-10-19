@@ -210,3 +210,34 @@ fn rename_onto_another_character_asks_to_merge() {
     assert!(harness.state().rename.is_none());
     assert_eq!(harness.state().session.script.elements[1].text, "EMMETT");
 }
+
+const SPELL_SCRIPT: &str = "INT. HUT - DAY\n\nNora taps the glsas. The seismograf is still.\n\nNORA\nOkay.\n";
+
+#[test]
+fn misspelled_words_are_underlined() {
+    let (harness, _file) = harness(SPELL_SCRIPT);
+    let marks = harness.state().editor.misspelled.get(&1).cloned().unwrap_or_default();
+    let text = &harness.state().session.script.elements[1].text;
+    let words: Vec<&str> = marks.iter().map(|&(s, e)| &text[s..e]).collect();
+    assert_eq!(words, ["glsas", "seismograf"]);
+    assert!(!harness.state().editor.misspelled.contains_key(&2), "a cue's name is known");
+}
+
+#[test]
+fn the_spelling_dialog_changes_ignores_and_learns() {
+    let (mut harness, _file) = harness(SPELL_SCRIPT);
+    harness.state_mut().queued.push("app.spelling".into());
+    harness.run_steps(3);
+    let current = harness.state().spelling.as_ref().and_then(|d| d.current.clone()).map(|c| c.3);
+    assert_eq!(current.as_deref(), Some("glsas"));
+    assert_eq!(harness.state().spelling.as_ref().map(|d| d.change_to.clone()).as_deref(), Some("glass"));
+    harness.get_by_label("Change").click();
+    harness.run_steps(3);
+    assert_eq!(harness.state().session.script.elements[1].text, "Nora taps the glass. The seismograf is still.");
+    assert_eq!(harness.state().spelling.as_ref().and_then(|d| d.current.clone()).map(|c| c.3).as_deref(), Some("seismograf"));
+    harness.get_by_label("Learn").click();
+    harness.run_steps(3);
+    assert_eq!(harness.state().prefs.get().general.learned_words, ["seismograf"], "learned words are kept in settings");
+    assert_eq!(harness.state().spelling.as_ref().map(|d| d.status.clone()).as_deref(), Some("No misspellings."));
+    assert!(harness.state().editor.misspelled.is_empty(), "nothing left to underline");
+}
