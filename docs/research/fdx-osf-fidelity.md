@@ -45,7 +45,7 @@ named factually here; how other apps behave is not described.
 | Locked pages and A-pages | exact | `LockedPages` (`Position` counts like note ranges) and `pages_locked` with `para@page_number`; a page starting inside a paragraph carries `method_storyteller_page` |
 | Element settings: font, size, styles, alignment, indents, space before, line spacing, page break, Enter and Tab | exact | `ElementSettings` and `styles`, in thousandths of an inch |
 | Page size, top and bottom margins, (MORE), (CONT'D), automatic continueds | exact | `PageLayout`, `MoresAndContinueds` and `settings` |
-| Words spell check ignores | exact | `SpellCheckIgnoreLists/IgnoredWords` and `<spelling><ignored>`, in lower case; OSF's user dictionary stays in the file |
+| Words spell check ignores | exact | `SpellCheckIgnoreLists/IgnoredWords` and `<spelling><ignored>`, as written; OSF's user dictionary stays in the file |
 | Pagination | exact | both formats paginate from the same model |
 | OSF revision colour names | approximated | OSF has a fixed palette without RGB: the name comes from the set's name, else the nearest page colour; the palette's RGB values are our choice |
 | `.fdx` lengths written to OSF | approximated | OSF counts tenths of a millimetre, coarser than `.fdx` hundredths of an inch; our own files bring the `.fdx` value back, and other apps get the nearest tenth |

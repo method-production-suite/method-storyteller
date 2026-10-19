@@ -162,7 +162,7 @@ const ROWS: &[Row] = &[
     Row {
         what: "Words spell check ignores",
         fidelity: Exact,
-        how: "`SpellCheckIgnoreLists/IgnoredWords` and `<spelling><ignored>`, in lower case; OSF's user dictionary stays in the file",
+        how: "`SpellCheckIgnoreLists/IgnoredWords` and `<spelling><ignored>`, as written; OSF's user dictionary stays in the file",
         check: Some(spelling_ignored),
     },
     Row { what: "Pagination", fidelity: Exact, how: "both formats paginate from the same model", check: Some(pagination) },

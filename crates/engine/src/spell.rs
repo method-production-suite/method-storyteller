@@ -37,7 +37,8 @@ pub struct Personal {
 impl Personal {
     fn knows(&self, word: &str, ignored: &[String]) -> bool {
         let lower = word.to_lowercase();
-        self.learned.contains(&lower) || ignored.contains(&lower)
+        // The script's ignored words keep the case they were written in; any case matches.
+        self.learned.contains(&lower) || ignored.iter().any(|w| w.to_lowercase() == lower)
     }
 }
 

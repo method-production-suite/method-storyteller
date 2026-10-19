@@ -1626,7 +1626,7 @@ fn loose(name: &[u8]) -> String {
 }
 
 /// The words in the child list `list` (compared loosely) of a section: each entry's text, or its
-/// `word` attribute. Lower case, each once, in order.
+/// `word` attribute. As written, each once whatever its case, in order.
 pub(crate) fn ignored_words(xml: &str, list: &str) -> Vec<String> {
     let mut reader = quick_xml::Reader::from_str(xml);
     let mut depth = 0usize;
@@ -1634,9 +1634,10 @@ pub(crate) fn ignored_words(xml: &str, list: &str) -> Vec<String> {
     let mut entry: Option<String> = None;
     let mut words: Vec<String> = Vec::new();
     let push = |word: &str, words: &mut Vec<String>| {
-        let word = word.trim().to_lowercase();
-        if !word.is_empty() && !words.contains(&word) && words.len() < MAX_ELEMENTS {
-            words.push(word);
+        let word = word.trim();
+        let lower = word.to_lowercase();
+        if !word.is_empty() && !words.iter().any(|w| w.to_lowercase() == lower) && words.len() < MAX_ELEMENTS {
+            words.push(word.to_string());
         }
     };
     while let Ok(event) = reader.read_event() {
