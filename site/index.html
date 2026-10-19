@@ -161,7 +161,7 @@
             <span class="group-teaser">Open formats, a command line, a control channel, and more</span>
           </summary>
           <ul class="feats">
-            <li><strong>Open formats, your choice</strong> Fountain by default, or Open Screenplay Format; File &gt; Save New Scripts as… sets which.</li>
+            <li><strong>Open formats, your choice</strong> Open Screenplay Format for new scripts, or Fountain; File &gt; Save New Scripts as… sets which.</li>
             <li><strong>.fdx and .fadein</strong> Opened and saved, keeping everything Method Storyteller does not use itself.</li>
             <li><strong>A command line</strong> <code>method-storyteller</code> converts, paginates, exports PDF and runs any command on a script file.</li>
             <li><strong>Scriptable</strong> Every action is a named command, and a JSON-lines control channel drives the app or a headless engine.</li>
@@ -188,18 +188,18 @@
       <h2 id="formats-title">Bring your scripts with you</h2>
       <div class="fmt-grid">
         <div class="fmt-card">
-          <h3>Fountain</h3>
-          <p>The default: plain text in an open format that any text editor reads.</p>
-          <ul class="fmt-list">
-            <li><span>.fountain</span> Open and save</li>
-          </ul>
-        </div>
-        <div class="fmt-card">
           <h3>Open Screenplay Format</h3>
-          <p>Structured XML that keeps more production detail.</p>
+          <p>The standard for new scripts: structured XML that keeps production detail.</p>
           <ul class="fmt-list">
             <li><span>.osf</span> Open and save</li>
             <li><span>.fadein</span> Open and save</li>
+          </ul>
+        </div>
+        <div class="fmt-card">
+          <h3>Fountain</h3>
+          <p>Plain text in an open format that any text editor reads.</p>
+          <ul class="fmt-list">
+            <li><span>.fountain</span> Open and save</li>
           </ul>
         </div>
         <div class="fmt-card">
@@ -221,20 +221,20 @@
       <p class="kicker">Yours to keep</p>
       <h2 id="open-title">Your script is a file you own</h2>
       <ul class="points">
-        <li><strong>Plain text by default.</strong> A Fountain script opens in any text editor,
-          now and in twenty years, and sits happily in version control.</li>
+        <li><strong>Open formats.</strong> New scripts are Open Screenplay Format, structured XML
+          that any program can read. Prefer plain text? Fountain opens in any text editor, now and
+          in twenty years, and sits happily in version control.</li>
         <li><strong>Nothing leaves your computer.</strong> No account, no cloud, and the app
           works offline.</li>
         <li><strong>Free and open source.</strong> MIT or Apache-2.0, at your option.</li>
       </ul>
-<pre class="code"><code><span class="c">// a scene, as it sits in the file</span>
-<span class="k">INT. FIELD STATION - MAIN ROOM - NIGHT</span>
-
-Nora sits at the bench with the seismograph.
-
-<span class="k">NORA</span>
-(quietly)
-Okay.</code></pre>
+<pre class="code"><code><span class="c">&lt;!-- a scene, as it sits in an .osf file --&gt;</span>
+&lt;para&gt;&lt;style basestylename=<span class="k">"Scene Heading"</span>/&gt;
+  &lt;text&gt;INT. FIELD STATION - MAIN ROOM - NIGHT&lt;/text&gt;&lt;/para&gt;
+&lt;para&gt;&lt;style basestylename=<span class="k">"Action"</span>/&gt;
+  &lt;text&gt;Nora sits at the bench with the seismograph.&lt;/text&gt;&lt;/para&gt;
+&lt;para&gt;&lt;style basestylename=<span class="k">"Character"</span>/&gt;&lt;text&gt;NORA&lt;/text&gt;&lt;/para&gt;
+&lt;para&gt;&lt;style basestylename=<span class="k">"Dialogue"</span>/&gt;&lt;text&gt;Okay.&lt;/text&gt;&lt;/para&gt;</code></pre>
     </div>
   </section>
 

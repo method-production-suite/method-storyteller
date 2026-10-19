@@ -62,7 +62,8 @@ impl Session {
         Session {
             script,
             path: None,
-            format: FileFormat::Fountain,
+            // New scripts are Open Screenplay Format, the standard; Fountain is one choice away.
+            format: FileFormat::Osf,
             dirty: false,
             caret: Caret::default(),
             layout,

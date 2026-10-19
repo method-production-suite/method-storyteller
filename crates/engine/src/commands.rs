@@ -595,7 +595,7 @@ fn all_commands() -> Vec<Command> {
                 files::save(&s.script, &path, s.format, &s.layout).map_err(|e| CommandError::Failed(e.to_string()))?;
                 s.dirty = false;
                 s.break_typing();
-                Ok(Outcome::message(format!("Saved {}", path.display())))
+                Ok(Outcome::message(files::saved_message("Saved", &path, &s.script, s.format)))
             },
         },
         Command {
@@ -616,7 +616,7 @@ fn all_commands() -> Vec<Command> {
                 s.format = format;
                 s.dirty = false;
                 s.break_typing();
-                Ok(Outcome::message(format!("Saved {}", path.display())))
+                Ok(Outcome::message(files::saved_message("Saved", &path, &s.script, format)))
             },
         },
         Command {
@@ -648,7 +648,7 @@ fn all_commands() -> Vec<Command> {
                 let path = path(p, "path")?;
                 let format = if FileFormat::from_path(&path) == FileFormat::FadeIn { FileFormat::FadeIn } else { FileFormat::Osf };
                 files::save(&s.script, &path, format, &s.layout).map_err(|e| CommandError::Failed(e.to_string()))?;
-                Ok(Outcome::message(format!("Exported {}", path.display())))
+                Ok(Outcome::message(files::saved_message("Exported", &path, &s.script, format)))
             },
         },
         Command {
@@ -1158,5 +1158,5 @@ fn all_commands() -> Vec<Command> {
 fn export(session: &mut Session, params: &Params, format: FileFormat) -> Result<Outcome, CommandError> {
     let path = path(params, "path")?;
     files::save(&session.script, &path, format, &session.layout).map_err(|e| CommandError::Failed(e.to_string()))?;
-    Ok(Outcome::message(format!("Exported {}", path.display())))
+    Ok(Outcome::message(files::saved_message("Exported", &path, &session.script, format)))
 }
