@@ -42,7 +42,7 @@ const INLINE_NOTE_ATTR: &str = "StorytellerInline";
 /// The paragraph type written for an element: its imported type while its kind is unchanged,
 /// otherwise Final Draft's name for the kind. Sections and synopses use Final Draft's
 /// `Outline 1`–`Outline 4` and `Summary`.
-fn fdx_type(element: &Element) -> String {
+pub(crate) fn fdx_type(element: &Element) -> String {
     if let Some(fdx) = &element.fdx
         && fdx.kind == element.kind
     {

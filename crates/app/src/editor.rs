@@ -154,9 +154,11 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
     let page_width = f32::from(layout.page_columns) * col;
     let page_height = f32::from(layout.page_rows) * row;
     let top_margin = f32::from(layout.body_top) * row;
-    let ink = Color32::from_gray(25);
-    let faint = crate::theme::faint_ink();
+    let ink = crate::theme::PAGE_INK;
+    let faint = crate::theme::PAGE_MUTED;
     let count = session.script.elements.len();
+    // A script with nothing in it yet says how to start, on its one empty line.
+    let empty_script = matches!(session.script.elements.as_slice(), [only] if only.text.is_empty());
     let automatic = if layout.auto_contd { paginate::auto_contd(&session.script) } else { Vec::new() };
     // egui drops focus on Esc before any widget sees it; Esc closes popups here, so give the
     // caret back to the element it was in.
@@ -175,6 +177,8 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
     }
     editor.focused = None;
 
+    // No fade at the scroll edges: on the desk it reads as a smudge across the white page.
+    ui.spacing_mut().scroll.fade.strength = 0.0;
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         let side = ((ui.available_width() - page_width) / 2.0).max(8.0);
         ui.add_space(row * 1.5);
@@ -190,7 +194,7 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                     let mut sheets: Vec<(f32, f32, u32)> = Vec::new();
                     let mut sheet_page = 1u32;
                     ui.add_space(top_margin);
-                    *ui.visuals_mut() = egui::Visuals::light();
+                    *ui.visuals_mut() = crate::theme::page_visuals();
                     ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
                     // A text box is exactly one script line tall, at any zoom.
                     ui.spacing_mut().interact_size.y = row;
@@ -281,7 +285,11 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                                     .lock_focus(true)
                                     .font(box_font.clone())
                                     .horizontal_align(text_align)
-                                    .hint_text(egui::RichText::new(kind.label()).color(Color32::from_gray(205)).font(font.clone()))
+                                    .hint_text(
+                                        egui::RichText::new(if empty_script { crate::messages::EMPTY_SCRIPT_HINT } else { kind.label() })
+                                            .color(crate::theme::PAGE_MUTED)
+                                            .font(font.clone()),
+                                    )
                                     .layouter(&mut layouter)
                                     .show(ui)
                             })
@@ -378,7 +386,7 @@ fn paper_shapes(sheets: &[(f32, f32, u32)], left: f32, width: f32, pages: bool) 
         for (spread, alpha) in [(6.0, 10u8), (3.0, 18), (1.0, 34)] {
             shapes.push(egui::Shape::rect_filled(rect.expand(spread).translate(vec2(0.0, spread * 0.5)), 3.0, Color32::from_black_alpha(alpha)));
         }
-        shapes.push(egui::Shape::rect_filled(rect, 1.0, Color32::WHITE));
+        shapes.push(egui::Shape::rect_filled(rect, 1.0, crate::theme::PAGE));
     }
     shapes
 }
@@ -454,7 +462,7 @@ fn page_break_marker(ui: &mut Ui, page: u32, row: f32, font: &FontId, color: Col
     let painter = ui.painter();
     let mut x = rect.left();
     while x < rect.right() {
-        painter.line_segment([pos2(x, y), pos2((x + 6.0).min(rect.right()), y)], Stroke::new(1.0, Color32::from_gray(190)));
+        painter.line_segment([pos2(x, y), pos2((x + 6.0).min(rect.right()), y)], Stroke::new(1.0, crate::theme::PAGE_RULE));
         x += 12.0;
     }
     painter.text(
