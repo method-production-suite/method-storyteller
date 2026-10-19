@@ -109,6 +109,7 @@ fn forced_elements_round_trip() {
         ],
         fdx: None,
         osf: None,
+        boneyard_end: Vec::new(),
     });
     round_trip(Script {
         title_page: title,
@@ -127,6 +128,7 @@ fn forced_elements_round_trip() {
         ],
         fdx: None,
         osf: None,
+        boneyard_end: Vec::new(),
     });
 }
 
@@ -153,4 +155,38 @@ fn spec_examples() {
     // A two-space line keeps dialogue going.
     let script = fountain::parse("DEALER\nTen.\n  \nJack.").unwrap();
     assert_eq!(script.elements[1].text, "Ten.\n\nJack.");
+}
+
+/// The boneyard is kept: every `/* … */` block goes with the paragraph it stood before, is never
+/// printed, and comes back where it was.
+#[test]
+fn boneyard_is_kept_and_written_back() {
+    use storyteller_core::ElementKind as K;
+    let source = "INT. HUT - DAY\n\n/* A cut line.\n\nTwo paragraphs of it. */\n\nNora taps the glass.\n\nNORA\n(quietly)\n/* a cut beat */\nOkay.\n\nShe waits./* inline aside */\n\n/* the old ending */\n";
+    let script = fountain::parse(source).unwrap();
+    let kinds: Vec<K> = script.elements.iter().map(|e| e.kind).collect();
+    assert_eq!(kinds, [K::SceneHeading, K::Action, K::Character, K::Parenthetical, K::Dialogue, K::Action], "no paragraph is made of a block");
+    assert_eq!(script.elements[1].boneyard, ["/* A cut line.\n\nTwo paragraphs of it. */"]);
+    assert_eq!(script.elements[1].text, "Nora taps the glass.");
+    assert_eq!(script.elements[4].boneyard, ["/* a cut beat */"], "a block inside a speech stays with the line after it");
+    assert_eq!(script.elements[4].text, "Okay.");
+    assert_eq!(script.elements[5].text, "She waits.");
+    assert_eq!(script.elements[5].boneyard, ["/* inline aside */"], "an inline block keeps its text, beside its paragraph");
+    assert_eq!(script.boneyard_end, ["/* the old ending */"]);
+    // Never printed.
+    let pages = storyteller_core::paginate::paginate(&script, &storyteller_core::layout::Layout::default());
+    let printed: String = pages.pages.iter().flat_map(|p| p.lines.iter().map(|l| l.text())).collect::<Vec<_>>().join("\n");
+    assert!(!printed.contains("cut") && !printed.contains("ending") && !printed.contains("aside"), "{printed}");
+    // Written back, and read again the same.
+    let written = fountain::write(&script);
+    assert!(written.contains("/* A cut line.\n\nTwo paragraphs of it. */\n\nNora taps the glass."), "{written}");
+    assert!(written.contains("(quietly)\n/* a cut beat */\nOkay."), "the speech holds together: {written}");
+    assert_eq!(fountain::parse(&written).unwrap(), script);
+}
+
+#[test]
+fn boneyard_in_the_title_page_moves_to_the_first_paragraph() {
+    let script = fountain::parse("Title: PROBE /* working title */\n\nINT. A - DAY\n\nx\n").unwrap();
+    assert_eq!(script.title_page.get("Title"), Some("PROBE"));
+    assert_eq!(script.elements[0].boneyard, ["/* working title */"]);
 }

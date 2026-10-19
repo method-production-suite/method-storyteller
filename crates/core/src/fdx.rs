@@ -625,7 +625,7 @@ impl Importer {
                 FdxSection::Raw(_) => None,
             })
             .unwrap_or_default();
-        Script { title_page, elements: self.elements, fdx: Some(Box::new(self.document)), osf: None }
+        Script { title_page, elements: self.elements, fdx: Some(Box::new(self.document)), osf: None, boneyard_end: Vec::new() }
     }
 }
 

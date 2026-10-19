@@ -399,7 +399,7 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
             document.sections.push(OsfSection::Raw(section.raw.clone()));
         }
     }
-    Ok(Script { title_page, elements, fdx: None, osf: Some(Box::new(document)) })
+    Ok(Script { title_page, elements, fdx: None, osf: Some(Box::new(document)), boneyard_end: Vec::new() })
 }
 
 fn read_para(para: Para, styles: &Styles, elements: &mut Vec<Element>, dual_next: &mut bool) -> Result<(), CoreError> {

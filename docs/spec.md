@@ -208,7 +208,7 @@ files.
 
 | Format | Read | Write | Notes |
 | --- | --- | --- | --- |
-| Fountain (`.fountain`, `.spmd`, `.txt`) | ✓ | ✓ | A working format (the default). Round-trip is lossless for everything we model. |
+| Fountain (`.fountain`, `.spmd`, `.txt`) | ✓ | ✓ | A working format. Round-trip is lossless for everything we model. The boneyard (`/* … */`) is kept with the paragraph it stood before, never printed, and written back; an inline block comes back as its own paragraph beside it, and deleting a paragraph deletes its boneyard. |
 | Final Draft XML (`.fdx`) | ✓ | ✓ | Paragraph types, text styles, scene numbers, dual dialogue, title page. v1 keeps every part it does not model (revisions, tags, settings, Beat Board and so on) and writes it back unchanged. Only direct children of `Content` and `DualDialogue` are script paragraphs. Outline and summary text is written as Final Draft's `Outline 1–4` and `Summary` types, not `Section` and `Synopsis`. |
 | Open Screenplay Format (`.osf`, and `.fadein`, a ZIP holding it) | ✓ | ✓ | Elements, emphasis, scene numbers, dual dialogue, notes, synopses, title page, page layout and element styles. Reads versions 1.2 to 4.0 in all their spellings; writes 3.0 for new documents and an imported document's own version otherwise. Keeps every part it does not model (settings, styles, lists, revision marks, vendor data) and writes it back. Sections, and synopses not attached to a paragraph, carry a `<method_storyteller kind="…"/>` marker. |
 | PDF | – | ✓ | Courier Prime embedded, selectable text, a bookmark per scene. |
