@@ -1050,7 +1050,7 @@ impl StorytellerApp {
     fn title_page_dialog(&mut self, ctx: &egui::Context) {
         let Some(draft) = &mut self.title_dialog else { return };
         let mut done = None;
-        egui::Window::new("Title Page").collapsible(false).resizable(false).show(ctx, |ui| {
+        theme::centered(egui::Window::new("Title Page").collapsible(false).resizable(false), ctx).show(ctx, |ui| {
             egui::Grid::new("storyteller.title_grid").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
                 for (key, value) in &mut draft.fields {
                     ui.label(key.as_str());
@@ -1252,7 +1252,7 @@ impl StorytellerApp {
             return;
         }
         let mut answer = None;
-        egui::Modal::new(egui::Id::new("storyteller.unsaved")).show(ctx, |ui| {
+        egui::Modal::new(egui::Id::new("storyteller.unsaved")).frame(theme::modal_frame(&ctx.global_style())).show(ctx, |ui| {
             ui.heading("Save changes?");
             ui.label(format!("“{}” has changes that are not saved.", self.session.title().trim_end_matches(" — edited")));
             ui.add_space(theme::SPACE_2);

@@ -22,8 +22,7 @@ pub struct Palette {
     pub control_hover: Color32,
     /// Text.
     pub ink: Color32,
-    /// Secondary text.
-    #[allow(dead_code, reason = "a family token; the empty and error states use it")]
+    /// Labels and other running text in the interface; `ink` is kept for what stands out.
     pub ink_soft: Color32,
     /// Captions, hints, counts.
     pub muted: Color32,
@@ -101,6 +100,8 @@ pub const PAGE_MUTED: Color32 = rgb(0x707070);
 pub const PAGE_RULE: Color32 = rgb(0xC4C4C4);
 /// A find match on the page: the accent as a light wash.
 pub const FIND_MARK: Color32 = rgb(0xEBBCC8);
+/// Selected text on the page: a lighter wash, so a find match inside it still shows.
+pub const PAGE_SELECTION: Color32 = rgb(0xF5D9E0);
 
 // The type scale, in points. The interface uses the system's own faces; the script is
 // Courier Prime at 12 pt, set by the editor.
@@ -129,6 +130,27 @@ pub const NAV_ROW_HEIGHT: f32 = 24.0;
 pub const RADIUS_CONTROL: u8 = 6;
 pub const RADIUS_MENU: u8 = 8;
 pub const RADIUS_WINDOW: u8 = 10;
+
+/// How the page draws its text boxes, in both themes: white paper, the light accent for the
+/// caret and the selection, no box around a field.
+pub fn page_visuals() -> egui::Visuals {
+    let mut visuals = egui::Visuals::light();
+    visuals.selection.bg_fill = PAGE_SELECTION;
+    visuals.selection.stroke = Stroke::new(1.0, LIGHT.accent_strong);
+    visuals.text_cursor.stroke = Stroke::new(2.0, LIGHT.accent);
+    visuals.hyperlink_color = LIGHT.accent;
+    visuals
+}
+
+/// A window that opens in the middle of the app's window, as a dialog should.
+pub fn centered<'a>(window: egui::Window<'a>, ctx: &egui::Context) -> egui::Window<'a> {
+    window.pivot(egui::Align2::CENTER_CENTER).default_pos(ctx.content_rect().center())
+}
+
+/// The frame for a modal question: a window's fill, corners and margin.
+pub fn modal_frame(style: &egui::Style) -> egui::Frame {
+    egui::Frame::popup(style).inner_margin(SPACE_4).corner_radius(CornerRadius::same(RADIUS_WINDOW))
+}
 
 const fn rgb(hex: u32) -> Color32 {
     Color32::from_rgb((hex >> 16) as u8, (hex >> 8) as u8, hex as u8)
@@ -173,7 +195,7 @@ pub fn apply(ctx: &egui::Context) {
             widgets.noninteractive.bg_fill = p.panel;
             widgets.noninteractive.weak_bg_fill = p.panel;
             widgets.noninteractive.bg_stroke = Stroke::new(1.0, p.rule);
-            widgets.noninteractive.fg_stroke = Stroke::new(1.0, p.ink);
+            widgets.noninteractive.fg_stroke = Stroke::new(1.0, p.ink_soft);
             for (widget, fill) in
                 [(&mut widgets.inactive, p.control), (&mut widgets.hovered, p.control_hover), (&mut widgets.active, p.control_hover)]
             {
@@ -248,9 +270,14 @@ mod tests {
                 }
             }
         }
-        for (pair, fg, bg) in
-            [("page ink on page", PAGE_INK, PAGE), ("page muted on page", PAGE_MUTED, PAGE), ("page ink on find mark", PAGE_INK, FIND_MARK)]
-        {
+        for (pair, fg, bg) in [
+            ("page ink on page", PAGE_INK, PAGE),
+            ("page muted on page", PAGE_MUTED, PAGE),
+            ("page ink on find mark", PAGE_INK, FIND_MARK),
+            ("page ink on selection", PAGE_INK, PAGE_SELECTION),
+            ("accent on page", LIGHT.accent, PAGE),
+            ("selected text on selection", LIGHT.accent_strong, PAGE_SELECTION),
+        ] {
             let ratio = contrast(fg, bg);
             if ratio < 4.5 {
                 failures.push(format!("{pair}: {ratio:.2}, needs 4.5"));
@@ -265,9 +292,14 @@ mod tests {
         for ((pair, fg, bg, needs), (_, dfg, dbg, _)) in pairs(&LIGHT).into_iter().zip(pairs(&DARK)) {
             println!("| {pair} | {:.2} | {:.2} | {needs} |", contrast(fg, bg), contrast(dfg, dbg));
         }
-        for (pair, fg, bg) in
-            [("page ink on page", PAGE_INK, PAGE), ("page muted on page", PAGE_MUTED, PAGE), ("page ink on find mark", PAGE_INK, FIND_MARK)]
-        {
+        for (pair, fg, bg) in [
+            ("page ink on page", PAGE_INK, PAGE),
+            ("page muted on page", PAGE_MUTED, PAGE),
+            ("page ink on find mark", PAGE_INK, FIND_MARK),
+            ("page ink on selection", PAGE_INK, PAGE_SELECTION),
+            ("accent on page", LIGHT.accent, PAGE),
+            ("selected text on selection", LIGHT.accent_strong, PAGE_SELECTION),
+        ] {
             println!("| {pair} | {:.2} | {:.2} | 4.5 |", contrast(fg, bg), contrast(fg, bg));
         }
     }
