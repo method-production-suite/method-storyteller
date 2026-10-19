@@ -47,10 +47,10 @@ jobs:
             echo "rust=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          others="$(git diff --name-only "$base" HEAD \
-            | grep -Ev '(\.md$|^docs/|^site/|^assets/screens/)' || true)"
-          built="$(git diff --name-only "$base" HEAD \
-            | grep -E '^(CHANGELOG\.md|ATTRIBUTION\.md|docs/releases/)' || true)"
+          # On its own line, so a failing diff stops the job instead of reading as docs-only.
+          files="$(git diff --name-only "$base" HEAD)"
+          others="$(printf '%s\n' "$files" | grep -Ev '(\.md$|^docs/|^site/|^assets/screens/)' || true)"
+          built="$(printf '%s\n' "$files" | grep -E '^(CHANGELOG\.md|ATTRIBUTION\.md|docs/releases/)' || true)"
           others="$others$built"
           if [ -n "$others" ]; then
             echo "rust=true" >> "$GITHUB_OUTPUT"
@@ -58,16 +58,17 @@ jobs:
             echo "Docs-only change: the Rust build is skipped."
             echo "rust=false" >> "$GITHUB_OUTPUT"
           fi
-  gates:
+  # The gates, one job per system rather than a matrix: a matrix job skipped by a job-level `if:`
+  # reports one check named `gates` instead of the three required ones, which then never finish
+  # (SUITE-STANDARDS.md §6, actions/runner#952). Each job keeps the matrix's check name.
+  # In each: no incremental state and line-tables-only debug info keep target, and so the cache,
+  # small; only main saves the cache, so pull requests restore main's and never write their own
+  # and the repository stays under GitHub's 10 GB.
+  gates-linux:
+    name: gates (ubuntu-latest)
     needs: changes
     if: needs.changes.outputs.rust == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    # SUITE-STANDARDS.md §6: no incremental state and line-tables-only debug info keep the
-    # target folder, and so the cache, small.
+    runs-on: ubuntu-latest
     env:
       CARGO_INCREMENTAL: 0
       CARGO_PROFILE_DEV_DEBUG: line-tables-only
@@ -86,11 +87,70 @@ jobs:
           key: gates-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: gates-${{ runner.os }}-
       - name: Linux packages for eframe
-        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libgl1-mesa-dev libwayland-dev
       - run: cargo xtask ci
-      # Only main saves (SUITE-STANDARDS.md §6): a pull request restores main's cache and never
-      # writes its own, so the repository stays under GitHub's 10 GB and main's cache is kept.
+      - if: github.ref == 'refs/heads/main' && steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: gates-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+  gates-macos:
+    name: gates (macos-latest)
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: macos-latest
+    env:
+      CARGO_INCREMENTAL: 0
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
+      CARGO_PROFILE_TEST_DEBUG: line-tables-only
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: gates-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: gates-${{ runner.os }}-
+      - run: cargo xtask ci
+      - if: github.ref == 'refs/heads/main' && steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: gates-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+  gates-windows:
+    name: gates (windows-latest)
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: windows-latest
+    env:
+      CARGO_INCREMENTAL: 0
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
+      CARGO_PROFILE_TEST_DEBUG: line-tables-only
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: gates-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: gates-${{ runner.os }}-
+      - run: cargo xtask ci
       - if: github.ref == 'refs/heads/main' && steps.cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
