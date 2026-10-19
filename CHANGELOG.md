@@ -18,7 +18,11 @@ The first release.
   into an empty line.
 - Spell check as you type: misspelled words are underlined, and Edit > Spelling… (⌘;) steps
   through them with suggestions, Change, Ignore and Learn.
-- Cut, Copy, Paste and Select All in the Edit menu.
+- Cut, Copy and Paste in the Edit menu, and Select All, which selects the paragraph you are
+  in. Keyboard Shortcuts lists their keys.
+- Edit > Copy Scene, or a right-click on a scene in the navigator, copies the whole scene:
+  pasted back it is the same elements, pasted elsewhere it reads as a screenplay. Pasting
+  screenplay text in several paragraphs makes headings, action, characters and dialogue.
 - The scene navigator: every scene with its number, page and length in eighths. A click goes
   straight into the scene's action, ready to type.
 - Go To a scene or a page, find and replace with one Undo for Replace All, and rename a
@@ -27,7 +31,8 @@ The first release.
   `(CONT'D)` at page breaks.
 - Save in Open Screenplay Format, the standard for new scripts, or Fountain (File > Save New
   Scripts as).
-- Open and save `.fdx` and `.fadein` files; export PDF with a bookmark for each scene.
+- Open and save `.fdx` files, and Open Screenplay Format in a ZIP archive; export PDF with a
+  bookmark for each scene.
 - Script notes, revision sets and revised text, locked pages and A-pages, element settings and
   page layout, and the words spell check ignores carry over between `.fdx` and Open Screenplay
   Format, both ways.

@@ -226,6 +226,17 @@ fn with_nothing_to_open_the_sample_is_shown_unsaved() {
     assert_eq!(app.display_title(), "Field Station (sample)");
     assert_eq!(app.status, super::sample::SAMPLE_LINE);
     assert!(app.prefs.get().general.sample_seen, "shown once");
+    assert!(app.prefs.get().view.check_spelling, "with checking on");
+    assert!(
+        app.editor.misspelled.is_empty(),
+        "the showcase opens with no spelling underlines: {:?}",
+        app.editor.misspelled.keys().take(5).collect::<Vec<_>>()
+    );
+    // A new script takes the sample's title and its line away.
+    harness.state_mut().queued.push("file.new".into());
+    harness.run_steps(3);
+    assert_eq!(harness.state().display_title(), "Untitled");
+    assert!(harness.state().status.is_empty(), "the sample's line goes with it: {:?}", harness.state().status);
 }
 
 #[test]
@@ -276,7 +287,8 @@ fn edit_cut_from_the_window_menu_cuts_the_selection() {
     // Through the menu drawn in the window, as on Linux and Windows: the click takes the focus.
     harness.get_by_label("Edit").click();
     harness.run_steps(2);
-    harness.get_by_label("Cut").click();
+    // The item shows its key beside the label (Cut ⌘X), so match the label's start.
+    harness.get_by_label_contains("Cut").click();
     harness.run_steps(4);
     assert_eq!(harness.state().session.script.elements[1].text, "", "the selected paragraph is cut");
     let id = egui::Id::new(("storyteller.element", 1));
@@ -433,4 +445,42 @@ fn copy_scene_puts_the_scene_on_the_clipboard() {
     assert!(copied[0].starts_with("EXT. RIDGE - DAWN") && copied[0].contains("NORA\nIt held.") && !copied[0].contains("HUT"), "{copied:?}");
     harness.run_steps(2);
     assert_eq!(harness.state().status, "Copied the scene (3 elements)");
+}
+
+#[test]
+fn go_to_by_typing_moves_the_highlight_and_the_page_tab_takes_the_keyboard() {
+    let (mut harness, _file) = harness(SCRIPT);
+    harness.state_mut().editor.pending_focus = Some((1, 0));
+    harness.run_steps(3);
+    assert_eq!(harness.state().current_scene(), 1);
+    open_go_to(&mut harness);
+    // The Page tab, clicked: the number field has the keyboard, so typing goes in.
+    harness.get_by_label("Page").click();
+    harness.run_steps(3);
+    harness.get_by_label("Scene").click();
+    harness.run_steps(3);
+    harness.input_mut().events.push(egui::Event::Text("5".into()));
+    harness.run_steps(2);
+    assert_eq!(harness.state().go_to.as_ref().map(|d| d.text.clone()).as_deref(), Some("5"), "typing after a tab click reaches the field");
+    harness.key_press(egui::Key::Enter);
+    harness.run_steps(4);
+    assert!(harness.state().go_to.is_none());
+    let caret = harness.state().session.caret.element;
+    assert_eq!(caret, 4, "scene 5's heading");
+    assert_eq!(harness.state().current_scene(), 3, "the navigator highlights the scene gone to");
+    assert_eq!(harness.state().editor.focused, Some(4), "and the editor has the keyboard there");
+}
+
+#[test]
+fn cut_copy_paste_keys_are_listed_but_left_to_the_text_fields() {
+    let (harness, _file) = harness(SCRIPT);
+    let rows = harness.state().shortcut_rows(&harness.ctx);
+    for label in ["Cut", "Copy", "Paste", "Select All"] {
+        let row = rows.iter().find(|r| r.label == label).unwrap_or_else(|| panic!("Keyboard Shortcuts lists {label}"));
+        assert!(!row.keys.is_empty(), "{label} shows its keys");
+    }
+    let bound: Vec<&str> = harness.state().shortcuts.iter().map(|(_, id)| *id).collect();
+    for id in ["app.cut", "app.copy", "app.paste", "app.select_all"] {
+        assert!(!bound.contains(&id), "{id} is not bound: the text fields keep its keys");
+    }
 }

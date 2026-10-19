@@ -73,8 +73,10 @@ says otherwise.
 ### Tests that need the owner's hands
 
 - **v0.2.0 hands-on test (about 25 minutes, before the tag).** With the build from `main`
-  (`cargo xtask bundle-macos`, then open `target/bundle/macos/Method Storyteller.app`), or the
-  draft release's `.dmg` once it exists. Say what feels wrong at any step.
+  (`cargo xtask bundle-macos`), or the draft release's `.dmg` once it exists. Copy the app into
+  an Applications folder first (`~/Applications` will do) and open it from there: macOS does
+  not use an app in a temporary or build folder for a Finder double-click. Say what feels wrong
+  at any step.
   1. *First launch (2 min).* If you have never run Storyteller, Field Station opens as
      "Field Station (sample)" with a quiet line under the page. Quit and reopen: it does not
      come back. Help > Open Sample Script brings it back.
@@ -87,7 +89,9 @@ says otherwise.
   4. *Navigating (4 min).* In Field Station: click scenes in the navigator (the caret lands in
      each scene's action, and typing goes there); ⌘⌥G to scene 40 and to page 60; ⌘F a word,
      Enter and ⇧Enter, Replace All, then one ⌘Z undoes it all.
-  5. *Edit menu (2 min).* Select a word, then Edit > Cut, Edit > Paste, Edit > Select All.
+  5. *Edit menu (3 min).* Select a word, then Edit > Cut and Edit > Paste; Edit > Select All
+     selects the paragraph. Right-click a scene in the navigator, Copy Scene, and paste it into
+     an empty line of a new script: it comes back as the same scene.
   6. *Files (6 min).* Save Field Station as `.osf` on the Desktop, quit, double-click it in the
      Finder: it opens. Export `.fdx`, Fountain and PDF (File menu); open the PDF and check a few
      page breaks and the scene bookmarks. Double-click the `.fdx` and the `.fountain` too, and
