@@ -1,5 +1,5 @@
-//! Method Storyteller core: the screenplay document model, the Fountain and Final Draft (FDX)
-//! formats, and industry-standard pagination.
+//! Method Storyteller core: the screenplay document model, the Fountain, Final Draft (FDX) and
+//! Open Screenplay Format files, and industry-standard pagination.
 //!
 //! Pure Rust, no UI and no filesystem access, so it also builds for `wasm32-unknown-unknown`.
 //! Every parser treats its input as hostile: sizes are capped, loops are bounded and nothing
@@ -7,6 +7,7 @@
 
 pub mod autocomplete;
 pub mod fdx;
+pub mod format;
 pub mod fountain;
 pub mod inline;
 pub mod layout;
@@ -15,6 +16,7 @@ pub mod osf;
 pub mod paginate;
 pub mod wrap;
 
+pub use format::{ElementFormat, Format, PageFormat};
 pub use model::{
     ArchiveEntry, Element, ElementKind, FdxDocument, FdxNote, FdxNoteForm, FdxParagraph, FdxSection, OsfDocument, OsfParagraph, OsfSection,
     PageStart, Revised, RevisionSet, Revisions, Script, ScriptNote, TitlePage,

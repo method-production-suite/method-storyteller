@@ -280,6 +280,8 @@ pub struct OsfDocument {
     pub revisions: Option<Revisions>,
     /// Whether `settings@pages_locked` was on.
     pub pages_locked: bool,
+    /// The page layout and styles as read; written back as they were while they are the same.
+    pub format: Option<crate::format::Format>,
 }
 
 /// A member of a ZIP archive, kept compressed exactly as read so it can be written back.
@@ -338,6 +340,9 @@ pub struct FdxDocument {
     /// The `LockedPages` list as read, each page with its `Position` in the script. Written back
     /// as it was while the script's page starts are the same.
     pub locked_pages: Vec<(u32, PageStart)>,
+    /// The page layout and element settings as read; their sections are written back as they
+    /// were while they are the same.
+    pub format: Option<crate::format::Format>,
 }
 
 /// One top-level section of an imported Final Draft document.
@@ -648,6 +653,9 @@ pub struct Script {
     /// Revision sets and the active set.
     #[serde(default, skip_serializing_if = "Revisions::is_empty")]
     pub revisions: Revisions,
+    /// Page layout and element settings from the file it came from.
+    #[serde(default, skip_serializing_if = "crate::format::Format::is_empty")]
+    pub format: crate::format::Format,
     /// Final Draft data from an imported `.fdx` that the model does not use; written back on FDX export.
     #[serde(skip)]
     pub fdx: Option<Box<FdxDocument>>,

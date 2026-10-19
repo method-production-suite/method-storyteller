@@ -41,6 +41,25 @@ struct FileResult {
     /// recorded page matches the locked page they sit on: (headings, matching).
     locks: (usize, usize),
     lock_pages: (usize, usize),
+    /// The page layout and element settings, and the layout they paginate with, the same after
+    /// `.fdx` to OSF and after `.fdx` to OSF to `.fdx`.
+    format_kept: bool,
+    layout_kept: bool,
+}
+
+/// The format without the XML each file format keeps for writing it back.
+fn bare_format(script: &Script) -> storyteller_core::Format {
+    let mut format = script.format.clone();
+    if let Some(page) = format.page.as_mut() {
+        page.fdx_page_layout.clear();
+        page.fdx_mores.clear();
+        page.osf_settings.clear();
+    }
+    for element in &mut format.elements {
+        element.fdx_xml.clear();
+        element.osf_xml.clear();
+    }
+    format
 }
 
 /// Every locked page start, after writing and reading `.fdx` again.
@@ -129,6 +148,11 @@ fn measure(fdx_path: &Path, pdf: Option<&Path>) -> Result<FileResult, String> {
     let first = fdx::write(&script);
     let round_trip = fdx::parse(&first).is_ok_and(|again| fdx::write(&again) == first && again.fdx == script.fdx);
     let mut result = FileResult { round_trip, ..FileResult::default() };
+    let via_osf = osf::parse(&osf::write(&script)).unwrap_or_default();
+    let back = fdx::parse(&fdx::write(&via_osf)).unwrap_or_default();
+    result.format_kept = bare_format(&via_osf) == bare_format(&script) && bare_format(&back) == bare_format(&script);
+    let layout = Layout::for_script(&script);
+    result.layout_kept = Layout::for_script(&via_osf) == layout && Layout::for_script(&back) == layout;
     let (spans, sets) = revised(&script);
     if !spans.is_empty() || !script.revisions.is_empty() {
         let (after, after_sets) = osf::parse(&osf::write(&script)).map(|s| revised(&s)).unwrap_or_default();
@@ -224,6 +248,7 @@ pub fn run(root: &Path) -> Result<(), String> {
     let mut notes = (0usize, 0usize);
     let (mut revised, mut sets) = ((0usize, 0usize), (0usize, 0usize));
     let (mut locked, mut lock_pages, mut locked_files) = ((0usize, 0usize), (0usize, 0usize), 0usize);
+    let (mut formats, mut layouts) = (0usize, 0usize);
     for (n, (fdx_path, pdf)) in entries.iter().enumerate() {
         let n = n + 1;
         if inside(fdx_path, root) || pdf.as_deref().is_some_and(|p| inside(p, root)) {
@@ -243,6 +268,8 @@ pub fn run(root: &Path) -> Result<(), String> {
                 notes.1 += r.notes.1;
                 revised.0 += r.revised.0;
                 revised.1 += r.revised.1;
+                formats += usize::from(r.format_kept);
+                layouts += usize::from(r.layout_kept);
                 if r.locks.0 > 0 {
                     locked_files += 1;
                 }
@@ -278,6 +305,9 @@ pub fn run(root: &Path) -> Result<(), String> {
         }
     }
     println!("notes: {} read, {} the same after .fdx to OSF to .fdx", notes.0, notes.1);
+    println!(
+        "format: element settings and page layout the same after .fdx to OSF and back in {formats} files, the layout they paginate with in {layouts}"
+    );
     println!(
         "locked pages: {locked_files} files, {} pages read, {} the same after .fdx to OSF to .fdx; scene headings on the locked page Final Draft recorded {}/{}",
         locked.0, locked.1, lock_pages.1, lock_pages.0
