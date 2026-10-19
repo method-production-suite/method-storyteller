@@ -440,7 +440,9 @@ impl StorytellerApp {
         let mut params = Map::new();
         params.insert("path".into(), json!(path.display().to_string()));
         self.run("file.open", params);
-        if self.error.is_none() {
+        if let Some(detail) = self.error.take() {
+            self.error = Some(crate::messages::open_failed(path, &detail));
+        } else {
             let shown = path.display().to_string();
             self.prefs.update(|p| p.push_recent(&shown));
         }
@@ -488,6 +490,9 @@ impl StorytellerApp {
         let mut params = Map::new();
         params.insert("path".into(), json!(path.display().to_string()));
         self.run("file.save_as", params);
+        if let Some(detail) = self.error.take() {
+            self.error = Some(crate::messages::save_failed(&path, &detail));
+        }
         let saved = self.error.is_none() && !self.session.dirty;
         if saved {
             let shown = path.display().to_string();
@@ -847,21 +852,27 @@ impl StorytellerApp {
             None => (title, false),
         };
         let weak = ui.visuals().weak_text_color();
-        ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, &name, egui::FontId::proportional(13.5), ui.visuals().strong_text_color());
+        ui.painter().text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            &name,
+            egui::FontId::proportional(theme::TYPE_TITLE),
+            ui.visuals().strong_text_color(),
+        );
         if edited {
-            let width = ui.fonts_mut(|f| f.layout_no_wrap(name.clone(), egui::FontId::proportional(13.5), Color32::WHITE).size().x);
+            let width = ui.fonts_mut(|f| f.layout_no_wrap(name.clone(), egui::FontId::proportional(theme::TYPE_TITLE), Color32::WHITE).size().x);
             ui.painter().text(
                 rect.center() + egui::vec2(width / 2.0 + 6.0, 0.0),
                 egui::Align2::LEFT_CENTER,
                 "Edited",
-                egui::FontId::proportional(12.0),
+                egui::FontId::proportional(theme::TYPE_SMALL),
                 weak,
             );
         }
         let mut clicked = None;
         ui.horizontal_centered(|ui| {
             // The traffic lights sit in the first 76 points of a macOS title bar.
-            ui.add_space(if title_bar { 76.0 } else { 4.0 });
+            ui.add_space(if title_bar { 76.0 } else { theme::SPACE_1 });
             let navigator = self.prefs.get().view.navigator;
             let tip = |ui: &egui::Ui, text: &str, shortcut: &str| match parse_shortcut(shortcut) {
                 Some(s) => format!("{text} ({})", ui.ctx().format_shortcut(&s)),
@@ -874,7 +885,7 @@ impl StorytellerApp {
                 clicked = Some("view.navigator");
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.add_space(6.0);
+                ui.add_space(theme::SPACE_2);
                 let zoom = self.prefs.get().zoom();
                 let response = ui.small_button("+").on_hover_text(tip(ui, "Zoom in", "Cmd+Equals"));
                 self.automation.add("toolbar.view.zoom_in", "button", "Zoom in", &response);
@@ -891,7 +902,7 @@ impl StorytellerApp {
                 if response.clicked() {
                     clicked = Some("view.zoom_out");
                 }
-                ui.add_space(10.0);
+                ui.add_space(theme::SPACE_3);
                 let pages = self.prefs.get().view.page_view;
                 for (on, label) in [(false, "Draft"), (true, "Pages")] {
                     let what = if on { "Separate pages, as they print" } else { "One continuous column" };
@@ -913,27 +924,29 @@ impl StorytellerApp {
         let lengths: std::collections::HashMap<usize, u32> = self.session.scene_lengths().iter().map(|l| (l.element, l.eighths)).collect();
         let current =
             self.session.script.elements.iter().take(self.session.caret.element + 1).filter(|e| e.kind == ElementKind::SceneHeading).count();
-        ui.add_space(8.0);
+        ui.add_space(theme::SPACE_2);
         ui.label(egui::RichText::new("SCENES").small().strong().color(ui.visuals().weak_text_color()));
-        ui.add_space(4.0);
+        ui.add_space(theme::SPACE_1);
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-            if scenes.is_empty() {
-                ui.weak("No scenes yet. Start a line with INT. or EXT.");
+            // A new script's one empty heading is not a scene yet.
+            let blank = matches!(self.session.script.elements.as_slice(), [only] if only.text.trim().is_empty());
+            if scenes.is_empty() || blank {
+                theme::empty_state(ui, crate::messages::NO_SCENES_TITLE, crate::messages::NO_SCENES_BODY);
             }
             let weak = ui.visuals().weak_text_color();
             let text = ui.visuals().text_color();
             let selected_fill = ui.visuals().selection.bg_fill;
             let hover_fill = ui.visuals().widgets.hovered.weak_bg_fill;
-            for (n, scene) in scenes.iter().enumerate() {
+            for (n, scene) in scenes.iter().enumerate().filter(|_| !blank) {
                 let number = scene.number.as_deref().unwrap_or("");
                 let heading = if scene.heading.trim().is_empty() { "(untitled scene)" } else { scene.heading.as_str() };
-                let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 24.0), egui::Sense::click());
+                let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), theme::NAV_ROW_HEIGHT), egui::Sense::click());
                 let selected = n + 1 == current;
                 if selected || response.hovered() {
                     ui.painter().rect_filled(rect, 5.0, if selected { selected_fill } else { hover_fill });
                 }
                 let painter = ui.painter().with_clip_rect(rect);
-                let small = egui::FontId::proportional(11.5);
+                let small = egui::FontId::proportional(theme::TYPE_SMALL);
                 painter.text(rect.left_center() + egui::vec2(30.0, 0.0), egui::Align2::RIGHT_CENTER, number, small.clone(), weak);
                 painter.text(rect.right_center() - egui::vec2(8.0, 0.0), egui::Align2::RIGHT_CENTER, scene.page.to_string(), small.clone(), weak);
                 // Length in eighths of a page, as a schedule counts it.
@@ -942,7 +955,7 @@ impl StorytellerApp {
                     painter.text(rect.right_center() - egui::vec2(34.0, 0.0), egui::Align2::RIGHT_CENTER, length, small, weak);
                 }
                 let galley = ui.fonts_mut(|f| {
-                    let mut job = egui::text::LayoutJob::simple_singleline(heading.to_string(), egui::FontId::proportional(13.0), text);
+                    let mut job = egui::text::LayoutJob::simple_singleline(heading.to_string(), egui::FontId::proportional(theme::TYPE_BODY), text);
                     job.wrap = egui::text::TextWrapping::truncate_at_width(rect.width() - 118.0);
                     f.layout_job(job)
                 });
@@ -1037,14 +1050,14 @@ impl StorytellerApp {
         let _ = self.prefs.flush();
         match self.updates.install_and_relaunch() {
             Ok(()) => std::process::exit(0),
-            Err(error) => self.error = Some(format!("The update could not be installed: {error}. It is still ready to try again.")),
+            Err(error) => self.error = Some(crate::messages::update_install_failed(Some(&error.to_string()))),
         }
     }
 
     fn title_page_dialog(&mut self, ctx: &egui::Context) {
         let Some(draft) = &mut self.title_dialog else { return };
         let mut done = None;
-        egui::Window::new("Title Page").collapsible(false).resizable(false).show(ctx, |ui| {
+        theme::centered(egui::Window::new("Title Page").collapsible(false).resizable(false), ctx).show(ctx, |ui| {
             egui::Grid::new("storyteller.title_grid").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
                 for (key, value) in &mut draft.fields {
                     ui.label(key.as_str());
@@ -1055,7 +1068,7 @@ impl StorytellerApp {
                     ui.end_row();
                 }
             });
-            ui.add_space(8.0);
+            ui.add_space(theme::SPACE_2);
             ui.horizontal(|ui| {
                 let ok = ui.button("OK");
                 self.automation.add("dialog.title_page.ok", "button", "OK", &ok);
@@ -1116,7 +1129,7 @@ impl StorytellerApp {
             if let Some(error) = &draft.error {
                 ui.colored_label(ui.visuals().error_fg_color, error);
             }
-            ui.add_space(6.0);
+            ui.add_space(theme::SPACE_2);
             ui.horizontal(|ui| {
                 let label = if draft.merge { "Merge" } else { "Rename" };
                 let ok = ui.button(label);
@@ -1186,7 +1199,7 @@ impl StorytellerApp {
             if let Some(error) = &draft.error {
                 ui.colored_label(ui.visuals().error_fg_color, error);
             }
-            ui.add_space(6.0);
+            ui.add_space(theme::SPACE_2);
             ui.horizontal(|ui| {
                 let ok = ui.button("Go");
                 self.automation.add("dialog.go_to.ok", "button", "Go", &ok);
@@ -1246,10 +1259,10 @@ impl StorytellerApp {
             return;
         }
         let mut answer = None;
-        egui::Modal::new(egui::Id::new("storyteller.unsaved")).show(ctx, |ui| {
+        egui::Modal::new(egui::Id::new("storyteller.unsaved")).frame(theme::modal_frame(&ctx.global_style())).show(ctx, |ui| {
             ui.heading("Save changes?");
             ui.label(format!("“{}” has changes that are not saved.", self.session.title().trim_end_matches(" — edited")));
-            ui.add_space(8.0);
+            ui.add_space(theme::SPACE_2);
             ui.horizontal(|ui| {
                 for (id, label) in [("save", "Save"), ("discard", "Don't Save"), ("cancel", "Cancel")] {
                     let response = ui.button(label);

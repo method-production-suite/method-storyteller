@@ -10,6 +10,10 @@
 //! other attributes, style overrides and other children in [`OsfParagraph`]. Text-run attributes
 //! other than bold, italic and underline (strikethrough, colour, revision) are not kept yet.
 //!
+//! A paragraph's `note` holds plain text only. Script notes with a range, colour or author (from
+//! an `.fdx`) are written into `note` as well, and also as `<method_storyteller_note …/>` children
+//! carrying the rest, so our own round trip is exact while other apps read the plain note.
+//!
 //! Sections and synopses have no OSF equivalent of their own. A synopsis rides on the
 //! paragraph before it (`synopsis`); otherwise both are written as paragraphs carrying a
 //! `<method_storyteller kind="…"/>` child, which other apps ignore.
@@ -19,16 +23,18 @@ use std::collections::HashMap;
 use quick_xml::XmlVersion;
 use quick_xml::events::Event;
 
-use crate::fdx::{all_attrs, escape};
+use crate::fdx::{all_attrs, default_note_form, escape, note_attributes};
 use crate::inline::{self, Run, Style};
 use crate::layout::{Align, ElementStyle, Layout, chars_per_line};
-use crate::model::{Element, ElementKind, OsfDocument, OsfParagraph, OsfSection, Script, TitleField, TitlePage};
+use crate::model::{Element, ElementKind, FdxNote, FdxNoteForm, OsfDocument, OsfParagraph, OsfSection, Script, ScriptNote, TitleField, TitlePage};
 use crate::{CoreError, MAX_ELEMENTS, MAX_INPUT_BYTES};
 
 /// Deepest element nesting accepted.
 const MAX_DEPTH: usize = 128;
 /// Our marker for paragraphs OSF has no kind for.
 const MARKER: &str = "method_storyteller";
+/// Our element for a script note's colour, author, range and Final Draft data.
+const NOTE_MARKER: &str = "method_storyteller_note";
 
 /// An attribute name compared loosely: lower case, without underscores.
 fn key(name: &str) -> String {
@@ -399,7 +405,7 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
             document.sections.push(OsfSection::Raw(section.raw.clone()));
         }
     }
-    Ok(Script { title_page, elements, fdx: None, osf: Some(Box::new(document)), boneyard_end: Vec::new() })
+    Ok(Script { title_page, elements, osf: Some(Box::new(document)), ..Script::default() })
 }
 
 fn read_para(para: Para, styles: &Styles, elements: &mut Vec<Element>, dual_next: &mut bool) -> Result<(), CoreError> {
@@ -422,12 +428,27 @@ fn read_para(para: Para, styles: &Styles, elements: &mut Vec<Element>, dual_next
         elements.push(Element::new(ElementKind::PageBreak, ""));
     }
     let mut markup = inline::write(&para.runs);
-    // The paragraph's note rides at the end of its text as a Fountain note, with nothing added
-    // around it, so writing it back gives the same text.
-    if let Some(note) = get(&para.attributes, "note").filter(|n| !n.trim().is_empty()) {
-        markup.push_str(&format!("[[{}]]", note.replace("]]", "] ]")));
+    let ours: Vec<Vec<(String, String)>> = tags(&para.children).into_iter().filter(|(tag, _)| tag == NOTE_MARKER).map(|(_, a)| a).collect();
+    let mut notes = Vec::new();
+    if ours.is_empty() {
+        // A plain note rides at the end of the text as a Fountain note, with nothing added
+        // around it, so writing it back gives the same text.
+        if let Some(note) = get(&para.attributes, "note").filter(|n| !n.trim().is_empty()) {
+            markup.push_str(&format!("[[{}]]", note.replace("]]", "] ]")));
+        }
+    } else {
+        // Our own notes say everything the `note` attribute holds, and more.
+        for attributes in ours.iter().take(MAX_ELEMENTS) {
+            let text = get(attributes, "text").unwrap_or_default();
+            if truthy(get(attributes, "plain")) {
+                markup.push_str(&format!("[[{}]]", text.replace("]]", "] ]")));
+            } else {
+                notes.push(note_from(attributes));
+            }
+        }
     }
     let mut element = Element::new(kind, markup);
+    element.notes = notes;
     if kind == ElementKind::SceneHeading {
         element.scene_number =
             get(&para.attributes, "scenenumber").or_else(|| get(&para.attributes, "number")).filter(|n| !n.trim().is_empty()).map(str::to_string);
@@ -441,11 +462,8 @@ fn read_para(para: Para, styles: &Styles, elements: &mut Vec<Element>, dual_next
             *dual_next = true;
         }
     }
-    // Children other than our own marker go back as they came.
-    let children = match marker {
-        Some(_) => remove_marker(&para.children),
-        None => para.children.clone(),
-    };
+    // Children other than our own go back as they came.
+    let children = strip_ours(&para.children);
     let attributes: Vec<(String, String)> = para.attributes.iter().filter(|(k, _)| !modelled_para_attribute(k)).cloned().collect();
     let mut style_attributes: Vec<(String, String)> = para.style.iter().filter(|(k, _)| !modelled_style_attribute(k)).cloned().collect();
     if kind == ElementKind::Centered {
@@ -462,10 +480,93 @@ fn read_para(para: Para, styles: &Styles, elements: &mut Vec<Element>, dual_next
     Ok(())
 }
 
-fn remove_marker(children: &str) -> String {
-    let Some(start) = children.find(&format!("<{MARKER}")) else { return children.to_string() };
-    let end = children.get(start..).and_then(|rest| rest.find("/>").map(|at| start + at + 2)).unwrap_or(children.len());
-    format!("{}{}", children.get(..start).unwrap_or_default(), children.get(end..).unwrap_or_default())
+/// Children without our own `method_storyteller` elements.
+fn strip_ours(children: &str) -> String {
+    let mut reader = quick_xml::Reader::from_str(children);
+    let mut out = String::new();
+    let mut from = 0usize;
+    let mut depth = 0usize;
+    loop {
+        let before = usize::try_from(reader.buffer_position()).unwrap_or(usize::MAX);
+        let Ok(event) = reader.read_event() else { return children.to_string() };
+        let after = usize::try_from(reader.buffer_position()).unwrap_or(usize::MAX);
+        match event {
+            Event::Start(_) => depth += 1,
+            Event::End(_) => depth = depth.saturating_sub(1),
+            Event::Empty(start) if depth == 0 && matches!(start.local_name().as_ref(), b"method_storyteller" | b"method_storyteller_note") => {
+                out.push_str(children.get(from..before).unwrap_or_default());
+                from = after;
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+    }
+    out.push_str(children.get(from..).unwrap_or_default());
+    out
+}
+
+fn form_name(form: FdxNoteForm) -> &'static str {
+    match form {
+        FdxNoteForm::Inline => "inline",
+        FdxNoteForm::Ranged => "ranged",
+        FdxNoteForm::Unanchored => "unanchored",
+    }
+}
+
+/// A script note from one of our `method_storyteller_note` elements.
+fn note_from(attributes: &[(String, String)]) -> ScriptNote {
+    let range = get(attributes, "range").and_then(|r| {
+        let (from, to) = r.split_once(',')?;
+        Some((from.trim().parse().ok()?, to.trim().parse().ok()?))
+    });
+    let fdx = get(attributes, "fdx_form").map(|form| {
+        let form = match form {
+            "ranged" => FdxNoteForm::Ranged,
+            "unanchored" => FdxNoteForm::Unanchored,
+            _ => FdxNoteForm::Inline,
+        };
+        let kept =
+            attributes.iter().filter_map(|(k, v)| Some((k.strip_prefix("fdx_")?.to_string(), v.clone()))).filter(|(k, _)| k != "form").collect();
+        Box::new(FdxNote { form, attributes: kept, raw: String::new(), as_read: None })
+    });
+    ScriptNote {
+        text: get(attributes, "text").unwrap_or_default().to_string(),
+        range,
+        color: get(attributes, "color").map(str::to_string),
+        author: get(attributes, "author").map(str::to_string),
+        unanchored: truthy(get(attributes, "unanchored")),
+        fdx,
+    }
+}
+
+/// One of our `method_storyteller_note` elements for a script note.
+fn note_element(note: &ScriptNote) -> String {
+    let mut out = format!("<{NOTE_MARKER}");
+    write_attr("text", &note.text, &mut out);
+    if let Some((from, to)) = note.range {
+        write_attr("range", &format!("{from},{to}"), &mut out);
+    }
+    if let Some(color) = &note.color {
+        write_attr("color", color, &mut out);
+    }
+    if let Some(author) = &note.author {
+        write_attr("author", author, &mut out);
+    }
+    if note.unanchored {
+        out.push_str(" unanchored=\"1\"");
+    }
+    // Final Draft data, unless it is only what writing the note to an `.fdx` would make anyway.
+    if let Some(fdx) = &note.fdx {
+        let bare = ScriptNote { fdx: None, ..note.clone() };
+        if fdx.form != default_note_form(note) || fdx.attributes != note_attributes(&bare, fdx.form, None) {
+            write_attr("fdx_form", form_name(fdx.form), &mut out);
+            for (key, value) in &fdx.attributes {
+                write_attr(&format!("fdx_{key}"), value, &mut out);
+            }
+        }
+    }
+    out.push_str("/>");
+    out
 }
 
 /// Title-page fields from `<titlepage>` paragraphs: bookmarked ones by their bookmark, the rest by
@@ -668,7 +769,9 @@ struct ParaExtras {
 
 fn write_para(element: &Element, extras: &ParaExtras, spelling: Spelling, styles_known: bool, out: &mut String) {
     let runs = inline::parse(&element.text);
-    let notes: Vec<&str> = runs.iter().filter(|r| r.note).map(|r| r.text.trim()).filter(|t| !t.is_empty()).collect();
+    let plain: Vec<&str> = runs.iter().filter(|r| r.note).map(|r| r.text.trim()).filter(|t| !t.is_empty()).collect();
+    let mut notes = plain.clone();
+    notes.extend(element.notes.iter().filter(|n| !n.unanchored).map(|n| n.text.as_str()));
     let kept = element.osf.as_deref().filter(|o| o.kind == element.kind);
     out.push_str("    <para");
     if let Some(number) = element.scene_number.as_deref().filter(|_| element.kind == ElementKind::SceneHeading) {
@@ -719,6 +822,18 @@ fn write_para(element: &Element, extras: &ParaExtras, spelling: Spelling, styles
         out.push_str("      ");
         out.push_str(&marker);
         out.push('\n');
+    }
+    if !element.notes.is_empty() {
+        for text in runs.iter().filter(|r| r.note).map(|r| r.text.as_str()) {
+            out.push_str(&format!("      <{NOTE_MARKER}"));
+            write_attr("text", text, out);
+            out.push_str(" plain=\"1\"/>\n");
+        }
+        for note in &element.notes {
+            out.push_str("      ");
+            out.push_str(&note_element(note));
+            out.push('\n');
+        }
     }
     if let Some(osf) = element.osf.as_deref().filter(|o| !o.children.trim().is_empty()) {
         out.push_str("      ");

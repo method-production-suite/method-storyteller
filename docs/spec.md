@@ -46,7 +46,9 @@ writer can save to Fountain or FDX, export a PDF, and open those files again wit
 
 Inline emphasis (`*italic*`, `**bold**`, `_underline_`) and notes (`[[ ]]`) are stored as Fountain
 markup inside element text. The PDF and FDX writers turn emphasis into styled runs; notes are not
-printed.
+printed. Script notes from an `.fdx` (with a range, a colour or an author) are kept on their
+paragraph beside the text: what they cover in characters of the printed text, or the whole
+paragraph.
 
 ## 4. Editing (MVP)
 
@@ -112,6 +114,7 @@ one step.
 - **Go To** (Edit > Go To…, ⌘⌥G, Ctrl+Shift+G off macOS; command `nav.go_to`): a scene by its printed number (12, 12A), or by position only when the script has no scene numbers, or a page; the caret lands on the scene heading or on the page's first element.
 - **Find and replace** (Edit > Find…, ⌘F; commands `find.next`, `find.replace`, `find.replace_all`): match case, whole words, optionally one element type; matches never span two elements; the current match is highlighted while typing stays in the find bar; Replace All is one Undo step; replacements in capitalised elements (headings, cues, transitions) stay capitalised.
 - **Rename character** (Production > Rename Character…; command `character.rename`): every cue for the name, keeping extensions such as `(V.O.)`; optionally every capitalised whole-word mention in other text too, each in its own case (`NORA` → `EMMA`, `Nora's` → `Emma's`; a lowercase `will` is never the character WILL); one Undo step. Renaming onto another character's name merges the two, so the app asks first; a new name with `(`, `)` or `^` is refused. A character list stored in an imported .fdx is not renamed yet.
+- **Spell check** (engine `spell.next`, `spell.ignore`, `spell.learn`, `spell.change`): the bundled English (US) Hunspell dictionary from SCOWL, read by `spellbook`. Character names from the cues, screenplay terms (INT., CONT'D, V.O. …) and words with digits are never flagged; `[[notes]]` are not checked; a word in capitals is right when its usual case is. Learned words are the writer's; ignored words last the session. Change is one Undo.
 - **Scene numbers:** `Production → Number scenes` assigns 1, 2, 3…; existing numbers are kept
   when "keep existing" is chosen (A-numbering for inserted scenes is a later-phase revision
   feature). Toggle for showing them in the editor and PDF. Stored in Fountain as `#12#`, in FDX
@@ -209,8 +212,8 @@ files.
 | Format | Read | Write | Notes |
 | --- | --- | --- | --- |
 | Fountain (`.fountain`, `.spmd`, `.txt`) | ✓ | ✓ | A working format, fully supported. Round-trip is lossless for everything we model except Shots (read back as action) and several paragraphs in one speech (joined). The boneyard (`/* … */`) is kept: the script parses exactly as if the blocks were not there, each block goes with the paragraph that follows it (or after the last one), is never printed, and is written back at the start of that paragraph's first line, so the file reads the same. Deleting a paragraph deletes its boneyard. |
-| Final Draft XML (`.fdx`) | ✓ | ✓ | Paragraph types, text styles, scene numbers, dual dialogue, title page. v1 keeps every part it does not model (revisions, tags, settings, Beat Board and so on) and writes it back unchanged. Only direct children of `Content` and `DualDialogue` are script paragraphs. Outline and summary text is written as Final Draft's `Outline 1–4` and `Summary` types, not `Section` and `Synopsis`. |
-| Open Screenplay Format (`.osf`, and `.fadein`, a ZIP holding it) | ✓ | ✓ | The standard working format and the default for new scripts. Elements, emphasis, scene numbers, dual dialogue, notes, synopses, title page, page layout and element styles. Reads versions 1.2 to 4.0 in all their spellings; writes 3.0 for new documents and an imported document's own version otherwise. Keeps every part it does not model (settings, styles, lists, revision marks, vendor data) and writes it back. Sections, and synopses not attached to a paragraph, carry a `<method_storyteller kind="…"/>` marker. |
+| Final Draft XML (`.fdx`) | ✓ | ✓ | Paragraph types, text styles, scene numbers, dual dialogue, title page. v1 keeps every part it does not model (revisions, tags, settings, Beat Board and so on) and writes it back unchanged. Only direct children of `Content` and `DualDialogue` are script paragraphs. Outline and summary text is written as Final Draft's `Outline 1–4` and `Summary` types, not `Section` and `Synopsis`. Script notes in all three forms (inside the paragraph, the `ScriptNotes` list placed by `Range`, the older `UnanchoredScriptNotes`) are read onto their paragraph and written back in the form they came in; a plain `[[note]]` is written as a script note where it sits. |
+| Open Screenplay Format (`.osf`, and `.fadein`, a ZIP holding it) | ✓ | ✓ | The standard working format and the default for new scripts. Elements, emphasis, scene numbers, dual dialogue, notes, synopses, title page, page layout and element styles. Reads versions 1.2 to 4.0 in all their spellings; writes 3.0 for new documents and an imported document's own version otherwise. Keeps every part it does not model (settings, styles, lists, revision marks, vendor data) and writes it back. Sections, and synopses not attached to a paragraph, carry a `<method_storyteller kind="…"/>` marker. Script notes go into the paragraph's plain `note`, with their range, colour, author and Final Draft data in `<method_storyteller_note …/>` children. |
 | PDF | – | ✓ | Courier Prime embedded, selectable text, a bookmark per scene. |
 
 Saving says what a format will not keep: to Fountain, shots (read back as action) and speeches

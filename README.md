@@ -119,7 +119,7 @@ the golden files in `crates/core/tests/golden/` (`UPDATE_GOLDEN=1 cargo test -p 
 regenerates them).
 
 `cargo xtask screens` retakes every picture above from the invented script in
-[examples/field-station.fountain](examples/field-station.fountain), in light and dark, with the
+[examples/field-station.osf](examples/field-station.osf), in light and dark, with the
 same pixels every run. The app is drawn offscreen (nothing opens on screen); the terminal picture
 needs Chrome. It is a release step rather than a CI gate.
 

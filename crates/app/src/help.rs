@@ -21,12 +21,13 @@ const COPYRIGHT: &str = "Copyright (c) 2026 Method Production Suite Team and the
 const CHANGELOG: &str = include_str!("../../../CHANGELOG.md");
 
 /// Shown in Licenses and Notices, in this order.
-const NOTICES: [(&str, &str); 5] = [
+const NOTICES: [(&str, &str); 6] = [
     ("MIT", include_str!("../../../LICENSE-MIT")),
     ("Apache-2.0", include_str!("../../../LICENSE-APACHE")),
     ("Notice", include_str!("../../../NOTICE")),
     ("Attribution", include_str!("../../../ATTRIBUTION.md")),
     ("Courier Prime (OFL)", include_str!("../../../assets/fonts/OFL.txt")),
+    ("English dictionary (SCOWL)", include_str!("../../../assets/dictionaries/README_en_US.txt")),
 ];
 
 /// `application/x-www-form-urlencoded`, as browsers write it.
@@ -189,27 +190,31 @@ impl HelpWindows {
 
     fn about_window(&self, ctx: &egui::Context, automation: &mut Automation, action: &mut Option<HelpAction>) -> bool {
         let mut open = true;
-        egui::Window::new(format!("About {APP_NAME}")).id(egui::Id::new("storyteller.about")).collapsible(false).resizable(false).show(ctx, |ui| {
+        crate::theme::centered(
+            egui::Window::new(format!("About {APP_NAME}")).id(egui::Id::new("storyteller.about")).collapsible(false).resizable(false),
+            ctx,
+        )
+        .show(ctx, |ui| {
             ui.vertical_centered(|ui| {
-                ui.add_space(4.0);
+                ui.add_space(crate::theme::SPACE_1);
                 ui.heading(APP_NAME);
                 ui.label(format!("Version {VERSION}"));
-                ui.add_space(8.0);
+                ui.add_space(crate::theme::SPACE_2);
                 let site = ui.link(WEBSITE.trim_start_matches("https://"));
                 automation.add("dialog.about.website", "link", "Website", &site);
                 if site.clicked() {
                     *action = Some(HelpAction::Open(WEBSITE));
                 }
-                ui.add_space(8.0);
+                ui.add_space(crate::theme::SPACE_2);
                 ui.label(format!("Free and open source, under {LICENCE}."));
                 ui.small(COPYRIGHT);
-                ui.add_space(4.0);
+                ui.add_space(crate::theme::SPACE_1);
                 let suite = ui.link("Part of the Method Production Suite");
                 automation.add("dialog.about.suite", "link", "Method Production Suite", &suite);
                 if suite.clicked() {
                     *action = Some(HelpAction::Open(SUITE_WEBSITE));
                 }
-                ui.add_space(10.0);
+                ui.add_space(crate::theme::SPACE_3);
                 ui.horizontal(|ui| {
                     let licenses = ui.button("Licenses and Notices");
                     automation.add("dialog.about.licenses", "button", "Licenses and Notices", &licenses);
@@ -236,7 +241,11 @@ fn close_button(ui: &mut egui::Ui, automation: &mut Automation, window: &str) ->
 
 fn shortcuts_window(ctx: &egui::Context, automation: &mut Automation, rows: &[ShortcutRow]) -> bool {
     let mut open = true;
-    egui::Window::new("Keyboard Shortcuts").id(egui::Id::new("storyteller.shortcuts")).collapsible(false).default_height(640.0).show(ctx, |ui| {
+    crate::theme::centered(
+        egui::Window::new("Keyboard Shortcuts").id(egui::Id::new("storyteller.shortcuts")).collapsible(false).default_height(640.0),
+        ctx,
+    )
+    .show(ctx, |ui| {
         egui::ScrollArea::vertical().max_height(620.0).show(ui, |ui| {
             let mut group = "";
             egui::Grid::new("storyteller.shortcut_grid").num_columns(2).spacing([24.0, 4.0]).striped(true).show(ui, |ui| {
@@ -252,7 +261,7 @@ fn shortcuts_window(ctx: &egui::Context, automation: &mut Automation, rows: &[Sh
                 }
             });
         });
-        ui.add_space(8.0);
+        ui.add_space(crate::theme::SPACE_2);
         if close_button(ui, automation, "shortcuts") {
             open = false;
         }
@@ -289,7 +298,7 @@ fn blocks(text: &str) -> Vec<(bool, String)> {
 fn markdown(ui: &mut egui::Ui, text: &str) {
     for (heading, text) in blocks(text) {
         if heading {
-            ui.add_space(6.0);
+            ui.add_space(crate::theme::SPACE_2);
             ui.strong(text);
         } else {
             ui.label(text);
@@ -299,49 +308,51 @@ fn markdown(ui: &mut egui::Ui, text: &str) {
 
 fn whats_new_window(ctx: &egui::Context, automation: &mut Automation) -> bool {
     let mut open = true;
-    egui::Window::new("What's New").id(egui::Id::new("storyteller.whats_new")).collapsible(false).default_width(460.0).show(ctx, |ui| {
-        ui.heading(format!("{APP_NAME} {VERSION}"));
-        egui::ScrollArea::vertical().max_height(420.0).show(ui, |ui| match release_notes(CHANGELOG, VERSION) {
-            Some(notes) => markdown(ui, notes),
-            None => {
-                ui.label("No notes for this version.");
+    crate::theme::centered(egui::Window::new("What's New").id(egui::Id::new("storyteller.whats_new")).collapsible(false).default_width(460.0), ctx)
+        .show(ctx, |ui| {
+            ui.heading(format!("{APP_NAME} {VERSION}"));
+            egui::ScrollArea::vertical().max_height(420.0).show(ui, |ui| match release_notes(CHANGELOG, VERSION) {
+                Some(notes) => markdown(ui, notes),
+                None => {
+                    ui.label("No notes for this version.");
+                }
+            });
+            ui.add_space(crate::theme::SPACE_2);
+            if close_button(ui, automation, "whats_new") {
+                open = false;
             }
         });
-        ui.add_space(8.0);
-        if close_button(ui, automation, "whats_new") {
-            open = false;
-        }
-    });
     open
 }
 
 fn licenses_window(ctx: &egui::Context, automation: &mut Automation, tab: usize) -> Option<usize> {
     let mut chosen = tab;
     let mut open = true;
-    egui::Window::new("Licenses and Notices").id(egui::Id::new("storyteller.licenses")).collapsible(false).default_size([760.0, 520.0]).show(
+    crate::theme::centered(
+        egui::Window::new("Licenses and Notices").id(egui::Id::new("storyteller.licenses")).collapsible(false).default_size([760.0, 520.0]),
         ctx,
-        |ui| {
-            ui.horizontal_wrapped(|ui| {
-                for (n, (name, _)) in NOTICES.iter().enumerate() {
-                    let response = ui.selectable_label(n == chosen, *name);
-                    automation.add(format!("dialog.licenses.tab.{n}"), "tab", *name, &response);
-                    if response.clicked() {
-                        chosen = n;
-                    }
+    )
+    .show(ctx, |ui| {
+        ui.horizontal_wrapped(|ui| {
+            for (n, (name, _)) in NOTICES.iter().enumerate() {
+                let response = ui.selectable_label(n == chosen, *name);
+                automation.add(format!("dialog.licenses.tab.{n}"), "tab", *name, &response);
+                if response.clicked() {
+                    chosen = n;
                 }
-            });
-            ui.separator();
-            let text = NOTICES.get(chosen).map_or("", |(_, text)| text);
-            egui::ScrollArea::both().max_height(440.0).auto_shrink([false, true]).show(ui, |ui| {
-                // The files are wrapped already; wrapping again would break their lines.
-                ui.add(egui::Label::new(egui::RichText::new(text).monospace().size(11.5)).extend());
-            });
-            ui.add_space(8.0);
-            if close_button(ui, automation, "licenses") {
-                open = false;
             }
-        },
-    );
+        });
+        ui.separator();
+        let text = NOTICES.get(chosen).map_or("", |(_, text)| text);
+        egui::ScrollArea::both().max_height(440.0).auto_shrink([false, true]).show(ui, |ui| {
+            // The files are wrapped already; wrapping again would break their lines.
+            ui.add(egui::Label::new(egui::RichText::new(text).monospace().size(crate::theme::TYPE_SMALL)).extend());
+        });
+        ui.add_space(crate::theme::SPACE_2);
+        if close_button(ui, automation, "licenses") {
+            open = false;
+        }
+    });
     open.then_some(chosen)
 }
 

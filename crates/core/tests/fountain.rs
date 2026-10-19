@@ -110,6 +110,7 @@ fn forced_elements_round_trip() {
         fdx: None,
         osf: None,
         boneyard_end: Vec::new(),
+        spelling_ignored: Vec::new(),
     });
     round_trip(Script {
         title_page: title,
@@ -129,6 +130,7 @@ fn forced_elements_round_trip() {
         fdx: None,
         osf: None,
         boneyard_end: Vec::new(),
+        spelling_ignored: Vec::new(),
     });
 }
 

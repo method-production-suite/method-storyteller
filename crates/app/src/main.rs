@@ -6,6 +6,7 @@ mod app;
 mod automation;
 mod editor;
 mod help;
+mod messages;
 #[cfg(target_os = "macos")]
 mod native_menu;
 mod prefs;
