@@ -79,7 +79,7 @@ says otherwise.
   Replace, Replace All and one ⌘Z; Production > Rename Character with and without "Also in
   action, dialogue and other text".
 - **Lossless `.fdx` (the final check).** Open `crates/core/tests/fixtures/lossless-check.fdx`
-  in your licensed copy and go down the nine-step click list in
+  in your licensed copy and go down the ten-step click list in
   [research/fdx-osf-fidelity.md](research/fdx-osf-fidelity.md#the-owners-final-check): notes,
   revisions, locked pages and element settings, then save it and send it back. About 20 minutes,
   nothing to type. Ready once the milestone's PRs (#38, #40, #42, #43 and the report) have merged.

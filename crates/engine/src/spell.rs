@@ -28,7 +28,7 @@ pub fn dictionary() -> Option<&'static spellbook::Dictionary> {
 
 /// The writer's own dictionary: words added with Learn, spelled right in every script (the app
 /// keeps them in its settings). Words ignored for one script live on the script itself
-/// ([`Script::spelling_ignored`]); no file format saves them yet, so they last the session.
+/// ([`Script::spelling_ignored`]).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Personal {
     pub learned: HashSet<String>,

@@ -58,4 +58,5 @@
     </para>
   </titlepage>
   <lists><revision_colors fdx_ActiveSet="1" fdx_RevisionMode="Yes"><revision_color name="Blue Rev." index="1" color_name="Blue" color_index="1" mark="*" method_storyteller_page_color="#C6EDFE" method_storyteller_color="#0000FF"/></revision_colors></lists>
+  <spelling><ignored><entry word="mara"/></ignored></spelling>
 </document>

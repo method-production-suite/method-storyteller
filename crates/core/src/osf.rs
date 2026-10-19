@@ -417,6 +417,7 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
         .any(|s| tags(&s.raw).first().is_some_and(|(_, a)| truthy(get(a, "pages_locked"))));
     let section = |name: &str| top.iter().find(|s| s.name.eq_ignore_ascii_case(name)).map(|s| s.raw.as_str());
     let format = crate::format::from_osf(section("settings"), section("styles"))?;
+    let spelling_ignored = section("spelling").map(|raw| crate::fdx::ignored_words(raw, "ignored")).unwrap_or_default();
     let mut document = OsfDocument {
         version,
         sections: Vec::new(),
@@ -424,6 +425,7 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
         revisions: Some(revisions.clone()),
         pages_locked,
         format: Some(format.clone()),
+        spelling_ignored: spelling_ignored.clone(),
     };
     // The page the paragraphs read so far end on, while pages are locked.
     let mut page: Option<Option<String>> = pages_locked.then_some(None);
@@ -445,7 +447,7 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
             document.sections.push(OsfSection::Raw(section.raw.clone()));
         }
     }
-    Ok(Script { title_page, elements, revisions, format, osf: Some(Box::new(document)), ..Script::default() })
+    Ok(Script { title_page, elements, revisions, format, osf: Some(Box::new(document)), spelling_ignored, ..Script::default() })
 }
 
 fn read_para(
@@ -973,6 +975,24 @@ fn page_element(page: &PageStart) -> String {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Spelling
+
+/// The words spell check ignores, as `<ignored>` entries shaped like the user dictionary's.
+fn ignored_xml(words: &[String]) -> String {
+    if words.is_empty() {
+        return "<ignored/>".to_string();
+    }
+    let mut out = String::from("<ignored>");
+    for word in words {
+        out.push_str("<entry");
+        write_attr("word", word, &mut out);
+        out.push_str("/>");
+    }
+    out.push_str("</ignored>");
+    out
+}
+
+// ---------------------------------------------------------------------------------------------
 // Styles
 
 /// A `<styles>` section with a style for each of the format's elements: one the section had is
@@ -1306,7 +1326,7 @@ pub fn write(script: &Script) -> String {
             let mut paragraphs_written = false;
             let revisions_same = document.revisions.as_ref() == Some(&script.revisions);
             let format_same = document.format.as_ref() == Some(&script.format);
-            let (mut settings_written, mut styles_written) = (false, false);
+            let (mut settings_written, mut styles_written, mut spelling_written) = (false, false, false);
             let mut lists_written = false;
             for section in &document.sections {
                 match section {
@@ -1345,6 +1365,14 @@ pub fn write(script: &Script) -> String {
                                 styles_written = true;
                                 rebuild_styles(raw, &script.format, spelling)
                             }
+                            "spelling" => {
+                                spelling_written = true;
+                                if document.spelling_ignored == script.spelling_ignored {
+                                    raw.to_string()
+                                } else {
+                                    crate::fdx::replace_child(raw, "ignored", &ignored_xml(&script.spelling_ignored))
+                                }
+                            }
                             _ => raw.to_string(),
                         };
                         out.push_str("  ");
@@ -1372,6 +1400,9 @@ pub fn write(script: &Script) -> String {
                 out.push_str(&rebuild_styles("<styles/>", &script.format, spelling));
                 out.push('\n');
             }
+            if !spelling_written && !script.spelling_ignored.is_empty() {
+                out.push_str(&format!("  <spelling>{}</spelling>\n", ignored_xml(&script.spelling_ignored)));
+            }
         }
         None => {
             out.push_str("<document type=\"Open Screenplay Format document\" version=\"30\">\n");
@@ -1392,6 +1423,9 @@ pub fn write(script: &Script) -> String {
             write_title_page(&script.title_page, Spelling::Snake, &mut out);
             if !script.revisions.sets.is_empty() || !script.revisions.fdx_attributes.is_empty() {
                 out.push_str(&format!("  <lists>{}</lists>\n", revision_colors(&script.revisions, Spelling::Snake)));
+            }
+            if !script.spelling_ignored.is_empty() {
+                out.push_str(&format!("  <spelling>{}</spelling>\n", ignored_xml(&script.spelling_ignored)));
             }
         }
     }
