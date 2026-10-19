@@ -167,6 +167,11 @@ tested against. The public half is `PUBKEY` in `crates/app/src/updates.rs`; a ne
 new `PUBKEY` in a release first, or installed apps refuse the next update. Without the key,
 or without notarizing, the release has no updater files and installed apps do not see it.
 
+After the signing tools change (the `minisign` crate, the key format), and before the next tag,
+run Actions > updater-key-check > Run workflow on `main`. It signs a throwaway bundle with the
+real key and checks the signature against the app's `PUBKEY`, as a release does, without the key
+leaving GitHub. A red run means the next release's update would be refused: fix it first.
+
 ## The release workflow
 
 | Job | Permissions | What it does |
