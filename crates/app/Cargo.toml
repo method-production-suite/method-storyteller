@@ -24,6 +24,7 @@ rehearsal = []
 storyteller-core = { workspace = true }
 storyteller-engine = { workspace = true }
 storyteller-pdf = { workspace = true }
+storyteller-macos-open = { workspace = true }
 craft-settings = { workspace = true }
 craft-quit = { workspace = true }
 eframe = { workspace = true }

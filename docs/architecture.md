@@ -11,7 +11,8 @@ on higher ones; nothing below L3 depends on egui/eframe/winit/rfd. `cargo xtask 
 | L1 | `storyteller-pdf` | Paginated pages → PDF with embedded Courier Prime | `storyteller-core`, `craft-pdf` (write) |
 | L2 | `storyteller-engine` | Session (script, path, dirty, undo), command registry, flow rules, control protocol | core, pdf, `craft-atomic`, `serde_json` |
 | L3 | `storyteller-cli` (bin `method-storyteller`, deprecated alias `mst`) | Convert, paginate, export, run commands, headless control server | engine |
-| L3 | `method-storyteller` (bin `method-storyteller-app`) | egui/eframe desktop app | engine, `eframe`, `rfd`, `craft-settings`, `craft-quit` |
+| L0 | `storyteller-macos-open` | macOS: files opened from the Finder (the open documents Apple Event). The only crate allowed `unsafe`; does nothing on other systems | `objc2`, `objc2-foundation` (macOS only) |
+| L3 | `method-storyteller` (bin `method-storyteller-app`) | egui/eframe desktop app | engine, macos-open, `eframe`, `rfd`, `craft-settings`, `craft-quit` |
 | tool | `xtask` | `ci`, `layers`, `assets`, `privacy`; `corpus` (local only: measures import and pagination against private Final Draft files) | none |
 
 `storyteller-core` builds for `wasm32-unknown-unknown` (no filesystem, no threads), so a web
