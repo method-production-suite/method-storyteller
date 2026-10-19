@@ -131,6 +131,10 @@ pub struct Element {
     /// Revised text: spans of the printed text marked with a revision set (see [`Revised`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub revised: Vec<Revised>,
+    /// Locked pages that start in this paragraph (see [`PageStart`]). A script whose pages are
+    /// locked has one for every page.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub page_starts: Vec<PageStart>,
     /// Final Draft data this paragraph carried that the model does not use (see [`FdxParagraph`]).
     #[serde(skip)]
     pub fdx: Option<Box<FdxParagraph>>,
@@ -164,6 +168,18 @@ pub struct ScriptNote {
     /// Final Draft data the note carried that the model does not use.
     #[serde(skip)]
     pub fdx: Option<Box<FdxNote>>,
+}
+
+/// Where a locked page starts, and what it is called.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageStart {
+    /// Characters of the paragraph's printed text before the page starts (0: with the paragraph).
+    pub at: u32,
+    /// The page number as printed, such as `12` or `12A`.
+    pub label: String,
+    /// Final Draft `LockedPage` attributes the model does not use, every one in file order.
+    #[serde(skip)]
+    pub fdx_attributes: Vec<(String, String)>,
 }
 
 /// Text marked as changed in a revision.
@@ -266,6 +282,13 @@ pub struct OsfDocument {
     /// The revisions as read; the revision list and setting are written back as they were while
     /// they are the same.
     pub revisions: Option<Revisions>,
+    /// Whether `settings@pages_locked` was on.
+    pub pages_locked: bool,
+    /// The page layout and styles as read; written back as they were while they are the same.
+    pub format: Option<crate::format::Format>,
+    /// The words `<spelling><ignored>` held as read; the section is written back as it was while
+    /// the script's list is the same.
+    pub spelling_ignored: Vec<String>,
 }
 
 /// A member of a ZIP archive, kept compressed exactly as read so it can be written back.
@@ -321,6 +344,15 @@ pub struct FdxDocument {
     pub unanchored_notes: Vec<ScriptNote>,
     /// The revisions as read; the `Revisions` section is written back as it was while they are the same.
     pub revisions: Option<Revisions>,
+    /// The `LockedPages` list as read, each page with its `Position` in the script. Written back
+    /// as it was while the script's page starts are the same.
+    pub locked_pages: Vec<(u32, PageStart)>,
+    /// The page layout and element settings as read; their sections are written back as they
+    /// were while they are the same.
+    pub format: Option<crate::format::Format>,
+    /// The words `SpellCheckIgnoreLists/IgnoredWords` held as read; the section is written back
+    /// as it was while the script's list is the same.
+    pub spelling_ignored: Vec<String>,
 }
 
 /// One top-level section of an imported Final Draft document.
@@ -347,6 +379,7 @@ impl Element {
             level: 0,
             notes: Vec::new(),
             revised: Vec::new(),
+            page_starts: Vec::new(),
             fdx: None,
             osf: None,
             boneyard: Vec::new(),
@@ -421,6 +454,9 @@ impl Element {
             span.to = edit.end(span.to);
         }
         self.revised.retain(|r| r.to > r.from);
+        for page in &mut self.page_starts {
+            page.at = edit.start(page.at);
+        }
         for note in &mut self.notes {
             if let Some((from, to)) = note.range {
                 note.range =
@@ -444,10 +480,14 @@ impl Element {
         self.revised = kept;
         let (stay, go): (Vec<ScriptNote>, Vec<ScriptNote>) = self.notes.drain(..).partition(|n| n.range.is_none_or(|(from, _)| from < at));
         self.notes = stay;
+
         into.notes.extend(go.into_iter().map(|mut n| {
             n.range = n.range.map(|(from, to)| (from - at, to - at));
             n
         }));
+        let (stay, moved): (Vec<PageStart>, Vec<PageStart>) = self.page_starts.drain(..).partition(|p| p.at < at || p.at == 0);
+        self.page_starts = stay;
+        into.page_starts.extend(moved.into_iter().map(|p| PageStart { at: p.at - at, ..p }));
     }
 
     /// Takes `other`'s anchors (the paragraph a Backspace joined on), placed `at` printed
@@ -456,6 +496,7 @@ impl Element {
         for span in other.revised.drain(..) {
             mark_revised(&mut self.revised, at.saturating_add(span.from), span.to.saturating_sub(span.from), span.set);
         }
+        self.page_starts.extend(other.page_starts.drain(..).map(|p| PageStart { at: at.saturating_add(p.at), ..p }));
         self.notes.extend(other.notes.drain(..).map(|mut n| {
             n.range = Some(n.range.map_or((at, at), |(from, to)| (at.saturating_add(from), at.saturating_add(to))));
             n
@@ -623,6 +664,9 @@ pub struct Script {
     /// Revision sets and the active set.
     #[serde(default, skip_serializing_if = "Revisions::is_empty")]
     pub revisions: Revisions,
+    /// Page layout and element settings from the file it came from.
+    #[serde(default, skip_serializing_if = "crate::format::Format::is_empty")]
+    pub format: crate::format::Format,
     /// Final Draft data from an imported `.fdx` that the model does not use; written back on FDX export.
     #[serde(skip)]
     pub fdx: Option<Box<FdxDocument>>,
@@ -632,8 +676,9 @@ pub struct Script {
     /// Fountain boneyard blocks after the last paragraph (see [`Element::boneyard`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub boneyard_end: Vec<String>,
-    /// Words the writer told spell check to ignore in this script, lower case (`.fdx`
-    /// SpellCheckIgnoreLists, OSF `<spelling><ignored>`; Fountain has no place for them).
+    /// Words the writer told spell check to ignore in this script, as written and each once in
+    /// any case (`.fdx` SpellCheckIgnoreLists, OSF `<spelling><ignored>`; Fountain has no place
+    /// for them). Spell check compares them without case.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub spelling_ignored: Vec<String>,
 }
@@ -673,6 +718,11 @@ impl Script {
             element.scene_number = Some(next.to_string());
             next = next.saturating_add(1);
         }
+    }
+
+    /// Whether the script's pages are locked: some paragraph starts a locked page.
+    pub fn pages_locked(&self) -> bool {
+        self.elements.iter().any(|e| !e.page_starts.is_empty())
     }
 
     /// Remove every scene number.
