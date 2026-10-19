@@ -111,7 +111,7 @@ fn gallery() {
         panic!("{}: {error}", out.display());
     }
     let script = root.join("examples/field-station.fountain");
-    let states: [(&str, &[&str]); 9] = [
+    let states: [(&str, &[&str]); 13] = [
         ("find", &["app.find"]),
         ("go-to", &["app.go_to"]),
         ("rename", &["app.rename_character"]),
@@ -121,6 +121,10 @@ fn gallery() {
         ("whats-new", &["help.whats_new"]),
         ("unsaved", &[]),
         ("selection", &[]),
+        ("empty-script", &["file.new"]),
+        ("nothing-found", &["app.find"]),
+        ("open-failed", &[]),
+        ("save-failed", &[]),
     ];
     for theme in [egui::Theme::Light, egui::Theme::Dark] {
         let suffix = if theme == egui::Theme::Dark { "dark" } else { "light" };
@@ -142,11 +146,17 @@ fn gallery() {
                 harness.state_mut().queued.push((*command).into());
             }
             match name {
-                "find" => {
+                "find" | "nothing-found" => {
                     harness.run_steps(3);
                     if let Some(bar) = harness.state_mut().find.as_mut() {
-                        bar.text = "drum".into();
+                        bar.text = if name == "find" { "drum" } else { "lighthouse" }.into();
                     }
+                }
+                "open-failed" => harness.state_mut().open_path(&root.join("examples/Missing Draft.fdx")),
+                "save-failed" => {
+                    let app = harness.state_mut();
+                    app.session.path = Some(root.join("examples/no such folder/Field Station.fountain"));
+                    app.save(false);
                 }
                 "unsaved" => {
                     harness.state_mut().session.dirty = true;

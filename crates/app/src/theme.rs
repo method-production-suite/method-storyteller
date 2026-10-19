@@ -142,6 +142,17 @@ pub fn page_visuals() -> egui::Visuals {
     visuals
 }
 
+/// An empty state: a short title and one line saying what to do, centered in the space.
+pub fn empty_state(ui: &mut egui::Ui, title: &str, body: &str) {
+    ui.add_space(SPACE_4 * 2.0);
+    ui.vertical_centered(|ui| {
+        ui.set_max_width((ui.available_width() - 2.0 * SPACE_4).max(120.0));
+        ui.label(egui::RichText::new(title).strong());
+        ui.add_space(SPACE_1);
+        ui.label(egui::RichText::new(body).color(ui.visuals().weak_text_color()));
+    });
+}
+
 /// A window that opens in the middle of the app's window, as a dialog should.
 pub fn centered<'a>(window: egui::Window<'a>, ctx: &egui::Context) -> egui::Window<'a> {
     window.pivot(egui::Align2::CENTER_CENTER).default_pos(ctx.content_rect().center())
