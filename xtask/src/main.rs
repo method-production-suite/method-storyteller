@@ -2,11 +2,13 @@
 //! `cargo xtask ci`, `cargo xtask corpus` (local only, see `corpus.rs`), `cargo xtask screens`
 //! (retakes the README pictures, see `screens.rs`), and the packaging tasks `version`,
 //! `bundle-macos`, `dmg-macos`, `package-linux`, `package-windows` (see `package.rs` and
-//! docs/RELEASING.md).
+//! docs/RELEASING.md), and `updater-archive` and `update-manifest`, the updater's files for a
+//! release (see `updater.rs`).
 
 mod corpus;
 mod package;
 mod screens;
+mod updater;
 
 use std::path::Path;
 use std::process::{Command, ExitCode};
@@ -33,12 +35,14 @@ fn main() -> ExitCode {
             "ci" => ci(),
             "corpus" => corpus::run(root()),
             "screens" => screens::run(root()),
+        "updater-archive" => updater::archive_command(root(), rest),
+        "update-manifest" => updater::manifest_command(root(), rest),
             "version" => package::workspace_version().map(|v| println!("{v}")),
             "bundle-macos" => package::parse_options(rest).and_then(|o| package::bundle_macos(&o)),
             "dmg-macos" => package::parse_options(rest).and_then(|o| package::dmg_macos(&o)),
             "package-linux" => package::parse_options(rest).and_then(|o| package::package_linux(&o)),
             "package-windows" => package::parse_options(rest).and_then(|o| package::package_windows(&o)),
-            _ => Err("usage: cargo xtask <layers|assets|privacy|ci|corpus|screens|version|bundle-macos|dmg-macos|package-linux|package-windows>"
+            _ => Err("usage: cargo xtask <layers|assets|privacy|ci|corpus|screens|updater-archive|update-manifest|version|bundle-macos|dmg-macos|package-linux|package-windows>"
                 .to_string()),
         };
     match result {
