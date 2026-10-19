@@ -243,7 +243,7 @@ fn the_spelling_dialog_changes_ignores_and_learns() {
 }
 
 #[test]
-fn enter_in_change_to_changes_and_ignore_leaves_the_script_unedited() {
+fn enter_in_change_to_changes_and_ignore_is_kept_with_the_script() {
     let (mut harness, _file) = harness(SPELL_SCRIPT);
     harness.state_mut().queued.push("app.spelling".into());
     harness.run_steps(3);
@@ -256,7 +256,7 @@ fn enter_in_change_to_changes_and_ignore_leaves_the_script_unedited() {
     harness.state_mut().session.dirty = false;
     harness.get_by_label("Ignore").click();
     harness.run_steps(3);
-    assert!(!harness.state().session.dirty, "Ignore lasts the session and edits nothing");
+    assert!(harness.state().session.dirty, "Ignore is kept with the script, so there is something to save");
     assert_eq!(harness.state().spelling.as_ref().map(|d| d.status.clone()).as_deref(), Some("No misspellings."));
 }
 
