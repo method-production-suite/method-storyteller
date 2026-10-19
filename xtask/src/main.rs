@@ -35,7 +35,7 @@ fn main() -> ExitCode {
             "ci" => ci(),
             "corpus" => corpus::run(root()),
             "screens" => screens::run(root()),
-        "updater-archive" => updater::archive_command(rest),
+        "updater-archive" => updater::archive_command(root(), rest),
         "update-manifest" => updater::manifest_command(root(), rest),
             "version" => package::workspace_version().map(|v| println!("{v}")),
             "bundle-macos" => package::parse_options(rest).and_then(|o| package::bundle_macos(&o)),

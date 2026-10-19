@@ -52,12 +52,12 @@ impl Args {
 }
 
 /// `cargo xtask updater-archive`.
-pub fn archive_command(rest: &[String]) -> Result<(), String> {
+pub fn archive_command(root: &Path, rest: &[String]) -> Result<(), String> {
     let args = Args::parse(rest)?;
     let key = std::env::var("UPDATER_PRIVATE_KEY").map_err(|_| "UPDATER_PRIVATE_KEY is not set".to_string())?;
     let password = std::env::var("UPDATER_PRIVATE_KEY_PASSWORD").unwrap_or_default();
     let archive = write_archive(Path::new(args.get("app")?), args.get("version")?, Path::new(args.get("out-dir")?))?;
-    let signature = sign(&archive, args.get("version")?, &key, &password)?;
+    let signature = sign(&archive, args.get("version")?, &key, &password, &app_public_key(root)?)?;
     let sig_path = PathBuf::from(format!("{}.sig", archive.display()));
     std::fs::write(&sig_path, signature).map_err(|e| format!("{}: {e}", sig_path.display()))?;
     println!("updater-archive: {} and its .sig", archive.display());
@@ -98,7 +98,8 @@ pub fn write_archive(app: &Path, version: &str, out_dir: &Path) -> Result<PathBu
 
 /// The `.sig` content for an archive: base64 of the minisign signature box, with
 /// `timestamp:<t>\tfile:<name>\tversion:<v>` as its trusted comment.
-pub fn sign(archive: &Path, version: &str, key_b64: &str, password: &str) -> Result<String, String> {
+/// Refuses a key whose public half is not `app_pubkey_b64`, the key the app checks with.
+pub fn sign(archive: &Path, version: &str, key_b64: &str, password: &str, app_pubkey_b64: &str) -> Result<String, String> {
     let key_box = decode_text(key_b64.trim()).map_err(|e| format!("the update key: {e}"))?;
     let secret = minisign::SecretKeyBox::from_string(&key_box)
         .and_then(|b| b.into_secret_key(Some(password.to_string())))
@@ -110,6 +111,14 @@ pub fn sign(archive: &Path, version: &str, key_b64: &str, password: &str) -> Res
     let trusted = format!("timestamp:{timestamp}\tfile:{name}\tversion:{version}");
     // With the public key, minisign checks the new signature before it returns it.
     let public = minisign::PublicKey::from_secret_key(&secret).map_err(|e| format!("the update key's public half: {e}"))?;
+    let app = minisign::PublicKeyBox::from_string(&decode_text(app_pubkey_b64)?)
+        .and_then(|b| b.into_public_key())
+        .map_err(|e| format!("the app's public key: {e}"))?;
+    if public.to_base64() != app.to_base64() {
+        return Err(
+            "the update key is not the one the app checks with (PUBKEY in crates/app/src/updates.rs): installed apps would refuse this update".into(),
+        );
+    }
     let signature =
         minisign::sign(Some(&public), &secret, Cursor::new(&bytes), Some(&trusted), Some("signature from the Method Storyteller update key"))
             .map_err(|e| format!("signing {name}: {e}"))?;
@@ -213,9 +222,13 @@ mod tests {
         }
         assert!(names.iter().any(|n| n == "Method Storyteller.app/Contents/MacOS/method-storyteller-app"), "{names:?}");
 
-        let sig = sign(&archive, "0.2.0", &secret_b64, "pw").unwrap();
+        let sig = sign(&archive, "0.2.0", &secret_b64, "pw", &public_b64).unwrap();
         std::fs::write(format!("{}.sig", archive.display()), &sig).unwrap();
-        assert!(sign(&archive, "0.2.0", &secret_b64, "wrong").is_err(), "a wrong password does not sign");
+        assert!(sign(&archive, "0.2.0", &secret_b64, "wrong", &public_b64).is_err(), "a wrong password does not sign");
+        let stranger = minisign::KeyPair::generate_unencrypted_keypair().unwrap();
+        let stranger_b64 = STANDARD.encode(stranger.pk.to_box().unwrap().to_string());
+        let refused = sign(&archive, "0.2.0", &secret_b64, "pw", &stranger_b64).unwrap_err();
+        assert!(refused.contains("not the one the app checks with"), "{refused}");
 
         let json = manifest(&out, "0.2.0", &public_b64, "Notes.", 1_792_281_600).unwrap();
         let value: serde_json::Value = serde_json::from_str(&json).unwrap();
