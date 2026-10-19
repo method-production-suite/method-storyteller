@@ -1,0 +1,93 @@
+name: full
+# The full build (SUITE-STANDARDS.md §6, 2026-10-19, the ArtCraft-style plan): `cargo xtask ci`
+# on macOS, Windows and Linux, weekly on main (Mondays 05:00 UTC), and by hand (Actions > full >
+# Run workflow) on the commit to be released, before its tag. A scheduled run skips itself when
+# main has not moved since the last green run. Pull requests and pushes to main run only the
+# dependency checks (ci.yml); release.yml builds everything again for the release.
+on:
+  schedule:
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: full-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  # Whether there is anything new to build: a scheduled run compares main's HEAD with the commit
+  # the last successful full run built. A run started by hand always builds.
+  decide:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      build: ${{ steps.check.outputs.build }}
+    steps:
+      - id: check
+        env:
+          EVENT: ${{ github.event_name }}
+          HEAD_SHA: ${{ github.sha }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != schedule ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          last="$(gh run list --workflow full.yml --branch main --status success --limit 1 --json headSha --jq '.[0].headSha // ""')"
+          if [ "$last" = "$HEAD_SHA" ]; then
+            echo "main is still at $HEAD_SHA, which the last green full run built: nothing to do."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  gates:
+    needs: decide
+    if: needs.decide.outputs.build == 'true'
+    name: full (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            timeout: 40
+          - os: macos-latest
+            timeout: 45
+          - os: windows-latest
+            timeout: 60
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: ${{ matrix.timeout }}
+    # As in ci.yml: no incremental state and line-tables-only debug info keep target small.
+    env:
+      CARGO_INCREMENTAL: 0
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
+      CARGO_PROFILE_TEST_DEBUG: line-tables-only
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: gates-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: gates-${{ runner.os }}-
+      - name: Linux packages for eframe
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libgl1-mesa-dev libwayland-dev
+      - run: cargo xtask ci
+      # This is where every system's cache is saved; it saves on main only, and only when the
+      # key missed.
+      - if: github.ref == 'refs/heads/main' && steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: gates-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
