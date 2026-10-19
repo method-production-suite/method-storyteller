@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<FinalDraft DocumentType="Script" Template="No" Version="5">
+  <Content>
+    <Paragraph Type="Outline 1">
+      <Text>ACT ONE</Text>
+    </Paragraph>
+    <Paragraph Type="Scene Heading" Number="4A">
+      <SceneProperties Length="2/8" Page="1" Title=""/>
+      <Text>INT. RADIO ROOM - NIGHT</Text>
+    </Paragraph>
+    <Paragraph Type="Action">
+      <ScriptNote Color="#FFFF00000000" Author="R. Lee"><Paragraph><Text>Louder?</Text></Paragraph></ScriptNote>
+      <Text>The set </Text>
+      <Text RevisionID="1" Style="Bold">crackles</Text>
+      <Text>.</Text>
+    </Paragraph>
+    <Paragraph>
+      <DualDialogue>
+        <Paragraph Type="Character">
+          <Text>MARA</Text>
+        </Paragraph>
+        <Paragraph Type="Dialogue">
+          <Text>Now.</Text>
+        </Paragraph>
+        <Paragraph Type="Character">
+          <Text>BEN</Text>
+        </Paragraph>
+        <Paragraph Type="Dialogue">
+          <Text>Later.</Text>
+        </Paragraph>
+      </DualDialogue>
+    </Paragraph>
+    <Paragraph Type="New Act" StartsNewPage="Yes">
+      <Text>ACT TWO</Text>
+    </Paragraph>
+  </Content>
+  <TitlePage>
+    <Content>
+      <Paragraph Alignment="Center" Type="Title Page" StorytellerField="Title">
+        <Text>THE STATION</Text>
+      </Paragraph>
+    </Content>
+  </TitlePage>
+  <ElementSettings Type="Action"><FontSpec Font="Courier Prime" Size="12" Style=""/><ParagraphSpec Alignment="Left" FirstIndent="0.00" LeftIndent="1.50" RightIndent="7.50" SpaceBefore="12" Spacing="1"/><Behavior PaginateAs="Action" ReturnKey="Action" Shortcut="2"/></ElementSettings>
+  <ElementSettings Type="New Act"><FontSpec Font="Courier Prime" Size="12" Style="Bold+Underline"/><ParagraphSpec Alignment="Center" LeftIndent="1.50" RightIndent="7.50" SpaceBefore="12"/><Behavior PaginateAs="Scene Heading" ReturnKey="Scene Heading"/></ElementSettings>
+  <ElementSettings Type="Outline 1"><FontSpec Style="Bold+HiddenText"/><ParagraphSpec/><Outline Level="1"/></ElementSettings>
+  <PageLayout BottomMargin="72" HeaderMargin="36" TopMargin="72" StorytellerOsf="&lt;settings page_width=&quot;2159&quot; page_height=&quot;2794&quot; margin_top=&quot;254&quot; margin_bottom=&quot;254&quot; margin_left=&quot;381&quot; margin_right=&quot;254&quot; normal_linesperinch=&quot;6.0&quot; element_spacing=&quot;1.00&quot; break_on_sentences=&quot;true&quot; dialogue_continues=&quot;true&quot; dialogue_pagebreaks=&quot;true&quot; cont_text=&quot;(CONT&amp;apos;D)&quot; more_text=&quot;(MORE)&quot; scenes_continue=&quot;false&quot; scene_time_separator=&quot; - &quot; page_header=&quot;#.&quot; header_alignment=&quot;3&quot; header_first_page=&quot;false&quot; fdx_page_layout=&quot;&amp;lt;PageLayout BottomMargin=&amp;quot;72&amp;quot; HeaderMargin=&amp;quot;36&amp;quot; TopMargin=&amp;quot;72&amp;quot;&amp;gt;&amp;lt;PageSize Height=&amp;quot;11.00&amp;quot; Width=&amp;quot;8.50&amp;quot;/&amp;gt;&amp;lt;/PageLayout&amp;gt;&quot; fdx_mores=&quot;&amp;lt;MoresAndContinueds&amp;gt;&amp;lt;DialogueBreaks AutomaticCharacterContinueds=&amp;quot;Yes&amp;quot; DialogueBottom=&amp;quot;(MORE)&amp;quot; DialogueTop=&amp;quot;(CONT&amp;apos;D)&amp;quot;/&amp;gt;&amp;lt;/MoresAndContinueds&amp;gt;&quot; revision=&quot;1&quot; pages_locked=&quot;1&quot;/&gt;"><PageSize Height="11.00" Width="8.50"/></PageLayout>
+  <MoresAndContinueds><DialogueBreaks AutomaticCharacterContinueds="Yes" DialogueBottom="(MORE)" DialogueTop="(CONT&apos;D)"/></MoresAndContinueds>
+  <LockedPages>
+    <LockedPage PageNumber="1" Position="0"/>
+    <LockedPage PageNumber="1A" Position="40"/>
+  </LockedPages>
+  <Revisions ActiveSet="1" RevisionMode="Yes">
+    <Revision Color="#00000000FFFF" ID="1" Mark="*" Name="Blue Rev." PageColor="#C6C6EDEDFEFE"/>
+  </Revisions>
+  <ScriptNotes>
+    <ScriptNote Color="#0000FFFF0000" Range="26,31" WriterName="A. Writer"><Paragraph><Text>Which set?</Text></Paragraph></ScriptNote>
+  </ScriptNotes>
+</FinalDraft>

@@ -78,10 +78,11 @@ says otherwise.
   the navigator against what you expect; ⌘⌥G to a scene number and a page; ⌘F, Enter and ⇧Enter,
   Replace, Replace All and one ⌘Z; Production > Rename Character with and without "Also in
   action, dialogue and other text".
-- **Lossless `.fdx` (the final check).** Open our exported `.fdx` files in your licensed copy
-  and say whether the notes, revisions, locked pages and element settings came through. The
-  files and a click list (what to open, where to look, what you should see) come here when the
-  milestone's pieces have merged; about 20 minutes, nothing to type.
+- **Lossless `.fdx` (the final check).** Open `crates/core/tests/fixtures/lossless-check.fdx`
+  in your licensed copy and go down the nine-step click list in
+  [research/fdx-osf-fidelity.md](research/fdx-osf-fidelity.md#the-owners-final-check): notes,
+  revisions, locked pages and element settings, then save it and send it back. About 20 minutes,
+  nothing to type. Ready once the milestone's PRs (#38, #40, #42, #43 and the report) have merged.
 - **The parity check (M7).** One scripted session with a licensed reference app settles the eight open questions in
   the V1 inventory: whether our `.fdx` exports open cleanly, encodings never seen filled in
   (alternates, tags in text, A-page locks), A-page and A-scene lettering edge cases, pagination
@@ -165,10 +166,11 @@ wait for a decision above.
    (decision 7 for Fountain), scene titles, summaries and colours, drag to reorder scenes in
    the navigator (one Undo), bookmarks for Go To, the character table, show and hide outline
    paragraphs.
-8. **Lossless `.fdx`** [partial] M (owner, 2026-10-18). Everything `.fdx` and Open Screenplay
+8. **Lossless `.fdx`** [in review] M (owner, 2026-10-18). Everything `.fdx` and Open Screenplay
    Format can both hold converts exactly both ways (OSF to `.fdx`, `.fdx` to OSF, `.fdx` to
    `.fdx`), proven by round-trip tests on files we write ourselves. Today an imported `.fdx`
-   keeps everything only when saved back as `.fdx`. One PR each, in order:
+   keeps everything only when saved back as `.fdx`. One PR each, in order (all in review; the
+   fidelity report lists what maps exactly and what cannot):
    - script notes: the three `.fdx` generations (a note inside its paragraph, the older
      unanchored list, the newer list with character ranges) into the model with range, colour
      and author, to OSF `note` and back (colour and author in a `method_storyteller` child, so

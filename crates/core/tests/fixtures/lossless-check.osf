@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document type="Open Screenplay Format document" version="30">
+  <settings page_width="2159" page_height="2794" margin_top="254" margin_bottom="254" margin_left="381" margin_right="254" normal_linesperinch="6.0" element_spacing="1.00" break_on_sentences="true" dialogue_continues="true" dialogue_pagebreaks="true" cont_text="(CONT&apos;D)" more_text="(MORE)" scenes_continue="false" scene_time_separator=" - " page_header="#." header_alignment="3" header_first_page="false" fdx_page_layout="&lt;PageLayout BottomMargin=&quot;72&quot; HeaderMargin=&quot;36&quot; TopMargin=&quot;72&quot;&gt;&lt;PageSize Height=&quot;11.00&quot; Width=&quot;8.50&quot;/&gt;&lt;/PageLayout&gt;" fdx_mores="&lt;MoresAndContinueds&gt;&lt;DialogueBreaks AutomaticCharacterContinueds=&quot;Yes&quot; DialogueBottom=&quot;(MORE)&quot; DialogueTop=&quot;(CONT&apos;D)&quot;/&gt;&lt;/MoresAndContinueds&gt;" revision="1" pages_locked="1"/>
+  <styles>
+    <style name="Action" builtin="1" builtin_index="2" basestylename="Action" font="Courier Prime" size="12" spacebefore="1.0" align="left" firstlineindent="0" linespacing="1.0" style_enter="Action" fdx_xml="&lt;ElementSettings Type=&quot;Action&quot;&gt;&lt;FontSpec Font=&quot;Courier Prime&quot; Size=&quot;12&quot; Style=&quot;&quot;/&gt;&lt;ParagraphSpec Alignment=&quot;Left&quot; FirstIndent=&quot;0.00&quot; LeftIndent=&quot;1.50&quot; RightIndent=&quot;7.50&quot; SpaceBefore=&quot;12&quot; Spacing=&quot;1&quot;/&gt;&lt;Behavior PaginateAs=&quot;Action&quot; ReturnKey=&quot;Action&quot; Shortcut=&quot;2&quot;/&gt;&lt;/ElementSettings&gt;"/>
+    <style name="New Act" basestylename="Scene Heading" font="Courier Prime" size="12" bold="1" underline="1" spacebefore="1.0" align="center" leftindent="0" rightindent="0" style_enter="Scene Heading"/>
+    <style name="Outline 1" bold="1" fdx_xml="&lt;ElementSettings Type=&quot;Outline 1&quot;&gt;&lt;FontSpec Style=&quot;Bold+HiddenText&quot;/&gt;&lt;Outline Level=&quot;1&quot;/&gt;&lt;/ElementSettings&gt;"/>
+  </styles>
+  <paragraphs>
+    <para page_number="1">
+      <style basestylename="Action"/>
+      <method_storyteller kind="section" level="1"/>
+      <text>ACT ONE</text>
+    </para>
+    <para scene_number="4A" page_number="1" note="Which set?">
+      <style basestylename="Scene Heading"/>
+      <method_storyteller_note text="Which set?" range="18,23" color="#00FF00" author="A. Writer"/>
+      <text>INT. RADIO ROOM - NIGHT</text>
+    </para>
+    <para page_number="1" note="Louder?">
+      <style basestylename="Action"/>
+      <method_storyteller_page at="8" label="1A"/>
+      <method_storyteller_note text="Louder?" color="#FF0000" author="R. Lee" fdx_form="inline" fdx_Color="#FFFF00000000" fdx_Author="R. Lee"/>
+      <text>The set </text>
+      <text bold="1" revision="1">crackles</text>
+      <text>.</text>
+    </para>
+    <para page_number="1A">
+      <style basestylename="Character" dualdialogue="1"/>
+      <text>MARA</text>
+    </para>
+    <para page_number="1A">
+      <style basestylename="Dialogue"/>
+      <text>Now.</text>
+    </para>
+    <para page_number="1A">
+      <style basestylename="Character"/>
+      <text>BEN</text>
+    </para>
+    <para page_number="1A">
+      <style basestylename="Dialogue"/>
+      <text>Later.</text>
+    </para>
+    <para page_number="1A">
+      <style basestylename="Action" pagebreakbefore="1"/>
+      <method_storyteller fdx_type="New Act"/>
+      <text>ACT TWO</text>
+    </para>
+  </paragraphs>
+  <titlepage>
+    <para bookmark="Title">
+      <style basestylename="Normal Text" align="center"/>
+      <text>THE STATION</text>
+    </para>
+    <para>
+      <style basestylename="Normal Text"/>
+      <text></text>
+    </para>
+  </titlepage>
+  <lists><revision_colors fdx_ActiveSet="1" fdx_RevisionMode="Yes"><revision_color name="Blue Rev." index="1" color_name="Blue" color_index="1" mark="*" method_storyteller_page_color="#C6EDFE" method_storyteller_color="#0000FF"/></revision_colors></lists>
+</document>

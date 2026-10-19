@@ -531,6 +531,11 @@ fn read_para(
     if kind == ElementKind::Centered {
         style_attributes.retain(|(k, _)| key(k) != "align");
     }
+    // A `.fdx` paragraph type of its own comes back with the paragraph.
+    if let Some(type_name) = marker.as_ref().and_then(|m| get(m, "fdx_type")) {
+        element.fdx =
+            Some(Box::new(crate::model::FdxParagraph { type_name: type_name.to_string(), kind, attributes: Vec::new(), children: String::new() }));
+    }
     let canonical = style_for(kind);
     if style_name != canonical || !attributes.is_empty() || !style_attributes.is_empty() || !children.is_empty() {
         element.osf = Some(Box::new(OsfParagraph { style: style_name, kind, attributes, style_attributes, children }));
@@ -1132,12 +1137,21 @@ fn write_para(element: &Element, extras: &ParaExtras, spelling: Spelling, styles
     }
     out.push_str(">\n      <style");
     // Paragraphs OSF has no kind for are written as their nearest style, plus our marker.
-    let marker = match element.kind {
-        ElementKind::Section => Some(format!("<{MARKER} kind=\"section\" level=\"{}\"/>", element.level.clamp(1, 6))),
-        ElementKind::Synopsis => Some(format!("<{MARKER} kind=\"synopsis\"/>")),
-        ElementKind::Lyrics if !styles_known => Some(format!("<{MARKER} kind=\"lyrics\"/>")),
+    let mut marker = match element.kind {
+        ElementKind::Section => Some(format!("<{MARKER} kind=\"section\" level=\"{}\"", element.level.clamp(1, 6))),
+        ElementKind::Synopsis => Some(format!("<{MARKER} kind=\"synopsis\"")),
+        ElementKind::Lyrics if !styles_known => Some(format!("<{MARKER} kind=\"lyrics\"")),
         _ => None,
     };
+    // A `.fdx` paragraph type of its own (`New Act`), so it goes back to `.fdx` by that name.
+    let own_type = crate::fdx::fdx_type(element);
+    let plain = Element { fdx: None, ..element.clone() };
+    if own_type != crate::fdx::fdx_type(&plain) {
+        let mut tag = marker.take().unwrap_or_else(|| format!("<{MARKER}"));
+        write_attr("fdx_type", &own_type, &mut tag);
+        marker = Some(tag);
+    }
+    let marker = marker.map(|m| format!("{m}/>"));
     let style = match kept {
         Some(osf) => osf.style.clone(),
         None if element.kind == ElementKind::Lyrics && !styles_known => "Dialogue".to_string(),
