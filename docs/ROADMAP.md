@@ -28,10 +28,10 @@ says otherwise.
    Format one menu choice away (File > Save New Scripts as…). **Reopened (owner, 2026-10-18):**
    OSF may suit better for what it can hold. A side-by-side study is coming as
    `docs/research/osf-vs-fountain.md`; the pick it ends with lands here.
-3. **Tab after text in a character cue.** Final Draft starts a parenthetical by default, with an
+3. **Tab after text in a character cue.** The usual convention starts a parenthetical, with an
    option to open the extension list. **Built on the recommendation: parenthetical**; the
-   extension option comes with stored SmartType lists. To confirm in the Final Draft 11 session.
-4. **⌘0.** Final Draft uses it for its General element, which the model does not have; here it is
+   extension option comes with stored autocomplete lists. To confirm in the parity check (M7).
+4. **⌘0.** Some screenwriting apps use it for a General element, which the model does not have; here it is
    Actual Size. **Built on the recommendation: keep Actual Size.**
 5. **"Paginate like…" profiles for other apps.** Only one app's pagination is calibrated against
    real output. **Recommend: after V1**, starting with the (MORE)/(CONT'D) text and split
@@ -61,12 +61,12 @@ says otherwise.
 ### Tests that need the owner's hands
 
 - **The writing feel (M3).** Write a few pages from scratch: Enter, Tab, the element picker,
-  SmartType, ⌘1–7 and ⌘⌥1–7. Say what feels wrong.
+  autocomplete, ⌘1–7 and ⌘⌥1–7. Say what feels wrong.
 - **Navigation and editing (M4).** In a real script: the scene lengths in
   the navigator against what you expect; ⌘⌥G to a scene number and a page; ⌘F, Enter and ⇧Enter,
   Replace, Replace All and one ⌘Z; Production > Rename Character with and without "Also in
   action, dialogue and other text".
-- **The Final Draft 11 session (M7).** One scripted session settles the eight open questions in
+- **The parity check (M7).** One scripted session with a licensed reference app settles the eight open questions in
   the V1 inventory: whether our `.fdx` exports open cleanly, encodings never seen filled in
   (alternates, tags in text, A-page locks), A-page and A-scene lettering edge cases, pagination
   cases the corpus lacks (dual dialogue at a break, scene CONTINUED, stacked CONT'D, line-spacing
@@ -75,7 +75,7 @@ says otherwise.
   and a click list come before the session.
 - **The design pass (D).** Look at the offscreen pictures of the icon, the editor and every panel
   in light and dark, and say what feels off. Nothing needs the app open on your screen.
-- **Private corpus.** New FDX+PDF pairs straight out of Final Draft (same day, same draft) widen
+- **Private corpus.** New `.fdx` and PDF pairs exported together (same day, same draft) widen
   the ground truth. The harness never prints script text; the files stay on one machine.
 
 ### Release go-aheads
@@ -92,11 +92,11 @@ says otherwise.
 **[have]**
 - Fountain, `.fdx`, Open Screenplay Format (`.osf`, `.fadein`) read and write, keeping
   everything the model does not use; PDF export.
-- Pagination matched to Final Draft: every scene of the 15 ground-truth scripts on the same page
+- Pagination matched to real production PDFs: every scene of the 15 ground-truth scripts on the same page
   (87% across 108 real files); scene page and length in eighths written to `.fdx`.
 - The macOS menu bar, a unified title bar, page view and draft view.
 - M3, the writing feel: Enter/Tab flow, element picker, ⌘1–7 and ⌘⌥1–7, status-bar hint,
-  automatic (CONT'D), SmartType times and next-speaker guess, smart quotes.
+  automatic (CONT'D), autocomplete times and next-speaker guess, smart quotes.
 
 - The suite standards: identity, the Help menu, repo hygiene with the 14-day crate-age check,
   the release workflow, the brand (docs/BRAND.md), and pictures that retake themselves
@@ -158,7 +158,7 @@ wait for a decision above.
     - empty states (no script, no scenes, nothing found) and error states (a file that will not
       open, a failed save, a failed update) written in the family voice.
     Runs beside M4 to M6: it touches theme, icons and copy, not the engine.
-11. **M7, release** M. The Final Draft 11 session (the eight prepared checks in one sitting,
+11. **M7, parity check, then V1.0** M. The parity check (the eight prepared checks in one sitting,
     each answer a committed golden test), the fixes it finds, then V1.0.
 
 **Parallel tracks while M4 runs:** the release workflow's updater files (`latest.json` and the
@@ -168,8 +168,8 @@ signed `.app.tar.gz`), the OSF and Fountain study, and the design pass. Each is 
 - **Page view** [partial] S. A speech split across pages should continue on the next sheet
   instead of lengthening the first.
 - **Imports** [missing] S each. `.highland` (a ZIP holding Fountain), PDF (from Method Reader's
-  crates once relicensed), Celtx.
-- **Stored SmartType lists** [missing] M. Lists kept in the document, learned as you type,
+  crates once relicensed), `.celtx`.
+- **Stored autocomplete lists** [missing] M. Lists kept in the document, learned as you type,
   editable; the extension-on-Tab option.
 - **Scene CONTINUED** [missing] S. Off by default; measured only if a corpus file turns it on.
 
