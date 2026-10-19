@@ -2,6 +2,8 @@
 # (SUITE-STANDARDS.md §6). One "name version" per line, then the reason:
 # - a security fix that cannot wait: name its RUSTSEC id; releases may ship it;
 # - a version that cannot be pinned back: give the date it turns 14 days old; main stays
-#   green, but no release ships it (the release workflow runs the check with --release).
+#   green, but no release ships it (the release workflow runs the check with --release);
+# - the owner's override for a named release: start the reason "owner-approved override",
+#   then who approved it, when, and for which release; releases may ship it.
 # Remove a line once the version is 14 days old.
-muda 0.21.2   # craft-quit, at its pinned craft-libs revision, requires ^0.21.2; 14 days old on 2026-10-22
+muda 0.21.2   # owner-approved override, the owner, 2026-10-19, release v0.2.0 (craft-quit, at its pinned craft-libs revision, requires ^0.21.2; 14 days old on 2026-10-22, and 0.21.1 is young too)

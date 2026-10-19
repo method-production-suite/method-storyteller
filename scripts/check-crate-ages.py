@@ -17,8 +17,9 @@ An exact NAME VERSION listed in scripts/crate-age-exceptions.txt (the same forma
 Reader's), with its reason and age-out date, may be younger than the cooldown, so main stays
 green while a version that cannot be pinned back ages out, or a young version that fixes a
 security advisory (its reason names the RUSTSEC id) can ship. --release honours only the
-security lines: the release workflow runs it so, and no release is tagged while an age-out
-line's version is still young. A yanked version always fails.
+security lines and the owner's approved overrides (a reason starting "owner-approved override"):
+the release workflow runs it so, and no release is tagged while any other listed version is
+still young. A yanked version always fails.
 
 This copy converges on the suite's shared crate-age script (SUITE-STANDARDS.md §6, with an
 allow-list file) once method-libs carries it. With --only-changed REF, only packages added or bumped
@@ -45,17 +46,28 @@ CRATES_IO = "registry+https://github.com/rust-lang/crates.io-index"
 EXCEPTIONS = pathlib.Path(__file__).with_name("crate-age-exceptions.txt")
 
 
+OWNER_APPROVED = "owner-approved override"
+
+
+def release_honoured(reason):
+    """Whether a release may ship a young version for this reason: a security fix that names its
+    RUSTSEC advisory, or an override the owner approved for a named release (the reason starts
+    with "owner-approved override", then who approved it, when, and for which release)."""
+    reason = reason.strip()
+    return "RUSTSEC-" in reason or reason.startswith(OWNER_APPROVED)
+
+
 def excepted(security_only=False):
     """{(name, version)} allowed under the cooldown, each listed with a reason. With
-    security_only, only the lines whose reason names a RUSTSEC advisory (a young fix that
-    cannot wait), not the ones waiting to age out."""
+    security_only (releases), only the lines a release may ship (`release_honoured`), not the
+    ones waiting to age out."""
     if not EXCEPTIONS.exists():
         return set()
     out = set()
     for line in EXCEPTIONS.read_text().splitlines():
         entry, _, reason = line.partition("#")
         words = entry.split()
-        if len(words) == 2 and (not security_only or "RUSTSEC-" in reason):
+        if len(words) == 2 and (not security_only or release_honoured(reason)):
             out.add((words[0], words[1]))
     return out
 PINNED_GIT = re.compile(r"^git\+(https://[^?#]+)\?rev=([0-9a-f]{40})#\2$")
