@@ -107,9 +107,7 @@ fn forced_elements_round_trip() {
             Element::new(K::Action, ""),
             Element::new(K::SceneHeading, ""),
         ],
-        fdx: None,
-        osf: None,
-        spelling_ignored: Vec::new(),
+        ..Script::default()
     });
     round_trip(Script {
         title_page: title,
@@ -126,9 +124,7 @@ fn forced_elements_round_trip() {
             Element::new(K::Centered, "INTERMISSION"),
             Element::new(K::PageBreak, ""),
         ],
-        fdx: None,
-        osf: None,
-        spelling_ignored: Vec::new(),
+        ..Script::default()
     });
 }
 
