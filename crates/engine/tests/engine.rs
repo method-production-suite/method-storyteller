@@ -570,3 +570,23 @@ fn copy_scene_gives_fountain_that_pastes_back_the_same() {
     let back: Vec<(K, String)> = t.script.elements.iter().map(|e| (e.kind, e.text.clone())).collect();
     assert_eq!(back, scene, "element types and text come back the same");
 }
+
+#[test]
+fn a_new_tv_script_is_laid_out_in_acts() {
+    let registry = Registry::new();
+    let mut s = Session::default();
+    run(&registry, &mut s, "file.new_tv", json!({ "shape": "one_hour" }));
+    let acts: Vec<&str> = s.script.elements.iter().filter(|e| e.kind == K::NewAct).map(|e| e.text.as_str()).collect();
+    assert_eq!(acts, ["TEASER", "ACT ONE", "ACT TWO", "ACT THREE", "ACT FOUR", "ACT FIVE", "TAG"]);
+    assert_eq!(&kinds(&s)[..3], [K::NewAct, K::SceneHeading, K::EndOfAct], "each act: its line, a scene heading, its end");
+    assert_eq!(s.script.elements[2].text, "END OF TEASER");
+    assert_eq!(s.caret.element, 1, "the caret in the first act's scene heading");
+    assert!(!s.dirty && s.path.is_none());
+
+    run(&registry, &mut s, "file.new_tv", json!({ "shape": "half_hour" }));
+    let acts: Vec<&str> = s.script.elements.iter().filter(|e| e.kind == K::NewAct).map(|e| e.text.as_str()).collect();
+    assert_eq!(acts, ["COLD OPEN", "ACT ONE", "ACT TWO", "ACT THREE", "TAG"]);
+
+    let refused = registry.run("file.new_tv", &mut s, &serde_json::from_value(json!({ "shape": "feature" })).unwrap());
+    assert!(refused.is_err(), "an unknown shape is refused");
+}

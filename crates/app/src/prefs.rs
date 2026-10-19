@@ -40,6 +40,8 @@ pub struct General {
     /// The first-launch sample has had its turn: shown once, or retired unshown because the
     /// writer already had a script to open.
     pub sample_seen: bool,
+    /// The shape File > New TV Script offers first: the writer's last choice.
+    pub tv_shape: storyteller_core::model::TvShape,
 }
 
 impl Default for General {
@@ -51,6 +53,7 @@ impl Default for General {
             last_seen_version: String::new(),
             learned_words: Vec::new(),
             sample_seen: false,
+            tv_shape: storyteller_core::model::TvShape::default(),
         }
     }
 }

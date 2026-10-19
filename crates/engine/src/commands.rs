@@ -664,6 +664,25 @@ fn all_commands() -> Vec<Command> {
             },
         },
         Command {
+            id: "file.new_tv",
+            label: "New TV Script…",
+            menu: "File/New TV Script…",
+            shortcut: None,
+            params: const { &[param("shape", String, false, "one_hour (Teaser, Acts One to Five, Tag) or half_hour (Cold Open, Acts One to Three, Tag)")] },
+            enabled: always,
+            run: |s, p| {
+                let shape = match opt_string(p, "shape")? {
+                    Some(id) => storyteller_core::model::TvShape::from_id(&id)
+                        .ok_or_else(|| CommandError::Invalid { name: "shape", reason: "one_hour or half_hour".into() })?,
+                    None => storyteller_core::model::TvShape::default(),
+                };
+                *s = Session::new(Script::tv(shape));
+                // The caret in the first act's scene heading, ready to write.
+                s.caret = Caret { element: 1, offset: 0 };
+                Ok(Outcome::done())
+            },
+        },
+        Command {
             id: "file.open",
             label: "Open…",
             menu: "File/Open…",
