@@ -385,6 +385,75 @@ fn insert(session: &mut Session, at: usize, element: Element) -> Result<(), Comm
     Ok(())
 }
 
+/// The elements of the scene `index` is in: from its heading (or the start of the script) up to
+/// the next heading.
+pub fn scene_range(script: &Script, index: usize) -> std::ops::Range<usize> {
+    let elements = &script.elements;
+    let index = index.min(elements.len().saturating_sub(1));
+    let start = elements.get(..=index).unwrap_or_default().iter().rposition(|e| e.kind == ElementKind::SceneHeading).unwrap_or(0);
+    let end = elements
+        .get(start + 1..)
+        .unwrap_or_default()
+        .iter()
+        .position(|e| e.kind == ElementKind::SceneHeading)
+        .map_or(elements.len(), |n| start + 1 + n);
+    start..end
+}
+
+/// Whether pasted text is screenplay text in several paragraphs (a blank line between two), so
+/// that pasting it makes elements rather than one long paragraph.
+pub fn is_screenplay_paste(text: &str) -> bool {
+    text.replace("\r\n", "\n").trim().split("\n\n").filter(|part| !part.trim().is_empty()).nth(1).is_some()
+}
+
+/// Pastes screenplay text at `start..end` of element `index`, read as Fountain, as one Undo
+/// step: the text before the paste stays in the element, the pasted elements follow, and the
+/// text after the paste becomes an element of its own. Returns how many elements were pasted.
+fn paste_screenplay(s: &mut Session, index: usize, start: usize, end: usize, text: &str) -> Result<usize, CommandError> {
+    let Some(element) = s.script.elements.get(index) else {
+        return Err(CommandError::Invalid { name: "index", reason: "no such element".into() });
+    };
+    let start = floor_char_boundary(&element.text, start);
+    let end = floor_char_boundary(&element.text, end.max(start));
+    let kind = element.kind;
+    let before = element.text.get(..start).unwrap_or_default().to_string();
+    let after = element.text.get(end..).unwrap_or_default().to_string();
+    // The text alone, never a title page: a pasted `Title: …` line is action.
+    let parsed = storyteller_core::fountain::parse(&format!("\n{}", text.replace("\r\n", "\n").trim()))
+        .map_err(|e| CommandError::Failed(format!("the pasted text could not be read: {e}")))?;
+    let mut pasted: Vec<Element> = parsed.elements.into_iter().filter(|e| e.kind != ElementKind::PageBreak || !e.text.is_empty()).collect();
+    if pasted.is_empty() {
+        return Ok(0);
+    }
+    if s.script.elements.len().saturating_add(pasted.len()) > storyteller_core::MAX_ELEMENTS {
+        return Err(CommandError::Failed("the script has too many elements".into()));
+    }
+    s.checkpoint(EditKind::Other);
+    let count = pasted.len();
+    let mut at = index;
+    if before.trim().is_empty() {
+        // An empty line (or a paste at its start) takes the first pasted element in its place.
+        s.script.elements.remove(index);
+    } else {
+        if let Some(element) = s.script.elements.get_mut(index) {
+            element.set_text(before.trim_end().to_string());
+        }
+        at = index + 1;
+    }
+    if !after.trim().is_empty() {
+        let mut rest = Element::new(kind, after.trim_start());
+        rest.normalize();
+        pasted.push(rest);
+    }
+    let last = at + count - 1;
+    let caret = pasted.get(count - 1).map_or(0, |e| e.text.len());
+    for (n, element) in pasted.into_iter().enumerate() {
+        s.script.elements.insert(at + n, element);
+    }
+    s.caret = Caret { element: last, offset: caret };
+    Ok(count)
+}
+
 fn new_element(kind: ElementKind) -> (Element, usize) {
     if kind == ElementKind::Parenthetical { (Element::new(kind, "()"), 1) } else { (Element::new(kind, ""), 0) }
 }
@@ -1081,6 +1150,44 @@ fn all_commands() -> Vec<Command> {
                 insert(s, after + 1, element)?;
                 s.caret = Caret { element: after + 1, offset: len };
                 Ok(Outcome::value(json!({ "index": after + 1 })))
+            },
+        },
+        Command {
+            id: "edit.paste_screenplay",
+            label: "Paste Screenplay Text",
+            menu: "",
+            shortcut: None,
+            params: const {
+                &[
+                    INDEX,
+                    param("start", Integer, false, "Byte offset where the paste begins (default: the caret)"),
+                    param("end", Integer, false, "Byte offset where the replaced selection ends (default: start)"),
+                    param("text", String, true, "Screenplay text, read as Fountain"),
+                ]
+            },
+            enabled: always,
+            run: |s, p| {
+                let index = element_index(s, p)?;
+                let start = text_offset(s, p, index).and_then(|caret| Ok(opt_index(p, "start")?.unwrap_or(caret)))?;
+                let end = opt_index(p, "end")?.unwrap_or(start);
+                let pasted = paste_screenplay(s, index, start, end, &string(p, "text")?)?;
+                Ok(Outcome::value(json!({ "elements": pasted })))
+            },
+        },
+        Command {
+            id: "edit.copy_scene",
+            label: "Copy Scene",
+            menu: "Edit/Copy Scene",
+            shortcut: None,
+            params: const { &[INDEX] },
+            enabled: always,
+            run: |s, p| {
+                let index = element_index(s, p)?;
+                let range = scene_range(&s.script, index);
+                let count = range.len();
+                let elements = s.script.elements.get(range).unwrap_or_default().to_vec();
+                let text = storyteller_core::fountain::write(&Script { elements, ..Script::default() });
+                Ok(Outcome { message: Some(format!("Copied the scene ({count} elements)")), value: json!({ "text": text }) })
             },
         },
         Command {
