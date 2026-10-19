@@ -205,6 +205,13 @@ pub fn save_warnings(script: &Script, format: FileFormat) -> Vec<String> {
                     plural(notes, "script note", "script notes")
                 ));
             }
+            let ignored = script.spelling_ignored.len();
+            if ignored > 0 {
+                warnings.push(format!(
+                    "{} will be checked again next time (Fountain has no ignore list)",
+                    plural(ignored, "word ignored by spell check", "words ignored by spell check")
+                ));
+            }
         }
         FileFormat::Osf | FileFormat::FadeIn => {
             let sections = script.elements.iter().filter(|e| e.kind == K::Section).count();

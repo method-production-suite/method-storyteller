@@ -5,6 +5,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Weekly, Mondays 06:00 UTC: the whole-lock crate-age check and cargo deny only (new
+  # advisories, and anything that slipped past a pull request's changed-entries check).
+  schedule:
+    - cron: "0 6 * * 1"
 # A new push to a pull request cancels its stale run; runs on main always finish.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -13,6 +17,7 @@ permissions:
   contents: read
 jobs:
   gates:
+    if: github.event_name != 'schedule'
     strategy:
       fail-fast: false
       matrix:
@@ -52,7 +57,9 @@ jobs:
             target
           key: gates-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
   cooldown:
-    # Fails a change that adds crates published less than 14 days ago (scripts/check-crate-ages.py).
+    # Crates published less than 14 days ago fail (scripts/check-crate-ages.py, SUITE-STANDARDS
+    # §6): a pull request checks the entries it adds or bumps; every push to main and the weekly
+    # run check the whole lock.
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -63,17 +70,9 @@ jobs:
       - name: Check crate ages
         env:
           EVENT: ${{ github.event_name }}
-          BEFORE: ${{ github.event.before }}
         run: |
           set -euo pipefail
-          # Compare with what the branch had before: main for a pull request, the pushed-over
-          # commit for a push, main for a new branch. With nothing to compare with, every crate
-          # is checked.
           if [ "$EVENT" = pull_request ]; then
-            base=origin/main
-          elif [ -n "${BEFORE:-}" ] && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
-            base="$BEFORE"
-          elif [ "$GITHUB_REF" != refs/heads/main ]; then
             base=origin/main
           else
             base=""
