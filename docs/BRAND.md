@@ -77,39 +77,95 @@ and the mark is rose.
 
 ## Color
 
-The accent is rose, set in [crates/app/src/theme.rs](../crates/app/src/theme.rs). The
-app uses it for selection, focus, links and the mark.
+The neutrals, the amber and the token names are the family's, value for value with Method
+Budget and Method Schedule: warm paper and ink on the light side, the same dark surfaces on
+the other. What is ours is the rose accent, in the same lightness band as the family's other
+accents. Every token is a named constant in
+[crates/app/src/theme.rs](../crates/app/src/theme.rs); nothing in the app names a color of
+its own.
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| accent | `#AE3D56` | `#EE8DA2` | Selection, focus, links, the mark |
-| panel | `#F6F6F7` | `#1E1E20` | Side panels, toolbar |
-| window | `#FFFFFF` | `#2A2A2D` | Dialogs, popups |
-| desk | `#E4E4E7` | `#262629` | The surface the pages sit on |
+| desk | `#E8E5DD` | `#111417` | The surface the pages sit on |
+| panel | `#F7F6F2` | `#1B1F24` | Top bar, navigator, find bar, status bar |
+| window | `#FFFFFF` | `#22272E` | Dialogs, Help windows, menus, popups |
+| field | `#FFFFFF` | `#111417` | Text fields |
+| control | `#EFEDE7` | `#2B3138` | Buttons at rest |
+| control-hover | `#E6E3DB` | `#353C45` | Buttons under the pointer |
+| ink | `#1C2228` | `#E4E8EC` | Text |
+| ink-soft | `#3A424C` | `#C3CAD2` | Secondary text |
+| muted | `#59626D` | `#9AA3AD` | Captions, hints, counts |
+| rule | `#DEDBD3` | `#2B3138` | Dividers (decorative) |
+| rule-strong | `#8F897C` | `#67717D` | Borders that carry meaning |
+| accent | `#AE3D56` | `#EE8DA2` | Focus, links, the mark |
+| accent-strong | `#8C2F44` | `#F6B8C6` | Text of a chosen toggle, selection edge |
+| accent-ink | `#FFFFFF` | `#2A0E16` | Text on an accent fill |
+| accent-soft | `#F6E3E8` | `#47222D` | Selection, the current scene |
+| note | `#8A5A00` | `#E3B341` | Amber: caution, notes (never an accent) |
+| error | `#B3261E` | `#FF9C9C` | A file that will not open, a failed save |
 
-The page itself is always white with black type, as a printed script is.
+The page is the same in both themes, white with black type, as a printed script is:
+
+| Token | Value | Use |
+|---|---|---|
+| page | `#FFFFFF` | The paper |
+| page-ink | `#1A1A1A` | The script |
+| page-muted | `#707070` | Page and scene numbers, an empty line's element name |
+| page-rule | `#C4C4C4` | The dashed rule at a page end in the draft view (decorative) |
+| find-mark | `#EBBCC8` | A find match: the accent as a light wash |
 
 ### Contrast (WCAG 2.x)
 
-Body text needs a contrast ratio of 4.5:1 (AA). Accent text meets that on every surface
-it is drawn on.
+Body text needs 4.5:1 (AA); borders that carry meaning need 3:1. The test
+`theme::tests::every_pair_meets_wcag_aa` fails when a pair drops below what it needs, and
+`cargo test -p method-storyteller contrast_table -- --nocapture` prints this table.
 
-| Pair | Ratio |
-|---|---|
-| accent on window (light) | 5.83 |
-| accent on panel (light) | 5.40 |
-| accent on desk (light) | 4.60 |
-| white on accent | 5.83 |
-| accent on panel (dark) | 7.11 |
-| accent on desk (dark) | 6.44 |
-| accent on window (dark) | 6.11 |
+| Pair | Light | Dark | Needs |
+|---|---|---|---|
+| ink on panel | 14.84 | 13.45 | 4.5 |
+| ink on window | 16.04 | 12.20 | 4.5 |
+| ink on control | 13.71 | 10.66 | 4.5 |
+| ink on control-hover | 12.51 | 9.05 | 4.5 |
+| ink on accent-soft | 13.04 | 11.11 | 4.5 |
+| ink-soft on panel | 9.41 | 10.01 | 4.5 |
+| muted on panel | 5.72 | 6.48 | 4.5 |
+| muted on window | 6.19 | 5.88 | 4.5 |
+| muted on desk | 4.92 | 7.23 | 4.5 |
+| muted on accent-soft | 5.03 | 5.35 | 4.5 |
+| accent on panel | 5.39 | 7.07 | 4.5 |
+| accent on window | 5.83 | 6.42 | 4.5 |
+| accent on desk | 4.63 | 7.89 | 4.5 |
+| accent-strong on accent-soft | 6.55 | 8.20 | 4.5 |
+| accent-ink on accent | 5.83 | 7.65 | 4.5 |
+| note on window | 5.93 | 7.72 | 4.5 |
+| error on window | 6.54 | 7.50 | 4.5 |
+| error on panel | 6.04 | 8.27 | 4.5 |
+| rule-strong on panel | 3.22 | 3.34 | 3 |
+| page ink on page | 17.40 | 17.40 | 4.5 |
+| page muted on page | 4.95 | 4.95 | 4.5 |
+| page ink on find mark | 10.41 | 10.41 | 4.5 |
 
 ## Type
 
-- The interface uses the system's own faces, so nothing is downloaded.
+- The interface uses the system's own faces, so nothing is downloaded. The scale, in points:
+
+  | Token | Size | Use |
+  |---|---|---|
+  | small | 11 | Section labels, counts, fine print |
+  | body | 13 | Labels, buttons, lists (the family's 13) |
+  | title | 13.5 | The script's name in the top bar |
+  | heading | 17 | Headings in dialogs and Help windows |
+  | mono | 12 | Code and plain text |
+
 - The script is set in Courier Prime 12 pt (SIL Open Font License, bundled in
   `assets/fonts`), because page count depends on it.
 - The wordmark is artwork, so it needs no font.
+
+## Spacing and shape
+
+Spacing comes in steps of 4 points: 4, 8, 12 and 16. Buttons pad 8 by 3; items sit 8 apart
+across and 4 down; windows have a 16-point margin. The top bar is 38 points tall (as Method
+Schedule's is), a navigator row 24. Corners: 6 on controls, 8 on menus, 10 on windows.
 
 ## Imagery
 

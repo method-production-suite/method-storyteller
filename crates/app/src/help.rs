@@ -191,25 +191,25 @@ impl HelpWindows {
         let mut open = true;
         egui::Window::new(format!("About {APP_NAME}")).id(egui::Id::new("storyteller.about")).collapsible(false).resizable(false).show(ctx, |ui| {
             ui.vertical_centered(|ui| {
-                ui.add_space(4.0);
+                ui.add_space(crate::theme::SPACE_1);
                 ui.heading(APP_NAME);
                 ui.label(format!("Version {VERSION}"));
-                ui.add_space(8.0);
+                ui.add_space(crate::theme::SPACE_2);
                 let site = ui.link(WEBSITE.trim_start_matches("https://"));
                 automation.add("dialog.about.website", "link", "Website", &site);
                 if site.clicked() {
                     *action = Some(HelpAction::Open(WEBSITE));
                 }
-                ui.add_space(8.0);
+                ui.add_space(crate::theme::SPACE_2);
                 ui.label(format!("Free and open source, under {LICENCE}."));
                 ui.small(COPYRIGHT);
-                ui.add_space(4.0);
+                ui.add_space(crate::theme::SPACE_1);
                 let suite = ui.link("Part of the Method Production Suite");
                 automation.add("dialog.about.suite", "link", "Method Production Suite", &suite);
                 if suite.clicked() {
                     *action = Some(HelpAction::Open(SUITE_WEBSITE));
                 }
-                ui.add_space(10.0);
+                ui.add_space(crate::theme::SPACE_3);
                 ui.horizontal(|ui| {
                     let licenses = ui.button("Licenses and Notices");
                     automation.add("dialog.about.licenses", "button", "Licenses and Notices", &licenses);
@@ -252,7 +252,7 @@ fn shortcuts_window(ctx: &egui::Context, automation: &mut Automation, rows: &[Sh
                 }
             });
         });
-        ui.add_space(8.0);
+        ui.add_space(crate::theme::SPACE_2);
         if close_button(ui, automation, "shortcuts") {
             open = false;
         }
@@ -289,7 +289,7 @@ fn blocks(text: &str) -> Vec<(bool, String)> {
 fn markdown(ui: &mut egui::Ui, text: &str) {
     for (heading, text) in blocks(text) {
         if heading {
-            ui.add_space(6.0);
+            ui.add_space(crate::theme::SPACE_2);
             ui.strong(text);
         } else {
             ui.label(text);
@@ -307,7 +307,7 @@ fn whats_new_window(ctx: &egui::Context, automation: &mut Automation) -> bool {
                 ui.label("No notes for this version.");
             }
         });
-        ui.add_space(8.0);
+        ui.add_space(crate::theme::SPACE_2);
         if close_button(ui, automation, "whats_new") {
             open = false;
         }
@@ -334,9 +334,9 @@ fn licenses_window(ctx: &egui::Context, automation: &mut Automation, tab: usize)
             let text = NOTICES.get(chosen).map_or("", |(_, text)| text);
             egui::ScrollArea::both().max_height(440.0).auto_shrink([false, true]).show(ui, |ui| {
                 // The files are wrapped already; wrapping again would break their lines.
-                ui.add(egui::Label::new(egui::RichText::new(text).monospace().size(11.5)).extend());
+                ui.add(egui::Label::new(egui::RichText::new(text).monospace().size(crate::theme::TYPE_SMALL)).extend());
             });
-            ui.add_space(8.0);
+            ui.add_space(crate::theme::SPACE_2);
             if close_button(ui, automation, "licenses") {
                 open = false;
             }
