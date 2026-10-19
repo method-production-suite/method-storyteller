@@ -2,7 +2,7 @@
 """Supply-chain cooldown check: fail if any crates.io package in Cargo.lock is too new.
 
 Usage: python3 scripts/check-crate-ages.py [--days 14] [--lock Cargo.lock] [--only-changed REF]
-                                          [--allow-git URL ...] [--cache FILE]
+                                          [--allow-git URL ...] [--cache FILE] [--no-exceptions]
 
 Dates each locked crates.io version by its file on static.crates.io first (a CDN, no rate
 limit; never earlier than the publish date), and asks the crates.io API (one request per crate,
@@ -12,6 +12,12 @@ version old enough to pin to. A package from
 anywhere else (a git repository, another registry) has no publish date to check, so it
 fails the check too: fail closed. The one exception is a git repository passed with
 --allow-git, and only when the lock pins it to an exact revision (reviewed once, by rev).
+
+An exact NAME VERSION listed in scripts/crate-age-exceptions.txt (the same format as Method
+Reader's), with its reason and age-out date, may be younger than the cooldown, so main stays
+green while a version that cannot be pinned back ages out. --no-exceptions ignores the list:
+the release workflow runs it so, and no release is tagged while a listed version is young. A
+yanked version always fails.
 
 This copy converges on the suite's shared crate-age script (SUITE-STANDARDS.md §6, with an
 allow-list file) once method-libs carries it. With --only-changed REF, only packages added or bumped
@@ -23,6 +29,7 @@ import re
 import datetime as dt
 import email.utils
 import json
+import pathlib
 import subprocess
 import sys
 import time
@@ -34,6 +41,19 @@ UA = "method-storyteller cooldown check (https://github.com/method-production-su
 
 
 CRATES_IO = "registry+https://github.com/rust-lang/crates.io-index"
+EXCEPTIONS = pathlib.Path(__file__).with_name("crate-age-exceptions.txt")
+
+
+def excepted():
+    """{(name, version)} allowed under the cooldown, each listed with a reason."""
+    if not EXCEPTIONS.exists():
+        return set()
+    out = set()
+    for line in EXCEPTIONS.read_text().splitlines():
+        words = line.split("#", 1)[0].split()
+        if len(words) == 2:
+            out.add((words[0], words[1]))
+    return out
 PINNED_GIT = re.compile(r"^git\+(https://[^?#]+)\?rev=([0-9a-f]{40})#\2$")
 
 
@@ -144,6 +164,7 @@ def main():
     ap.add_argument("--only-changed", metavar="REF")
     ap.add_argument("--allow-git", action="append", default=[], metavar="URL")
     ap.add_argument("--cache", metavar="FILE", help="keep fetched version lists here, so a local run can resume")
+    ap.add_argument("--no-exceptions", action="store_true", help="ignore scripts/crate-age-exceptions.txt (releases)")
     args = ap.parse_args()
 
     with open(args.lock) as f:
@@ -184,6 +205,8 @@ def main():
         except FileNotFoundError:
             pass
     pins = []
+    allowed_young = set() if args.no_exceptions else excepted()
+    still_young = set()
     for i, (name, version) in enumerate(sorted(pkgs)):
         stored = stored_at(name, version) if name not in known else None
         yanked = yanked_in_index(name, version) if stored and stored <= cutoff else None
@@ -203,7 +226,10 @@ def main():
         when, yanked = known[name][version]
         age = (now - when).days
         flag = ""
-        if age < args.days:
+        if age < args.days and (name, version) in allowed_young:
+            still_young.add((name, version))
+            flag = "  young, listed as an exception (scripts/crate-age-exceptions.txt)"
+        elif age < args.days:
             target = pin_to(known[name], version, cutoff)
             flag = f"  TOO NEW (< {args.days} days)" + (f", pin to {target}" if target else ", no older compatible version")
             bad.append(f"{name} {version}")
@@ -214,6 +240,10 @@ def main():
             bad.append(f"{name} {version} (yanked)")
         print(f"{name:40} {version:16} {age:5} days{flag}")
 
+    # A listed version that is old enough now, or no longer locked, is only a reminder.
+    for name, version in sorted(allowed_young - still_young):
+        where = "now 14 days old" if (name, version) in pkgs else "not in the lock"
+        print(f"note: {name} {version} is {where}; remove its line from {EXCEPTIONS.name}")
     print(f"\nchecked {len(pkgs)} crates.io crates; {len(bad)} problem(s)")
     if bad:
         print("downgrade with:")
