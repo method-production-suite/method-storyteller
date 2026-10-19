@@ -5,9 +5,11 @@
   </picture>
 </h1>
 
-An open-source screenwriting app: free, native on macOS, Windows and Linux (built from source for
-now; installers are coming), and your script is an open file you own (Open Screenplay Format by
-default, Fountain one choice away).
+An open-source screenwriting app: free, native on macOS, Windows and Linux, and your script is an
+open file you own (Open Screenplay Format by default, Fountain one choice away).
+
+**Download:** [the latest release](https://github.com/method-production-suite/method-storyteller/releases/latest),
+or from [methodstoryteller.com](https://methodstoryteller.com).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/screens/hero-dark.png">
@@ -53,17 +55,19 @@ default, Fountain one choice away).
 
 ## Status
 
-Status: in development. See [docs/spec.md](docs/spec.md) for what is in and out, and
+Status: early alpha. The first release, 0.2.0, came out on 2026-10-19. See
+[docs/spec.md](docs/spec.md) for what is in and out, and
 [docs/architecture.md](docs/architecture.md) for how it fits together.
 
-| Platform | Built | Signed | Tested |
+| Platform | Download | Signed | Tested |
 | --- | --- | --- | --- |
-| macOS (Apple silicon) | From source | No | CI tests; app checked by hand |
-| Windows | From source | No | CI tests |
-| Linux | From source | No | CI tests |
+| macOS 11 or later (Apple silicon) | `.dmg` | Yes, and notarized | Weekly full build; the release tested by hand |
+| Windows 10 or later (x64) | Setup `.exe` | No: Windows warns about an unknown publisher | Weekly full build |
+| Linux (x86_64) | `.deb`, AppImage | No (as usual for both) | Weekly full build |
 
-There are no installers yet. Also not there yet: printing, revision mode, side-by-side editing of
-dual dialogue, and formatting markup still shows as typed in the editor.
+The app updates itself on Apple silicon Macs; on Windows and Linux, download each new version.
+Not there yet: printing, revision mode, side-by-side editing of dual dialogue, and formatting
+markup still shows as typed in the editor.
 
 ## Run it
 

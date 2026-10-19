@@ -72,31 +72,6 @@ says otherwise.
 
 ### Tests that need the owner's hands
 
-- **v0.2.0 hands-on test (about 25 minutes, before the tag).** With the build from `main`
-  (`cargo xtask bundle-macos`), or the draft release's `.dmg` once it exists. Copy the app into
-  an Applications folder first (`~/Applications` will do) and open it from there: macOS does
-  not use an app in a temporary or build folder for a Finder double-click. Say what feels wrong
-  at any step.
-  1. *First launch (2 min).* If you have never run Storyteller, Field Station opens as
-     "Field Station (sample)" with a quiet line under the page. Quit and reopen: it does not
-     come back. Help > Open Sample Script brings it back.
-  2. *Writing (6 min).* File > New. Type `int. kitchen - night`, Enter, a line of action, Tab
-     for a character, Enter for dialogue, Enter twice for the element picker. Paste
-     `EXT. RIDGE - DAWN` into an empty action line: it becomes a scene heading. Try ⌘1 to ⌘7.
-  3. *Spelling (3 min).* Type `the glsas is cold` in action: `glsas` is underlined (only once
-     you have moved on from it). ⌘; opens Spelling: Change it, then Ignore and Learn on two
-     other words.
-  4. *Navigating (4 min).* In Field Station: click scenes in the navigator (the caret lands in
-     each scene's action, and typing goes there); ⌘⌥G to scene 40 and to page 60; ⌘F a word,
-     Enter and ⇧Enter, Replace All, then one ⌘Z undoes it all.
-  5. *Edit menu (3 min).* Select a word, then Edit > Cut and Edit > Paste; Edit > Select All
-     selects the paragraph. Right-click a scene in the navigator, Copy Scene, and paste it into
-     an empty line of a new script: it comes back as the same scene.
-  6. *Files (6 min).* Save Field Station as `.osf` on the Desktop, quit, double-click it in the
-     Finder: it opens. Export `.fdx`, Fountain and PDF (File menu); open the PDF and check a few
-     page breaks and the scene bookmarks. Double-click the `.fdx` and the `.fountain` too, and
-     look at their document icons.
-  7. *Help (2 min).* About, Keyboard Shortcuts, What's New (it should show 0.2.0), Licenses.
 - **The writing feel (M3).** Write a few pages from scratch: Enter, Tab, the element picker,
   autocomplete, ⌘1–7 and ⌘⌥1–7. Say what feels wrong.
 - **Navigation and editing (M4).** In a real script: the scene lengths in
@@ -127,20 +102,15 @@ says otherwise.
 
 ### Release go-aheads
 
-- **First release (v0.2.0)**, on or after **2026-10-22**: muda 0.21.2 (craft-quit's version) is
-  under 14 days old until then, and the release workflow refuses a young crate. Before the tag,
-  the weekly full build (`full.yml`) runs by hand on the release commit and must pass on macOS,
-  Windows and Linux. The signing, notarization and update keys are in place (2026-10-18), and
-  the release key was proved on minisign 0.10 (updater-key-check, 2026-10-19). The release pull
-  request (version, notes in `docs/releases/0.2.0.md`, What's New) is in review; the hands-on
-  test above comes before the tag. Then the owner checks the draft `.dmg`, `latest.json` and
-  `SHA256SUMS`, and publishes. Then the README platform table and the website's status change.
-
+- **v0.2.0, the first release:** published 2026-10-19 (tag `v0.2.0` on `33cfb16`, the owner's
+  override for muda 0.21.2's last three days). Nothing waiting. Open choices for the next
+  release: a Windows code-signing certificate (the installer is unsigned and Windows warns), and
+  whether the macOS signing identity's name is the one to keep.
 ---
 
 ## Where we are
 
-**[have]**, all on `main` (2026-10-19):
+**[have]**, all on `main` and in the first release, 0.2.0 (2026-10-19):
 - Fountain (the boneyard kept), `.fdx` and Open Screenplay Format (`.osf`, `.fadein`, the
   default for new scripts) read and write, keeping everything the model does not use; PDF
   export with a bookmark per scene.
