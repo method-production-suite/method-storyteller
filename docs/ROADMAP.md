@@ -72,6 +72,27 @@ says otherwise.
 
 ### Tests that need the owner's hands
 
+- **v0.2.0 hands-on test (about 25 minutes, before the tag).** With the build from `main`
+  (`cargo xtask bundle-macos`, then open `target/bundle/macos/Method Storyteller.app`), or the
+  draft release's `.dmg` once it exists. Say what feels wrong at any step.
+  1. *First launch (2 min).* If you have never run Storyteller, Field Station opens as
+     "Field Station (sample)" with a quiet line under the page. Quit and reopen: it does not
+     come back. Help > Open Sample Script brings it back.
+  2. *Writing (6 min).* File > New. Type `int. kitchen - night`, Enter, a line of action, Tab
+     for a character, Enter for dialogue, Enter twice for the element picker. Paste
+     `EXT. RIDGE - DAWN` into an empty action line: it becomes a scene heading. Try ⌘1 to ⌘7.
+  3. *Spelling (3 min).* Type `the glsas is cold` in action: `glsas` is underlined (only once
+     you have moved on from it). ⌘; opens Spelling: Change it, then Ignore and Learn on two
+     other words.
+  4. *Navigating (4 min).* In Field Station: click scenes in the navigator (the caret lands in
+     each scene's action, and typing goes there); ⌘⌥G to scene 40 and to page 60; ⌘F a word,
+     Enter and ⇧Enter, Replace All, then one ⌘Z undoes it all.
+  5. *Edit menu (2 min).* Select a word, then Edit > Cut, Edit > Paste, Edit > Select All.
+  6. *Files (6 min).* Save Field Station as `.osf` on the Desktop, quit, double-click it in the
+     Finder: it opens. Export `.fdx`, Fountain and PDF (File menu); open the PDF and check a few
+     page breaks and the scene bookmarks. Double-click the `.fdx` and the `.fountain` too, and
+     look at their document icons.
+  7. *Help (2 min).* About, Keyboard Shortcuts, What's New (it should show 0.2.0), Licenses.
 - **The writing feel (M3).** Write a few pages from scratch: Enter, Tab, the element picker,
   autocomplete, ⌘1–7 and ⌘⌥1–7. Say what feels wrong.
 - **Navigation and editing (M4).** In a real script: the scene lengths in
@@ -105,36 +126,38 @@ says otherwise.
 - **First release (v0.2.0)**, on or after **2026-10-22**: muda 0.21.2 (craft-quit's version) is
   under 14 days old until then, and the release workflow refuses a young crate. Before the tag,
   the weekly full build (`full.yml`) runs by hand on the release commit and must pass on macOS,
-  Windows and Linux. The signing, notarization and update keys are in place (2026-10-18). The
-  release pull request (version, notes, What's New) and a 20 to 30 minute hands-on test list
-  come first; then the owner checks the draft `.dmg`, `latest.json` and `SHA256SUMS`, and
-  publishes. Then the README platform table and the website's status change.
+  Windows and Linux. The signing, notarization and update keys are in place (2026-10-18), and
+  the release key was proved on minisign 0.10 (updater-key-check, 2026-10-19). The release pull
+  request (version, notes in `docs/releases/0.2.0.md`, What's New) is in review; the hands-on
+  test above comes before the tag. Then the owner checks the draft `.dmg`, `latest.json` and
+  `SHA256SUMS`, and publishes. Then the README platform table and the website's status change.
 
 ---
 
 ## Where we are
 
-**[have]**
-- Fountain, `.fdx`, Open Screenplay Format (`.osf`, `.fadein`) read and write, keeping
-  everything the model does not use; PDF export.
-- Pagination matched to real production PDFs: every scene of the 15 ground-truth scripts on the same page
-  (87% across 108 real files); scene page and length in eighths written to `.fdx`.
-- The macOS menu bar, a unified title bar, page view and draft view.
+**[have]**, all on `main` (2026-10-19):
+- Fountain (the boneyard kept), `.fdx` and Open Screenplay Format (`.osf`, `.fadein`, the
+  default for new scripts) read and write, keeping everything the model does not use; PDF
+  export with a bookmark per scene.
+- Lossless `.fdx`: script notes, revisions, locked pages and A-pages, element settings and page
+  layout, and the spelling ignore list carry over between `.fdx` and OSF both ways; the
+  private corpus (108 files) round-trips identically, and the fidelity report lists what maps.
+- Pagination matched to real production PDFs: every scene of the 15 ground-truth scripts on
+  the same page (87% across 108 real files); scene page and length in eighths written to `.fdx`.
 - M3, the writing feel: Enter/Tab flow, element picker, ⌘1–7 and ⌘⌥1–7, status-bar hint,
-  automatic (CONT'D), autocomplete times and next-speaker guess, smart quotes.
-
-- The suite standards: identity, the Help menu, repo hygiene with the 14-day crate-age check,
-  the release workflow, the brand (docs/BRAND.md), and pictures that retake themselves
-  (`cargo xtask screens`, drawn offscreen from the Field Station sample).
-- M4 so far: scene lengths in the navigator, Go To (scene or page), find and replace with one
-  Undo for Replace All, rename a character.
-
-**In review**
-- The updater, `method-update`, wired and inactive until Storyteller has an updater key
-  ([#23](https://github.com/method-production-suite/method-storyteller/pull/23)).
-- The methodstoryteller.com page, `site/` ([#24](https://github.com/method-production-suite/method-storyteller/pull/24)).
-
----
+  automatic (CONT'D), autocomplete, smart quotes; INT./EXT. typed fast or pasted becomes a
+  heading.
+- M4 so far: scene lengths in the navigator, a navigator click lands in the scene's action, Go
+  To (scene or page), find and replace with one Undo for Replace All, rename a character, spell
+  check (underlines and Edit > Spelling…), script notes in all three `.fdx` forms and OSF.
+- The Mac app: the menu bar, Cut/Copy/Paste/Select All, the Help menu, the first-launch
+  sample, Finder double-click with document icons for `.osf`, `.fountain` and `.fdx`, the
+  updater (live with the first release), `--open-sample` and `--check-for-updates`.
+- The suite standards: identity, repo hygiene (cargo deny, the 14-day crate-age check over the
+  whole lock), the release workflow with one `SHA256SUMS`, the updater key check, the brand,
+  pictures that retake themselves, the methodstoryteller.com page, and CI the ArtCraft way
+  (dependency checks on pull requests, a weekly full build).
 
 ## Next, in order
 
@@ -151,15 +174,14 @@ says otherwise.
 5. **Brand** [have] S. docs/BRAND.md, the mark, the app icon.
 6. **Pictures** [have] M. A capture command retakes every README picture from an invented
    Field Station script, 1280×800, light and dark.
-7. **Method Launcher rules** (§2, §3, §6, adopted 2026-10-18) [missing] S each, after v0.2.0:
-   - every release attaches exactly one `SHA256SUMS` listing every downloadable asset (in the
-     release workflow before the first release);
-   - the app accepts `--check-for-updates` and `--open-sample`;
+7. **Method Launcher rules** (§2, §3, §6, adopted 2026-10-18) [partial] S each:
+   - every release attaches exactly one `SHA256SUMS` listing every downloadable asset [have];
+   - the app accepts `--check-for-updates` and `--open-sample` [have];
    - `recent.json` in the data folder, `[{"path": "/abs", "opened": "<RFC 3339>"}]`, newest
      first, replacing the recent list in settings;
    - installed names: the Linux package `method-storyteller`, the Windows uninstall name
      `Method Storyteller`;
-   - the whole-lock crate-age check on every push to main and weekly [in review].
+   - the whole-lock crate-age check on every push to main and weekly [have].
 
 ### V1 milestones, worked continuously
 
@@ -167,18 +189,17 @@ One small PR per item, each to MReview, the next item started without waiting fo
 Items that touch separate files run side by side in their own sessions; items marked *owner*
 wait for a decision above.
 
-7. **M4, notes and navigation** [partial] M. Done: scene lengths in the navigator, Go To (page,
-   scene), find and replace, rename a character. Next, in order: spell check (decision 6, waits
-   on the dictionary's licence check), element-preserving copy and paste (decision 9), script
-   notes on a line or a range with colour and author in all three `.fdx` generations and OSF
-   (decision 7 for Fountain), scene titles, summaries and colours, drag to reorder scenes in
-   the navigator (one Undo), bookmarks for Go To, the character table, show and hide outline
-   paragraphs.
-8. **Lossless `.fdx`** [in review] M (owner, 2026-10-18). Everything `.fdx` and Open Screenplay
+7. **M4, notes and navigation** [partial] M. Done: scene lengths in the navigator, a click
+   into the scene's action, Go To (page, scene), find and replace, rename a character, spell
+   check, script notes in all three `.fdx` generations and OSF. Next, in order:
+   element-preserving copy and paste (decision 9), scene titles, summaries and colours, drag to
+   reorder scenes in the navigator (one Undo), bookmarks for Go To, the character table, show
+   and hide outline paragraphs.
+8. **Lossless `.fdx`** [have, the owner's check to come] M (owner, 2026-10-18). Everything `.fdx` and Open Screenplay
    Format can both hold converts exactly both ways (OSF to `.fdx`, `.fdx` to OSF, `.fdx` to
    `.fdx`), proven by round-trip tests on files we write ourselves. Today an imported `.fdx`
    keeps everything only when saved back as `.fdx`. One PR each, in order (all in review; the
-   fidelity report lists what maps exactly and what cannot):
+   fidelity report lists what maps exactly and what cannot; all merged 2026-10-19):
    - script notes: the three `.fdx` generations (a note inside its paragraph, the older
      unanchored list, the newer list with character ranges) into the model with range, colour
      and author, to OSF `note` and back (colour and author in a `method_storyteller` child, so
