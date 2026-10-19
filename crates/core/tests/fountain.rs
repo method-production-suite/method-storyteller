@@ -220,3 +220,32 @@ fn boneyard_goes_with_the_paragraph_it_stands_before() {
     assert_eq!(with[3], (K::SceneHeading, &["/* a cut beat */".to_string()][..]));
     assert_eq!(script.boneyard_end, ["/* at the end */"]);
 }
+
+/// A literal, unclosed `/*` in the text is kept: written escaped, it never pairs with a later
+/// block's `*/` on reopening.
+#[test]
+fn a_lone_comment_opener_survives_a_later_block() {
+    for text in ["50/*50.", "a/*b"] {
+        let mut script = fountain::parse(&format!("INT. A - DAY\n\n{text}\n\nLater.\n")).unwrap();
+        assert_eq!(script.elements[1].text, text);
+        script.elements[2].boneyard.push("/* set aside */".into());
+        let reopened = fountain::parse(&fountain::write(&script)).unwrap();
+        assert_eq!(reopened.elements[1].text, text, "{:?}", fountain::write(&script));
+        assert_eq!(reopened.elements[2].boneyard, ["/* set aside */"]);
+        assert_eq!(reopened, script);
+    }
+}
+
+/// Placing blocks is one pass over the source, not a parse per block.
+#[test]
+fn many_blocks_are_placed_quickly() {
+    let mut source = String::from("INT. A - DAY\n\n");
+    for n in 0..3000 {
+        source.push_str(&format!("/* {n} */Line {n}.\n\n"));
+    }
+    let started = std::time::Instant::now();
+    let script = fountain::parse(&source).unwrap();
+    assert!(started.elapsed() < std::time::Duration::from_millis(500), "{:?}", started.elapsed());
+    assert_eq!(script.elements[1].boneyard, ["/* 0 */"]);
+    assert_eq!(script.elements[3000].boneyard, ["/* 2999 */"]);
+}
