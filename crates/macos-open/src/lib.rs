@@ -34,7 +34,9 @@ pub fn take() -> Vec<PathBuf> {
     OPENED.lock().map(|mut opened| std::mem::take(&mut *opened)).unwrap_or_default()
 }
 
-/// Adds opened files to the queue and wakes the app.
+/// Adds opened files to the queue and wakes the app. Only the macOS handler (and the tests)
+/// call it.
+#[cfg(any(target_os = "macos", test))]
 fn queue(paths: Vec<PathBuf>) {
     if paths.is_empty() {
         return;
