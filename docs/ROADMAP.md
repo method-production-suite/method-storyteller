@@ -72,6 +72,23 @@ says otherwise.
    End of Act, Teaser, Cold Open and Tag, a New TV Script layout, acts in the navigator and Go
    To, and acts in every format). A new TV script asks each time: one-hour (Teaser, Acts One to
    Five, Tag) or half-hour (Cold Open, Acts One to Three, Tag), remembering the last choice.
+14. **What new scripts save as, once `.mstory` exists.** **Decided by the owner, 2026-10-19:
+   `.mstory`**, so revisions, locks and tags always have a home; Open Screenplay Format and
+   Fountain one Save As away. (Until the package lands, new scripts stay `.osf`.)
+15. **File > Close (⌘W).** **Decided by the owner, 2026-10-19: close the script**, asking about
+   unsaved changes, and leave an empty untitled script in the window; the app keeps running.
+16. **Spelling dictionaries.** **Decided by the owner, 2026-10-19: US and UK English, a
+   setting**, the first run choosing from the system's region.
+17. **TV scene numbering.** **Decided by the owner, 2026-10-19, on industry practice:** one-hour
+   and single-camera scripts number scenes straight through the episode (acts do not reset the
+   count). Multi-camera sitcoms letter their scenes (SCENE A, SCENE B), each on a new page with
+   its characters under the heading, dialogue double-spaced and action in capitals: a third
+   shape for New TV Script, built after the TV basics.
+18. **End of Act lines.** **Decided by the owner, 2026-10-19: written automatically and kept in
+   step** with their act's name (renaming ACT TWO updates END OF ACT TWO); a typed one of the
+   writer's own (END OF SHOW) is left alone.
+19. **Signing.** **Decided by the owner, 2026-10-19:** Windows installers stay unsigned for now
+   (revisit before V1); the macOS signing identity stays as it is.
 12. **Rank for `.osf` in the Finder.** **Decided by the owner, 2026-10-18: Default**, like
    `.fountain` and `.fdx`: open formats, so the app claims none of them as their owner.
 
@@ -108,9 +125,8 @@ says otherwise.
 ### Release go-aheads
 
 - **v0.2.0, the first release:** published 2026-10-19 (tag `v0.2.0` on `33cfb16`, the owner's
-  override for muda 0.21.2's last three days). Nothing waiting. Open choices for the next
-  release: a Windows code-signing certificate (the installer is unsigned and Windows warns), and
-  whether the macOS signing identity's name is the one to keep.
+  override for muda 0.21.2's last three days). Nothing waiting; signing stays as it is
+  (decision 19).
 ---
 
 ## Where we are
@@ -197,9 +213,12 @@ wait for a decision above.
 8a. **TV structure** [in progress] M (owner, 2026-10-19; decision 13). One PR each, in order:
    - New Act and End of Act as element types (caps, centred, a new act starts a new page),
      read and written as `.fdx` New Act and End of Act, OSF styles, and centred Fountain lines;
-   - New TV Script: Teaser or Cold Open, the acts and Tag laid out, one-hour or half-hour;
+   - New TV Script: Teaser or Cold Open, the acts and Tag laid out, one-hour or half-hour
+     [have];
    - acts in the navigator (each act heading its scenes) and in Go To;
-   - an automatic END OF ACT line, and act-aware scene numbering.
+   - End of Act lines written and kept in step automatically (decision 18);
+   - a multi-camera sitcom shape: lettered scenes, each on a new page with its characters,
+     double-spaced dialogue, action in capitals (decision 17).
 8b. **Bold, italic and underline in the editor** [missing] S (owner, 2026-10-19). The files
    already keep them (Fountain markup, `.fdx` and OSF runs); the editor shows the markup as typed.
    Format > Bold, Italic and Underline (⌘B, ⌘I, ⌘U) on a selection, and the editor drawing the
@@ -240,14 +259,13 @@ signed `.app.tar.gz`), the OSF and Fountain study, and the design pass. Each is 
   editable; the extension-on-Tab option.
 - **Scene CONTINUED** [missing] S. Off by default; measured only if a corpus file turns it on.
 - **File > Open Recent and Close** [missing] S. Open Recent needs a menu built at run time (the
-  menu is fixed today); Close needs a decision on what it does in a one-window app (an empty
-  script, or the window). From the screen test.
+  menu is fixed today); Close (⌘W) closes the script and leaves an empty one (decision 15).
 - **Recovery copies at launch** [missing] S. The app writes a recovery copy as the writer works
   but never offers it after a crash. Offer it at launch, ahead of the first-launch sample.
 - **The editor lays out only the rows on screen** [missing] M. Every paragraph is laid out
   each frame today; long scripts will feel it first in the spelling underline and find marks.
-- **British English dictionary** [missing] S. Field Station is written with British spellings
-  (grey, colour, tyres); the bundled dictionary is US English only.
+- **UK English dictionary** [missing] S (decision 16). US and UK English, a setting, the first
+  run choosing from the system's region.
 
 ---
 
