@@ -313,7 +313,10 @@ impl StorytellerApp {
             }
             "app.find" => match &mut self.find {
                 Some(bar) => bar.focus(),
-                None => self.find = Some(find_bar::FindBar::open()),
+                None => {
+                    self.spelling = None;
+                    self.find = Some(find_bar::FindBar::open());
+                }
             },
             "app.find_next" | "app.find_previous" => {
                 if self.find.is_none() {

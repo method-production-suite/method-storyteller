@@ -2,18 +2,34 @@
 //! steps through the misspelled words with suggestions. The checking itself is the engine's
 //! (`storyteller_engine::spell`); learned words are kept in the app's settings.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
+use std::hash::{Hash, Hasher};
 
 use serde_json::{Value, json};
 
+use storyteller_core::ElementKind;
+
 use super::{StorytellerApp, params};
 
-/// Underline ranges by paragraph text, so a paragraph is checked again only when it changes.
+/// Misspelled words of one paragraph, as byte ranges.
+type Ranges = Vec<(usize, usize)>;
+
+/// Underline ranges per element, keyed by a hash of its text, so a paragraph is checked again
+/// only when it changes. One entry per element: the cache never outgrows the script.
 #[derive(Default)]
 pub(super) struct SpellCache {
-    by_text: HashMap<String, Vec<(usize, usize)>>,
-    /// What the cached answers depended on: the character names, learned and ignored words.
-    key: (Vec<String>, usize, usize),
+    rows: Vec<Option<(u64, Ranges)>>,
+    /// The character names, and the hash of the cues they came from.
+    names: HashSet<String>,
+    cues: Option<u64>,
+    /// What the cached answers also depended on: the learned and ignored words.
+    words: (usize, usize),
+}
+
+fn hash_of(text: &str) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    text.hash(&mut hasher);
+    hasher.finish()
 }
 
 /// The Spelling dialog.
@@ -25,49 +41,71 @@ pub(super) struct SpellDialog {
     /// The replacement, editable, starting from the first suggestion.
     pub(super) change_to: String,
     pub(super) status: String,
+    /// Move the keyboard focus to Change to on the next frame (a new word is shown).
+    focus: bool,
 }
 
 impl StorytellerApp {
-    /// The writer's learned words, from settings into the session.
+    /// The writer's learned words, kept the same in settings and the session, whichever learned
+    /// a word (the dialog, or `spell.learn` over the control channel).
     fn sync_learned(&mut self) {
-        let learned = &self.prefs.get().general.learned_words;
-        if learned.len() != self.session.spelling.learned.len() {
-            self.session.spelling.learned = learned.iter().cloned().collect();
+        let saved = &self.prefs.get().general.learned_words;
+        let session = &self.session.spelling.learned;
+        if saved.len() == session.len() && saved.iter().all(|w| session.contains(w)) {
+            return;
         }
+        let mut missing: Vec<String> = session.iter().filter(|w| !saved.contains(w)).cloned().collect();
+        missing.sort();
+        if !missing.is_empty() {
+            self.prefs.update(|p| p.general.learned_words.extend(missing));
+        }
+        self.session.spelling.learned = self.prefs.get().general.learned_words.iter().cloned().collect();
     }
 
     /// Fills the editor's underlines for this frame (empty when checking while typing is off).
+    /// Each paragraph is hashed without allocating; only a changed one is checked again.
     pub(super) fn update_spelling_marks(&mut self) {
         self.sync_learned();
         self.editor.misspelled.clear();
         if !self.prefs.get().view.check_spelling {
             return;
         }
-        let names: HashSet<String> = storyteller_engine::spell::names(&self.session.script);
-        let mut sorted: Vec<String> = names.iter().cloned().collect();
-        sorted.sort();
-        let key = (sorted, self.session.spelling.learned.len(), self.session.script.spelling_ignored.len());
-        if key != self.spell_cache.key {
-            self.spell_cache = SpellCache { by_text: HashMap::new(), key };
+        let script = &self.session.script;
+        let mut cues = std::collections::hash_map::DefaultHasher::new();
+        for element in script.elements.iter().filter(|e| e.kind == ElementKind::Character) {
+            element.text.hash(&mut cues);
         }
-        let personal = &self.session.spelling;
-        let ignored = &self.session.script.spelling_ignored;
-        for (index, element) in self.session.script.elements.iter().enumerate() {
+        let cues = cues.finish();
+        let words = (self.session.spelling.learned.len(), script.spelling_ignored.len());
+        let cache = &mut self.spell_cache;
+        if cache.cues != Some(cues) || cache.words != words {
+            *cache = SpellCache { rows: Vec::new(), names: storyteller_engine::spell::names(script), cues: Some(cues), words };
+        }
+        cache.rows.resize(script.elements.len(), None);
+        let caret = self.session.caret;
+        for (index, element) in script.elements.iter().enumerate() {
+            let Some(slot) = cache.rows.get_mut(index) else { continue };
             if !element.kind.is_printed() {
+                *slot = None;
                 continue;
             }
-            let ranges = self
-                .spell_cache
-                .by_text
-                .entry(element.text.clone())
-                .or_insert_with(|| storyteller_engine::spell::misspelled_in(&element.text, &names, personal, ignored));
-            if !ranges.is_empty() {
-                self.editor.misspelled.insert(index, ranges.clone());
+            let hash = hash_of(&element.text);
+            if slot.as_ref().is_none_or(|(h, _)| *h != hash) {
+                let ranges = storyteller_engine::spell::misspelled_in(&element.text, &cache.names, &self.session.spelling, &script.spelling_ignored);
+                *slot = Some((hash, ranges));
+            }
+            let Some((_, ranges)) = slot.as_ref() else { continue };
+            // The word being typed is not underlined until the writer moves on from it.
+            let typing = |&&(_, end): &&(usize, usize)| index == caret.element && end == caret.offset;
+            if ranges.iter().any(|r| !typing(&r)) {
+                self.editor.misspelled.insert(index, ranges.iter().filter(|r| !typing(r)).copied().collect());
             }
         }
     }
 
     pub(super) fn open_spelling(&mut self) {
+        // The find bar and the dialog share the editor's highlight; one at a time.
+        self.find = None;
         self.spelling = Some(SpellDialog::default());
         self.spelling_step(false);
     }
@@ -96,6 +134,7 @@ impl StorytellerApp {
                 dialog.change_to = dialog.suggestions.first().cloned().unwrap_or_else(|| word.clone());
                 dialog.status = format!("{} of {}", number("number"), number("total"));
                 dialog.current = Some((element, start, end, word));
+                dialog.focus = true;
                 self.editor.highlight = Some((element, start, end));
                 self.editor.scroll_to = Some(element);
             }
@@ -146,7 +185,7 @@ impl StorytellerApp {
     pub(super) fn spelling_dialog(&mut self, ctx: &egui::Context) {
         let Some(dialog) = &mut self.spelling else { return };
         let mut action = None;
-        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
             action = Some("done");
         }
         egui::Window::new("Spelling").collapsible(false).resizable(false).anchor(egui::Align2::RIGHT_TOP, [-24.0, 72.0]).show(ctx, |ui| {
@@ -167,6 +206,13 @@ impl StorytellerApp {
                     }
                     let field = ui.add(egui::TextEdit::singleline(&mut dialog.change_to).hint_text("Change to").desired_width(240.0));
                     self.automation.add("dialog.spelling.change_to", "textbox", "Change to", &field);
+                    if std::mem::take(&mut dialog.focus) {
+                        field.request_focus();
+                    }
+                    // Enter in Change to is Change.
+                    if field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                        action = Some("change");
+                    }
                     ui.add_space(6.0);
                     ui.horizontal(|ui| {
                         for (id, label) in [("change", "Change"), ("ignore", "Ignore"), ("learn", "Learn"), ("next", "Next")] {
