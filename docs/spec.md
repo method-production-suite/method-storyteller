@@ -26,7 +26,7 @@ writer can save to Fountain or FDX, export a PDF, and open those files again wit
 4. **Clean-room.** FDX support is built from the publicly known XML structure and from files we
    create ourselves. We never read Final Draft binaries or bundled templates. Fountain follows
    the open spec at fountain.io. No GPL code.
-5. **Open formats, the writer's choice.** Fountain (plain text: diffable, future-proof, readable anywhere) is the default working format; Open Screenplay Format (structured XML that keeps more production detail) is the other. Both are open and documented, and either can be the default for new scripts.
+5. **Open formats, the writer's choice.** Open Screenplay Format (structured XML that keeps production detail) is the standard working format and the default for new scripts (the owner's decision, 2026-10-18; see [research/osf-vs-fountain.md](research/osf-vs-fountain.md)). Fountain (plain text: diffable, future-proof, readable anywhere) is fully supported: it opens, saves, and can be the default for new scripts (File > Save New Scripts as Fountain). An existing file keeps its format on Save.
 
 ## 3. Script elements
 
@@ -208,9 +208,9 @@ files.
 
 | Format | Read | Write | Notes |
 | --- | --- | --- | --- |
-| Fountain (`.fountain`, `.spmd`, `.txt`) | ✓ | ✓ | A working format (the default). Round-trip is lossless for everything we model. |
+| Fountain (`.fountain`, `.spmd`, `.txt`) | ✓ | ✓ | A working format, fully supported. Round-trip is lossless for everything we model except Shots (read back as action) and several paragraphs in one speech (joined); a boneyard is not kept yet. |
 | Final Draft XML (`.fdx`) | ✓ | ✓ | Paragraph types, text styles, scene numbers, dual dialogue, title page. v1 keeps every part it does not model (revisions, tags, settings, Beat Board and so on) and writes it back unchanged. Only direct children of `Content` and `DualDialogue` are script paragraphs. Outline and summary text is written as Final Draft's `Outline 1–4` and `Summary` types, not `Section` and `Synopsis`. |
-| Open Screenplay Format (`.osf`, and `.fadein`, a ZIP holding it) | ✓ | ✓ | Elements, emphasis, scene numbers, dual dialogue, notes, synopses, title page, page layout and element styles. Reads versions 1.2 to 4.0 in all their spellings; writes 3.0 for new documents and an imported document's own version otherwise. Keeps every part it does not model (settings, styles, lists, revision marks, vendor data) and writes it back. Sections, and synopses not attached to a paragraph, carry a `<method_storyteller kind="…"/>` marker. |
+| Open Screenplay Format (`.osf`, and `.fadein`, a ZIP holding it) | ✓ | ✓ | The standard working format and the default for new scripts. Elements, emphasis, scene numbers, dual dialogue, notes, synopses, title page, page layout and element styles. Reads versions 1.2 to 4.0 in all their spellings; writes 3.0 for new documents and an imported document's own version otherwise. Keeps every part it does not model (settings, styles, lists, revision marks, vendor data) and writes it back. Sections, and synopses not attached to a paragraph, carry a `<method_storyteller kind="…"/>` marker. |
 | PDF | – | ✓ | Courier Prime embedded, selectable text, a bookmark per scene. |
 
 Limits: inputs over 32 MiB or 200 000 elements are refused with a message, not a crash.
