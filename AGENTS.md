@@ -45,6 +45,11 @@ Writers trust this app with their work; a crash can lose it.
 ## 3. Gates
 
 Before every commit: `cargo xtask ci` (fmt, clippy `-D warnings`, tests, layers, assets, privacy).
+Pull requests get no build on GitHub (SUITE-STANDARDS.md §6): open each as a draft, run
+`cargo xtask ci` on its latest commit, paste the command and its pass line under "Tested
+locally" with the commit's SHA, then `gh pr ready`. CI on a pull request runs only the crate-age
+check and cargo deny; `full.yml` builds on macOS, Windows and Linux weekly and by hand before a
+release. `cargo xtask ci` builds with `--locked`, so a stale Cargo.lock fails it.
 CI also runs `cargo deny check` (deny.toml) and the 14-day crate-age check
 (`scripts/check-crate-ages.py`): a new dependency must be at least 14 days old.
 Real scripts never enter the repository: `cargo xtask corpus` measures against them from a

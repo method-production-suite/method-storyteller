@@ -180,8 +180,11 @@ fn cargo(args: &[&str]) -> Result<(), String> {
 
 fn ci() -> Result<(), String> {
     cargo(&["fmt", "--all", "--check"])?;
-    cargo(&["clippy", "--workspace", "--all-targets", "--", "-D", "warnings"])?;
-    cargo(&["test", "--workspace"])?;
+    // --locked: a Cargo.lock that does not match the manifests fails here instead of being
+    // quietly re-resolved. Local runs are the only builds a pull request gets (ArtCraft-style CI,
+    // SUITE-STANDARDS.md §6), so this is where a stale lock must show.
+    cargo(&["clippy", "--workspace", "--all-targets", "--locked", "--", "-D", "warnings"])?;
+    cargo(&["test", "--workspace", "--locked"])?;
     layers()?;
     assets()?;
     privacy()?;
