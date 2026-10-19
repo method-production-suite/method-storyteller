@@ -132,18 +132,10 @@ impl Node {
                     if stack.len() >= 32 {
                         return None;
                     }
-                    stack.push(Node {
-                        name: String::from_utf8_lossy(start.name().as_ref()).into_owned(),
-                        attributes: all_attrs(&start),
-                        children: Vec::new(),
-                    })
+                    stack.push(Node { name: start.name().as_ref().to_string(), attributes: all_attrs(&start), children: Vec::new() })
                 }
                 Event::Empty(start) => {
-                    let node = Node {
-                        name: String::from_utf8_lossy(start.name().as_ref()).into_owned(),
-                        attributes: all_attrs(&start),
-                        children: Vec::new(),
-                    };
+                    let node = Node { name: start.name().as_ref().to_string(), attributes: all_attrs(&start), children: Vec::new() };
                     match stack.last_mut() {
                         Some(parent) => parent.children.push(node),
                         None => return Some(node),

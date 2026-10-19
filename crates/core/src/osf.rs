@@ -138,7 +138,7 @@ fn split(source: &str) -> Result<(Attributes, Vec<TopLevel>), CoreError> {
                 if depth > MAX_DEPTH {
                     return Err(CoreError::Xml("elements are nested too deeply".into()));
                 }
-                let name = String::from_utf8_lossy(start.local_name().as_ref()).into_owned();
+                let name = start.local_name().as_ref().to_string();
                 if depth == 1 {
                     if !name.eq_ignore_ascii_case("document") {
                         return Err(CoreError::NotOsf(format!("the root element is <{name}>")));
@@ -149,7 +149,7 @@ fn split(source: &str) -> Result<(Attributes, Vec<TopLevel>), CoreError> {
                 }
             }
             Event::Empty(start) => {
-                let name = String::from_utf8_lossy(start.local_name().as_ref()).into_owned();
+                let name = start.local_name().as_ref().to_string();
                 if depth == 0 {
                     return Err(CoreError::NotOsf(format!("the root element is <{name}/>")));
                 }
@@ -179,9 +179,7 @@ fn tags(xml: &str) -> Vec<(String, Vec<(String, String)>)> {
     let mut out = Vec::new();
     while let Ok(event) = reader.read_event() {
         match event {
-            Event::Start(start) | Event::Empty(start) => {
-                out.push((String::from_utf8_lossy(start.local_name().as_ref()).into_owned(), all_attrs(&start)))
-            }
+            Event::Start(start) | Event::Empty(start) => out.push((start.local_name().as_ref().to_string(), all_attrs(&start))),
             Event::Eof => break,
             _ => {}
         }
@@ -295,7 +293,7 @@ fn paras(xml: &str) -> Result<Vec<Para>, CoreError> {
                         return Err(CoreError::Xml("elements are nested too deeply".into()));
                     }
                 }
-                let name = String::from_utf8_lossy(start.local_name().as_ref()).to_ascii_lowercase();
+                let name = start.local_name().as_ref().to_ascii_lowercase();
                 match (name.as_str(), current.is_some()) {
                     ("para", false) => {
                         current = Some(Para { attributes: all_attrs(start), ..Para::default() });
@@ -336,7 +334,7 @@ fn paras(xml: &str) -> Result<Vec<Para>, CoreError> {
                 }
             }
             Event::End(end) => {
-                let name = String::from_utf8_lossy(end.local_name().as_ref()).to_ascii_lowercase();
+                let name = end.local_name().as_ref().to_ascii_lowercase();
                 if name == "text" {
                     run = None;
                 } else if name == "para"
@@ -351,7 +349,7 @@ fn paras(xml: &str) -> Result<Vec<Para>, CoreError> {
             }
             Event::Text(text) => {
                 if let (Some(style), Some(para)) = (run, current.as_mut()) {
-                    let content = text.xml_content(XmlVersion::Implicit1_0).map_err(xml_error)?;
+                    let content = text.xml_content(XmlVersion::Implicit1_0);
                     push_run(para, &content, style);
                 }
             }
@@ -359,18 +357,14 @@ fn paras(xml: &str) -> Result<Vec<Para>, CoreError> {
                 if let (Some(style), Some(para)) = (run, current.as_mut()) {
                     let resolved = match reference.resolve_char_ref().map_err(xml_error)? {
                         Some(c) => c.to_string(),
-                        None => {
-                            let name = reference.decode().map_err(xml_error)?;
-                            quick_xml::escape::resolve_predefined_entity(&name).unwrap_or("").to_string()
-                        }
+                        None => quick_xml::escape::resolve_predefined_entity(reference.as_ref()).unwrap_or("").to_string(),
                     };
                     push_run(para, &resolved, style);
                 }
             }
             Event::CData(data) => {
                 if let (Some(style), Some(para)) = (run, current.as_mut()) {
-                    let content = data.decode().map_err(xml_error)?;
-                    push_run(para, &content, style);
+                    push_run(para, data.as_ref(), style);
                 }
             }
             Event::Eof => break,
@@ -564,7 +558,7 @@ fn strip_ours(children: &str) -> String {
             Event::End(_) => depth = depth.saturating_sub(1),
             Event::Empty(start)
                 if depth == 0
-                    && matches!(start.local_name().as_ref(), b"method_storyteller" | b"method_storyteller_note" | b"method_storyteller_page") =>
+                    && matches!(start.local_name().as_ref(), "method_storyteller" | "method_storyteller_note" | "method_storyteller_page") =>
             {
                 out.push_str(children.get(from..before).unwrap_or_default());
                 from = after;
@@ -826,7 +820,7 @@ fn with_revision_colors(lists: &str, revisions: &Revisions, spelling: Spelling) 
         let before = usize::try_from(reader.buffer_position()).unwrap_or(usize::MAX);
         let Ok(event) = reader.read_event() else { return lists.to_string() };
         let after = usize::try_from(reader.buffer_position()).unwrap_or(usize::MAX);
-        let is_ours = |name: &[u8]| key(&String::from_utf8_lossy(name)) == "revisioncolors";
+        let is_ours = |name: &str| key(name) == "revisioncolors";
         match event {
             Event::Start(start) => {
                 depth += 1;
@@ -879,7 +873,7 @@ fn rebuild_start_tag(raw: &str, edit: impl FnOnce(&mut Vec<(String, String)>), c
             Event::Empty(start) => (start, true),
             _ => continue,
         };
-        let name = String::from_utf8_lossy(start.name().as_ref()).into_owned();
+        let name = start.name().as_ref().to_string();
         let mut attributes = all_attrs(&start);
         edit(&mut attributes);
         let mut out = format!("{}<{name}", raw.get(..before).unwrap_or_default());

@@ -602,7 +602,7 @@ fn attr(element: &BytesStart<'_>, name: &str) -> Option<String> {
     element
         .attributes()
         .flatten()
-        .find(|a| a.key.as_ref() == name.as_bytes())
+        .find(|a| a.key.as_ref() == name)
         .and_then(|a| a.normalized_value(XmlVersion::Implicit1_0).ok())
         .map(|v| v.into_owned())
 }
@@ -613,7 +613,7 @@ pub(crate) fn all_attrs(element: &BytesStart<'_>) -> Vec<(String, String)> {
         .flatten()
         .filter_map(|a| {
             let value = a.normalized_value(XmlVersion::Implicit1_0).ok()?;
-            Some((String::from_utf8_lossy(a.key.as_ref()).into_owned(), value.into_owned()))
+            Some((a.key.as_ref().to_string(), value.into_owned()))
         })
         .collect()
 }
@@ -640,10 +640,7 @@ fn xml_error(error: impl std::fmt::Display) -> CoreError {
 fn reference_text(reference: &BytesRef<'_>) -> Result<String, CoreError> {
     Ok(match reference.resolve_char_ref().map_err(xml_error)? {
         Some(c) => c.to_string(),
-        None => {
-            let name = reference.decode().map_err(xml_error)?;
-            quick_xml::escape::resolve_predefined_entity(&name).unwrap_or("").to_string()
-        }
+        None => quick_xml::escape::resolve_predefined_entity(reference.as_ref()).unwrap_or("").to_string(),
     })
 }
 
@@ -1046,7 +1043,7 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
         let after = usize::try_from(reader.buffer_position()).unwrap_or(usize::MAX);
         if let Some(open) = &capture {
             match event {
-                Event::Start(start) => importer.push(&String::from_utf8_lossy(start.local_name().as_ref()))?,
+                Event::Start(start) => importer.push(start.local_name().as_ref())?,
                 Event::End(_) => {
                     if importer.stack.len() == open.depth {
                         let xml = source.get(open.start..after).unwrap_or_default();
@@ -1063,7 +1060,7 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
         }
         match event {
             Event::Start(start) => {
-                let name = String::from_utf8_lossy(start.local_name().as_ref()).into_owned();
+                let name = start.local_name().as_ref().to_string();
                 if importer.stack.is_empty() {
                     if name != "FinalDraft" {
                         return Err(CoreError::NotFdx(format!("the root element is <{name}>")));
@@ -1076,7 +1073,7 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
                 }
             }
             Event::Empty(start) => {
-                let name = String::from_utf8_lossy(start.local_name().as_ref()).into_owned();
+                let name = start.local_name().as_ref().to_string();
                 if importer.stack.is_empty() {
                     return Err(CoreError::NotFdx(format!("the root element is <{name}/>")));
                 }
@@ -1100,12 +1097,11 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
                 importer.stack.pop();
             }
             Event::Text(text) => {
-                let content = text.xml_content(XmlVersion::Implicit1_0).map_err(xml_error)?;
+                let content = text.xml_content(XmlVersion::Implicit1_0);
                 importer.text(&content);
             }
             Event::CData(data) => {
-                let content = data.decode().map_err(xml_error)?;
-                importer.text(&content);
+                importer.text(data.as_ref());
             }
             Event::GeneralRef(reference) => importer.text(&reference_text(&reference)?),
             Event::Eof => break,
@@ -1132,8 +1128,8 @@ fn hidden_types(sections: &[FdxSection]) -> Option<Vec<(String, bool)>> {
         while let Ok(event) = reader.read_event() {
             match event {
                 Event::Start(start) | Event::Empty(start) => match start.local_name().as_ref() {
-                    b"ElementSettings" => current = Some((attr(&start, "Type").unwrap_or_default(), false)),
-                    b"FontSpec" => {
+                    "ElementSettings" => current = Some((attr(&start, "Type").unwrap_or_default(), false)),
+                    "FontSpec" => {
                         if let Some((_, hidden)) = current.as_mut() {
                             *hidden |= attr(&start, "Style").is_some_and(|s| s.split('+').any(|p| p.trim() == "HiddenText"));
                         }
@@ -1305,8 +1301,8 @@ fn read_note(xml: &str, form: FdxNoteForm) -> Option<ReadNote> {
                 depth += 1;
                 match (depth, start.local_name().as_ref()) {
                     (1, _) => attributes = Some(all_attrs(&start)),
-                    (2, b"Paragraph") => paragraphs.push(String::new()),
-                    (3, b"Text") => in_text = true,
+                    (2, "Paragraph") => paragraphs.push(String::new()),
+                    (3, "Text") => in_text = true,
                     _ => {}
                 }
                 continue;
@@ -1314,7 +1310,7 @@ fn read_note(xml: &str, form: FdxNoteForm) -> Option<ReadNote> {
             Event::Empty(start) => {
                 match (depth, start.local_name().as_ref()) {
                     (0, _) => attributes = Some(all_attrs(&start)),
-                    (1, b"Paragraph") => paragraphs.push(String::new()),
+                    (1, "Paragraph") => paragraphs.push(String::new()),
                     _ => {}
                 }
                 continue;
@@ -1326,8 +1322,8 @@ fn read_note(xml: &str, form: FdxNoteForm) -> Option<ReadNote> {
                 depth = depth.saturating_sub(1);
                 continue;
             }
-            Event::Text(text) if in_text => text.xml_content(XmlVersion::Implicit1_0).ok()?.into_owned(),
-            Event::CData(data) if in_text => data.decode().ok()?.into_owned(),
+            Event::Text(text) if in_text => text.xml_content(XmlVersion::Implicit1_0).into_owned(),
+            Event::CData(data) if in_text => data.as_ref().to_string(),
             Event::GeneralRef(reference) if in_text => reference_text(&reference).ok()?,
             Event::Eof => break,
             _ => continue,
@@ -1621,8 +1617,8 @@ fn write_revisions(revisions: &Revisions, out: &mut String) {
 // Words spell check ignores
 
 /// An element name compared loosely: lower case, without underscores.
-fn loose(name: &[u8]) -> String {
-    String::from_utf8_lossy(name).chars().filter(|c| *c != '_').flat_map(char::to_lowercase).collect()
+fn loose(name: &str) -> String {
+    name.chars().filter(|c| *c != '_').flat_map(char::to_lowercase).collect()
 }
 
 /// The words in the child list `list` (compared loosely) of a section: each entry's text, or its
@@ -1656,8 +1652,8 @@ pub(crate) fn ignored_words(xml: &str, list: &str) -> Vec<String> {
                 }
             }
             Event::Text(text) if entry.is_some() => {
-                if let (Some(word), Ok(content)) = (entry.as_mut(), text.xml_content(XmlVersion::Implicit1_0)) {
-                    word.push_str(&content);
+                if let Some(word) = entry.as_mut() {
+                    word.push_str(&text.xml_content(XmlVersion::Implicit1_0));
                 }
             }
             Event::GeneralRef(reference) if entry.is_some() => {
@@ -1882,7 +1878,7 @@ fn tags(xml: &str) -> Vec<(String, Vec<(String, String)>)> {
     while let Ok(event) = reader.read_event() {
         match event {
             Event::Start(start) | Event::Empty(start) => {
-                out.push((String::from_utf8_lossy(start.local_name().as_ref()).into_owned(), all_attrs(&start)));
+                out.push((start.local_name().as_ref().to_string(), all_attrs(&start)));
             }
             Event::Eof => break,
             _ => {}
