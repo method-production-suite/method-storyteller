@@ -439,8 +439,19 @@ jobs:
           else
             echo "::notice::No updater archive in this release (no update key, or not notarized): no latest.json, so installed apps won't see it (docs/RELEASING.md)."
           fi
-          (cd dist && sha256sum -- * | tee "$RUNNER_TEMP/SHA256SUMS.txt")
-          mv "$RUNNER_TEMP/SHA256SUMS.txt" dist/
+          # One SHA256SUMS, under exactly that name, listing every file the release offers,
+          # latest.json and the updater archive included (SUITE-STANDARDS.md, releases: the
+          # launcher and people verify downloads with it). Written last, so it covers everything else.
+          rm -f dist/SHA256SUMS
+          (cd dist && sha256sum -- * | tee "$RUNNER_TEMP/SHA256SUMS")
+          mv "$RUNNER_TEMP/SHA256SUMS" dist/
+          (cd dist && sha256sum --check --strict SHA256SUMS)
+          listed="$(wc -l < dist/SHA256SUMS)"
+          files="$(find dist -maxdepth 1 -type f ! -name SHA256SUMS | wc -l)"
+          if [ "$listed" -ne "$files" ]; then
+            echo "::error::SHA256SUMS lists $listed files, but the release has $files."
+            exit 1
+          fi
       - name: Draft the release
         env:
           GH_TOKEN: ${{ github.token }}
