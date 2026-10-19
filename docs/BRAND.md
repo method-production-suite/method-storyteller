@@ -113,6 +113,7 @@ The page is the same in both themes, white with black type, as a printed script 
 | page-muted | `#707070` | Page and scene numbers, an empty line's element name |
 | page-rule | `#C4C4C4` | The dashed rule at a page end in the draft view (decorative) |
 | find-mark | `#EBBCC8` | A find match: the accent as a light wash |
+| page-selection | `#F5D9E0` | Selected text: a lighter wash, so a find match inside it shows |
 
 ### Contrast (WCAG 2.x)
 
@@ -144,6 +145,26 @@ Body text needs 4.5:1 (AA); borders that carry meaning need 3:1. The test
 | page ink on page | 17.40 | 17.40 | 4.5 |
 | page muted on page | 4.95 | 4.95 | 4.5 |
 | page ink on find mark | 10.41 | 10.41 | 4.5 |
+| page ink on selection | 13.16 | 13.16 | 4.5 |
+| accent on page | 5.83 | 5.83 | 4.5 |
+| selected text on selection | 6.10 | 6.10 | 4.5 |
+
+### Dark mode, surface by surface
+
+The app follows the system's light or dark setting. Each surface was checked in both, in the
+offscreen gallery (`cargo test -p method-storyteller --release gallery -- --ignored` writes
+`target/gallery/<surface>-<theme>.png`):
+
+| Surface | Dark mode |
+|---|---|
+| Desk | The family's darkest surface, so the white page stands out without a glow |
+| Page | White paper and black type in both themes; no scroll fade across it (it read as a smudge) |
+| Caret and selection on the page | The light accent in both themes (page-selection `#F5D9E0`, caret `#AE3D56`), never the dark-theme wash |
+| Top bar, navigator, status bar | panel; the current scene in accent-soft with ink |
+| Find bar | panel; the fields in field, a match on the page in find-mark |
+| Dialogs and Help windows | window, opened in the middle of the app's window |
+| Save changes? | window with a 16-point margin, over a dimmed app |
+| Menus, popups, tooltips | window |
 
 ## Type
 

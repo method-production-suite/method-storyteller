@@ -175,6 +175,8 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
     }
     editor.focused = None;
 
+    // No fade at the scroll edges: on the desk it reads as a smudge across the white page.
+    ui.spacing_mut().scroll.fade.strength = 0.0;
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         let side = ((ui.available_width() - page_width) / 2.0).max(8.0);
         ui.add_space(row * 1.5);
@@ -190,7 +192,7 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                     let mut sheets: Vec<(f32, f32, u32)> = Vec::new();
                     let mut sheet_page = 1u32;
                     ui.add_space(top_margin);
-                    *ui.visuals_mut() = egui::Visuals::light();
+                    *ui.visuals_mut() = crate::theme::page_visuals();
                     ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
                     // A text box is exactly one script line tall, at any zoom.
                     ui.spacing_mut().interact_size.y = row;
