@@ -229,6 +229,10 @@ Limits: inputs over 32 MiB or 200 000 elements are refused with a message, not a
 - File: New, Open…, Save, Save As…, Import FDX…, Export FDX…, Export PDF…, Title Page…, Quit.
   Unsaved changes prompt on close (craft-quit on macOS).
 - Settings (craft-settings): recent files, show scene numbers, navigator visibility, zoom.
+- With nothing to open (no file given and none opened before), the app shows the sample script,
+  Field Station, as an unsaved copy, with a quiet line saying so. Save asks where to keep a copy;
+  the bundled sample is never written. Help > Open Sample Script brings it back at any time, and
+  Help > Show Sample at Launch turns the first-launch sample off.
 
 ## 8. CLI
 
