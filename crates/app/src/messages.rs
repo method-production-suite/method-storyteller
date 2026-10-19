@@ -3,6 +3,8 @@
 
 use std::path::Path;
 
+use storyteller_engine::files::FileProblem;
+
 /// The navigator with no scenes in the script.
 pub const NO_SCENES_TITLE: &str = "No scenes yet";
 pub const NO_SCENES_BODY: &str = "Start a line with INT. or EXT. and it appears here as a scene.";
@@ -15,40 +17,30 @@ pub fn nothing_found(text: &str) -> String {
     format!("No matches for “{text}”")
 }
 
-/// A file that did not open. `detail` is the engine's error text.
-pub fn open_failed(path: &Path, detail: &str) -> String {
+/// A file that did not open. `problem` is the kind of trouble, from the error's type;
+/// `detail` is its text, shown only when the kind says nothing more specific.
+pub fn open_failed(path: &Path, problem: Option<FileProblem>, detail: &str) -> String {
     let name = file_name(path);
-    let lower = detail.to_lowercase();
-    let reason = if lower.contains("no such file") || lower.contains("cannot find") {
-        "The file is not there any more; it may have been moved or renamed.".to_string()
-    } else if lower.contains("permission denied") || lower.contains("access is denied") {
-        "This computer does not let Method Storyteller read it.".to_string()
-    } else if lower.contains("cannot be opened from pdf") {
-        "A PDF is a printed script. Open the .fountain, .osf or .fdx it was made from.".to_string()
-    } else if lower.contains("larger than") {
-        format!("{}.", capitalized(detail))
-    } else if lower.contains("not valid utf-8") || lower.contains("is not a") || lower.contains("damaged") {
-        format!("It is not a script Method Storyteller can read ({detail}).")
-    } else {
-        format!("({detail})")
+    let reason = match problem.unwrap_or(FileProblem::Other) {
+        FileProblem::NotFound => "The file is not there any more; it may have been moved or renamed.".to_string(),
+        FileProblem::PermissionDenied => "This computer does not let Method Storyteller read it.".to_string(),
+        FileProblem::Pdf => "A PDF is a printed script. Open the .fountain, .osf or .fdx it was made from.".to_string(),
+        FileProblem::TooLarge => format!("{}.", capitalized(detail)),
+        FileProblem::NotAScript => format!("It is not a script Method Storyteller can read ({detail})."),
+        FileProblem::StorageFull | FileProblem::ReadOnly | FileProblem::Other => format!("({detail})"),
     };
     format!("“{name}” did not open. {reason}")
 }
 
 /// A save that failed. The script is still open, so say so and point at Save As.
-pub fn save_failed(path: &Path, detail: &str) -> String {
+pub fn save_failed(path: &Path, problem: Option<FileProblem>, detail: &str) -> String {
     let name = file_name(path);
-    let lower = detail.to_lowercase();
-    let reason = if lower.contains("permission denied") || lower.contains("access is denied") {
-        "The folder does not allow changes.".to_string()
-    } else if lower.contains("no space") || lower.contains("disk full") || lower.contains("not enough space") {
-        "The disk is full.".to_string()
-    } else if lower.contains("read-only") {
-        "The disk is read-only.".to_string()
-    } else if lower.contains("no such file") || lower.contains("cannot find") {
-        "The folder is not there any more.".to_string()
-    } else {
-        format!("({detail})")
+    let reason = match problem.unwrap_or(FileProblem::Other) {
+        FileProblem::PermissionDenied => "The folder does not allow changes.".to_string(),
+        FileProblem::StorageFull => "The disk is full.".to_string(),
+        FileProblem::ReadOnly => "The disk is read-only.".to_string(),
+        FileProblem::NotFound => "The folder is not there any more.".to_string(),
+        _ => format!("({detail})"),
     };
     format!("“{name}” was not saved. {reason} Your changes are still here: use Save As to save them somewhere else.")
 }
@@ -91,15 +83,17 @@ mod tests {
     #[test]
     fn open_failures_say_what_happened() {
         let path = Path::new("/scripts/Field Station.fdx");
-        let missing = open_failed(path, "could not read /scripts/Field Station.fdx: No such file or directory (os error 2)");
+        let missing = open_failed(path, Some(FileProblem::NotFound), "could not read /scripts/Field Station.fdx: os error 2");
         assert_eq!(missing, "“Field Station.fdx” did not open. The file is not there any more; it may have been moved or renamed.");
-        let pdf = open_failed(Path::new("draft.pdf"), "scripts cannot be opened from PDF");
+        let pdf = open_failed(Path::new("draft.pdf"), Some(FileProblem::Pdf), "scripts cannot be opened from PDF");
         assert!(pdf.contains("A PDF is a printed script"), "{pdf}");
-        let big = open_failed(path, "the file is larger than the 32 MiB limit");
+        let big = open_failed(path, Some(FileProblem::TooLarge), "the file is larger than the 32 MiB limit");
         assert!(big.ends_with("The file is larger than the 32 MiB limit."), "{big}");
-        let broken = open_failed(path, "the XML is damaged: unexpected end");
+        let broken = open_failed(path, Some(FileProblem::NotAScript), "the XML is damaged: unexpected end");
         assert!(broken.contains("not a script Method Storyteller can read (the XML is damaged"), "{broken}");
-        for text in [missing, pdf, big, broken, open_failed(path, "something odd")] {
+        let odd = open_failed(path, None, "something odd");
+        assert_eq!(odd, "“Field Station.fdx” did not open. (something odd)");
+        for text in [missing, pdf, big, broken, odd] {
             voice(&text);
         }
     }
@@ -107,15 +101,29 @@ mod tests {
     #[test]
     fn save_failures_keep_the_work_and_point_at_save_as() {
         let path = Path::new("/locked/Field Station.fountain");
-        let denied = save_failed(path, "could not save /locked/Field Station.fountain: Permission denied (os error 13)");
+        let denied = save_failed(path, Some(FileProblem::PermissionDenied), "could not save /locked/Field Station.fountain: os error 13");
         assert_eq!(
             denied,
             "“Field Station.fountain” was not saved. The folder does not allow changes. Your changes are still here: use Save As to save them somewhere else."
         );
-        let full = save_failed(path, "No space left on device (os error 28)");
+        let full = save_failed(path, Some(FileProblem::StorageFull), "os error 28");
         assert!(full.contains("The disk is full."), "{full}");
         voice(&denied);
         voice(&full);
+    }
+
+    /// The kind decides the words: a path or a translated system message that happens to
+    /// contain telling words changes nothing.
+    #[test]
+    fn the_text_never_steers_the_reason() {
+        let path = Path::new("/scripts/permission denied no such file.fountain");
+        let detail = "could not read /scripts/permission denied no such file.fountain: Accès refusé (os error 5)";
+        let opened = open_failed(path, Some(FileProblem::Other), detail);
+        assert!(opened.ends_with(&format!("({detail})")), "{opened}");
+        let saved = save_failed(path, Some(FileProblem::Other), "No space left: Permission denied");
+        assert!(!saved.contains("The disk is full") && !saved.contains("does not allow"), "{saved}");
+        let denied = open_failed(Path::new("a.fountain"), Some(FileProblem::PermissionDenied), "Zugriff verweigert (os error 5)");
+        assert!(denied.contains("does not let Method Storyteller read it"), "{denied}");
     }
 
     #[test]

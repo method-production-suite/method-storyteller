@@ -34,6 +34,17 @@ struct FileResult {
     lengths: (usize, usize),
     /// Script notes: (read, the same after `.fdx` to OSF to `.fdx`).
     notes: (usize, usize),
+    /// Revised spans: (read, the same after `.fdx` to OSF to `.fdx`), and whether the revision sets were.
+    revised: (usize, usize),
+    sets_kept: Option<bool>,
+}
+
+/// Revised spans of every paragraph, after writing and reading `.fdx` again.
+fn revised(script: &Script) -> (Vec<String>, String) {
+    let reread = fdx::parse(&fdx::write(script)).unwrap_or_default();
+    let spans = reread.elements.iter().enumerate().flat_map(|(i, e)| e.revised.iter().map(move |r| format!("{i} {r:?}"))).collect();
+    let sets = format!("{:?} {:?}", reread.revisions, reread.revisions.sets.iter().map(|s| &s.fdx_attributes).collect::<Vec<_>>());
+    (spans, sets)
 }
 
 /// Every note with what it covers and the Final Draft attributes it is written with.
@@ -103,6 +114,12 @@ fn measure(fdx_path: &Path, pdf: Option<&Path>) -> Result<FileResult, String> {
     let first = fdx::write(&script);
     let round_trip = fdx::parse(&first).is_ok_and(|again| fdx::write(&again) == first && again.fdx == script.fdx);
     let mut result = FileResult { round_trip, ..FileResult::default() };
+    let (spans, sets) = revised(&script);
+    if !spans.is_empty() || !script.revisions.is_empty() {
+        let (after, after_sets) = osf::parse(&osf::write(&script)).map(|s| revised(&s)).unwrap_or_default();
+        result.revised = (spans.len(), spans.iter().zip(&after).filter(|(a, b)| a == b).count());
+        result.sets_kept = Some(sets == after_sets);
+    }
     let before = notes(&script);
     if !before.is_empty() {
         let after = osf::parse(&osf::write(&script)).map(|s| notes(&s)).unwrap_or_default();
@@ -169,6 +186,7 @@ pub fn run(root: &Path) -> Result<(), String> {
     let mut max_drift = 0;
     let mut lengths = (0usize, 0usize);
     let mut notes = (0usize, 0usize);
+    let (mut revised, mut sets) = ((0usize, 0usize), (0usize, 0usize));
     for (n, (fdx_path, pdf)) in entries.iter().enumerate() {
         let n = n + 1;
         if inside(fdx_path, root) || pdf.as_deref().is_some_and(|p| inside(p, root)) {
@@ -186,6 +204,12 @@ pub fn run(root: &Path) -> Result<(), String> {
                 lengths.1 += r.lengths.1;
                 notes.0 += r.notes.0;
                 notes.1 += r.notes.1;
+                revised.0 += r.revised.0;
+                revised.1 += r.revised.1;
+                if let Some(kept) = r.sets_kept {
+                    sets.0 += 1;
+                    sets.1 += usize::from(kept);
+                }
                 scenes += r.scenes;
                 exact += r.exact;
                 all_exact_files += usize::from(r.scenes > 0 && r.exact == r.scenes);
@@ -210,6 +234,10 @@ pub fn run(root: &Path) -> Result<(), String> {
         }
     }
     println!("notes: {} read, {} the same after .fdx to OSF to .fdx", notes.0, notes.1);
+    println!(
+        "revisions: {} revised spans read, {} the same after .fdx to OSF to .fdx; revision sets the same in {}/{} files",
+        revised.0, revised.1, sets.1, sets.0
+    );
     println!(
         "corpus: {files} files, {failed} failed to import, {round_trips} round-trip identically; scenes exact {exact}/{scenes} ({}), files scene-exact {all_exact_files}, max drift {max_drift} pages; scene lengths exact {}/{} ({}); page count matches PDF {page_matches}/{with_pdf}",
         percent(exact, scenes),
