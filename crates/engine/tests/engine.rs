@@ -376,7 +376,10 @@ fn spell_check_steps_ignores_learns_and_changes() {
     assert_eq!(s.script.elements[1].text, "Nora taps the glass. The seismograf is still.");
     assert_eq!(next(&mut s)["word"], "seismograf");
     // Ignore for the session; learn for good.
+    s.dirty = false;
     run(&registry, &mut s, "spell.ignore", json!({ "word": "seismograf" }));
+    assert_eq!(s.script.spelling_ignored, ["seismograf"], "ignored words stay with the script");
+    assert!(s.dirty, "so the file has something new to save");
     let learned = run(&registry, &mut s, "spell.learn", json!({ "word": "Zorbly" }));
     assert_eq!(learned["value"]["learned"], "zorbly");
     assert_eq!(next(&mut s)["total"], 0, "nothing left");

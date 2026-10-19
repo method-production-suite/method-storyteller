@@ -26,20 +26,45 @@ pub fn dictionary() -> Option<&'static spellbook::Dictionary> {
     DICTIONARY.get_or_init(|| spellbook::Dictionary::new(AFF, DIC).ok()).as_ref()
 }
 
-/// The writer's own words and the words ignored for this session, kept beside the dictionary.
+/// The writer's own dictionary: words added with Learn, spelled right in every script (the app
+/// keeps them in its settings). Words ignored for one script live on the script itself
+/// ([`Script::spelling_ignored`]).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Personal {
-    /// Added with "Learn": spelled right everywhere (the app keeps them in its settings).
     pub learned: HashSet<String>,
-    /// Ignored for this session.
-    pub ignored: HashSet<String>,
 }
 
 impl Personal {
-    fn knows(&self, word: &str) -> bool {
+    fn knows(&self, word: &str, ignored: &[String]) -> bool {
         let lower = word.to_lowercase();
-        self.learned.contains(&lower) || self.ignored.contains(&lower)
+        self.learned.contains(&lower) || ignored.contains(&lower)
     }
+}
+
+/// A word with the accents taken off its letters (`café` → `cafe`): the dictionary is built
+/// without accents.
+fn unaccented(word: &str) -> String {
+    word.chars()
+        .map(|c| match c {
+            'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' => 'a',
+            'À' | 'Á' | 'Â' | 'Ã' | 'Ä' | 'Å' => 'A',
+            'ç' => 'c',
+            'Ç' => 'C',
+            'è' | 'é' | 'ê' | 'ë' => 'e',
+            'È' | 'É' | 'Ê' | 'Ë' => 'E',
+            'ì' | 'í' | 'î' | 'ï' => 'i',
+            'Ì' | 'Í' | 'Î' | 'Ï' => 'I',
+            'ñ' => 'n',
+            'Ñ' => 'N',
+            'ò' | 'ó' | 'ô' | 'õ' | 'ö' | 'ø' => 'o',
+            'Ò' | 'Ó' | 'Ô' | 'Õ' | 'Ö' | 'Ø' => 'O',
+            'ù' | 'ú' | 'û' | 'ü' => 'u',
+            'Ù' | 'Ú' | 'Û' | 'Ü' => 'U',
+            'ý' | 'ÿ' => 'y',
+            'Ý' => 'Y',
+            other => other,
+        })
+        .collect()
 }
 
 /// One misspelled word: element, byte range, the word.
@@ -106,25 +131,33 @@ pub fn names(script: &Script) -> HashSet<String> {
         .elements
         .iter()
         .filter(|e| e.kind == ElementKind::Character)
-        .flat_map(|e| e.character_name().split_whitespace().map(str::to_uppercase).collect::<Vec<_>>())
+        // JEAN-LUC is known as a whole and as JEAN and LUC, since words split at a hyphen.
+        .flat_map(|e| {
+            let name = e.character_name().to_uppercase();
+            name.split(|c: char| c.is_whitespace() || c == '-').map(str::to_string).chain(std::iter::once(name.clone())).collect::<Vec<_>>()
+        })
+        .filter(|n| !n.is_empty())
         .collect()
 }
 
 /// Whether one word is spelled right.
-pub fn is_right(word: &str, names: &HashSet<String>, personal: &Personal) -> bool {
+pub fn is_right(word: &str, names: &HashSet<String>, personal: &Personal, ignored: &[String]) -> bool {
     let word = word.replace('’', "'");
     if word.chars().any(|c| c.is_ascii_digit()) || word.chars().count() < 2 {
         return true;
     }
     let upper = word.to_uppercase();
     let stem = upper.strip_suffix("'S").unwrap_or(&upper);
-    if names.contains(stem) || SCREENPLAY_TERMS.contains(&stem) || personal.knows(&word) {
+    if names.contains(stem) || SCREENPLAY_TERMS.contains(&stem) || personal.knows(&word, ignored) {
         return true;
     }
     let Some(dictionary) = dictionary() else { return true };
-    if dictionary.check(&word) {
+    let plain = unaccented(&word);
+    if dictionary.check(&word) || (plain != word && dictionary.check(&plain)) {
         return true;
     }
+    let word = plain;
+    let upper = word.to_uppercase();
     // A word in capitals (a heading, a cue, a first appearance) is right if its usual case is.
     if word == upper {
         let mut chars = word.chars();
@@ -145,7 +178,7 @@ pub fn misspelled(script: &Script, personal: &Personal) -> Vec<Miss> {
         }
         for (start, end) in words(&element.text) {
             let Some(word) = element.text.get(start..end) else { continue };
-            if !is_right(word, &names, personal) {
+            if !is_right(word, &names, personal, &script.spelling_ignored) {
                 out.push(Miss { element: index, start, end, word: word.to_string() });
             }
         }
@@ -175,9 +208,16 @@ mod tests {
     }
 
     #[test]
+    fn a_hyphenated_cue_names_both_halves() {
+        let script = storyteller_core::fountain::parse("INT. A - DAY\n\nJEAN-LUC\nHello.\n\nLuc waves.\n").unwrap();
+        assert!(misspelled(&script, &Personal::default()).is_empty(), "{:?}", misspelled(&script, &Personal::default()));
+    }
+
+    #[test]
     fn the_dictionary_loads_and_checks() {
         let none = HashSet::new();
         let personal = Personal::default();
+        let is_right = |w: &str, n: &HashSet<String>, p: &Personal| is_right(w, n, p, &[]);
         assert!(is_right("glass", &none, &personal));
         assert!(is_right("GLASS", &none, &personal), "a word in capitals");
         assert!(is_right("don’t", &none, &personal), "a curly apostrophe");
@@ -186,6 +226,8 @@ mod tests {
         assert!(is_right("12A", &none, &personal), "numbers are not checked");
         let names: HashSet<String> = ["NORA".to_string()].into_iter().collect();
         assert!(is_right("Nora's", &names, &personal), "a character's name, possessive");
+        assert!(is_right("café", &none, &personal), "accents are checked without them");
+        assert!(is_right("CAFÉ", &none, &personal));
         assert!(suggestions("glsas", 5).iter().any(|s| s == "glass"));
         assert!(suggestions("GLSAS", 5).iter().any(|s| s == "GLASS"), "suggestions in the word's case");
     }

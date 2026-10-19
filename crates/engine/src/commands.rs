@@ -945,12 +945,17 @@ fn all_commands() -> Vec<Command> {
             label: "Ignore Spelling",
             menu: "",
             shortcut: None,
-            params: const { &[param("word", String, true, "The word to accept for this session")] },
+            params: const { &[param("word", String, true, "The word to accept in this script (kept with the script)")] },
             enabled: always,
             run: |s, p| {
                 let word = string(p, "word")?;
-                s.spelling.ignored.insert(word.to_lowercase());
-                Ok(Outcome::message(format!("Ignoring “{word}” in this session")))
+                let lower = word.to_lowercase();
+                // Kept with the script, so it stays ignored when the file is saved and reopened.
+                if !s.script.spelling_ignored.contains(&lower) {
+                    s.script.spelling_ignored.push(lower);
+                    s.dirty = true;
+                }
+                Ok(Outcome::message(format!("Ignoring “{word}” in this script")))
             },
         },
         Command {
@@ -986,12 +991,14 @@ fn all_commands() -> Vec<Command> {
                 let word = string(p, "word")?;
                 let replacement = string(p, "replacement")?;
                 let text = s.script.elements.get(index).map(|e| e.text.clone()).unwrap_or_default();
-                if text.get(start..start + word.len()) != Some(word.as_str()) {
+                let end = start.checked_add(word.len()).ok_or(CommandError::Invalid { name: "start", reason: "out of range".into() })?;
+                if text.get(start..end) != Some(word.as_str()) {
                     return Ok(Outcome { message: Some("The word has changed since".into()), value: json!({ "changed": false }) });
                 }
-                let new_text = format!("{}{replacement}{}", text.get(..start).unwrap_or(""), text.get(start + word.len()..).unwrap_or(""));
+                let new_text = format!("{}{replacement}{}", text.get(..start).unwrap_or(""), text.get(end..).unwrap_or(""));
                 set_text(s, index, &new_text, false)?;
-                s.caret = Caret { element: index, offset: (start + replacement.len()).min(s.script.elements.get(index).map_or(0, |e| e.text.len())) };
+                let caret = start.saturating_add(replacement.len());
+                s.caret = Caret { element: index, offset: caret.min(s.script.elements.get(index).map_or(0, |e| e.text.len())) };
                 Ok(Outcome::value(json!({ "changed": true })))
             },
         },

@@ -45,7 +45,7 @@ pub struct Session {
     last_edit: Option<EditKind>,
     paginated: Option<Paginated>,
     lengths: Option<Vec<SceneLength>>,
-    /// The writer's learned words and this session's ignored ones (see [`crate::spell`]).
+    /// The writer's learned words (see [`crate::spell::Personal`]); the app fills them from its settings.
     pub spelling: crate::spell::Personal,
 }
 
