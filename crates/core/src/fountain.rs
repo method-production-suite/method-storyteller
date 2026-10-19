@@ -73,87 +73,46 @@ fn split_scene_number(text: &str) -> (String, Option<String>) {
     (trimmed.to_string(), None)
 }
 
-/// Marks where a boneyard block stood, so the parser never sees its text: a private-use
-/// character, the block's index, another private-use character.
-const BONE_OPEN: char = '\u{E000}';
-const BONE_CLOSE: char = '\u{E001}';
+/// The `/* … */` blocks of a source: byte ranges, each including its markers. An unclosed
+/// `/*` is not a block.
+fn boneyard_blocks(text: &str) -> Vec<(usize, usize)> {
+    let mut out = Vec::new();
+    let mut from = 0;
+    while let Some(start) = text.get(from..).and_then(|r| r.find("/*")).map(|s| s + from) {
+        let Some(end) = text.get(start + 2..).and_then(|r| r.find("*/")).map(|e| e + start + 4) else { break };
+        out.push((start, end));
+        from = end;
+    }
+    out
+}
 
-/// Takes every `/* … */` block out of the source, leaving a marker in its place.
-fn extract_boneyard(text: &str) -> (String, Vec<String>) {
+/// The source without its boneyard blocks: exactly what the parser reads, so a block never
+/// changes how the script around it parses.
+fn remove_boneyard(text: &str, blocks: &[(usize, usize)]) -> String {
     let mut out = String::with_capacity(text.len());
-    let mut blocks = Vec::new();
-    let mut rest = text;
-    while let Some(start) = rest.find("/*") {
-        let Some(after) = rest.get(start + 2..) else { break };
-        let Some(end) = after.find("*/") else { break };
-        out.push_str(rest.get(..start).unwrap_or(""));
-        out.push(BONE_OPEN);
-        out.push_str(&blocks.len().to_string());
-        out.push(BONE_CLOSE);
-        blocks.push(format!("/*{}*/", after.get(..end).unwrap_or("")));
-        rest = after.get(end + 2..).unwrap_or("");
+    let mut at = 0;
+    for &(start, end) in blocks {
+        out.push_str(text.get(at..start).unwrap_or(""));
+        at = end;
     }
-    out.push_str(rest);
-    (out, blocks)
+    out.push_str(text.get(at..).unwrap_or(""));
+    out
 }
 
-/// Removes the markers from a text, returning it and the indices it held. A line left empty by
-/// a removed marker goes too.
-fn take_markers(text: &str) -> (String, Vec<usize>) {
-    if !text.contains(BONE_OPEN) {
-        return (text.to_string(), Vec::new());
-    }
-    let mut found = Vec::new();
-    let mut lines = Vec::new();
-    for line in text.split('\n') {
-        let mut kept = String::new();
-        let mut rest = line;
-        let mut had = false;
-        while let Some(open) = rest.find(BONE_OPEN) {
-            let Some(len) = rest.get(open..).and_then(|r| r.find(BONE_CLOSE)) else { break };
-            kept.push_str(rest.get(..open).unwrap_or(""));
-            if let Some(n) = rest.get(open + BONE_OPEN.len_utf8()..open + len).and_then(|n| n.parse().ok()) {
-                found.push(n);
-            }
-            rest = rest.get(open + len + BONE_CLOSE.len_utf8()..).unwrap_or("");
-            had = true;
-        }
-        kept.push_str(rest);
-        if !(had && kept.trim().is_empty()) {
-            lines.push(kept);
+/// Gives each block to the paragraph that follows it: the number of paragraphs the source
+/// before the block parses to is the index of the paragraph it belongs with. Blocks after the
+/// last paragraph go to `boneyard_end`.
+fn attach_boneyard(script: &mut Script, source: &str, blocks: &[(usize, usize)]) -> Result<(), CoreError> {
+    for (k, &(start, end)) in blocks.iter().enumerate() {
+        let before = remove_boneyard(source.get(..start).unwrap_or(""), blocks.get(..k).unwrap_or(&[]));
+        let index = parse_body(&before)?.elements.len();
+        let block = source.get(start..end).unwrap_or("").to_string();
+        match script.elements.get_mut(index) {
+            Some(element) => element.boneyard.push(block),
+            None => script.boneyard_end.push(block),
         }
     }
-    (lines.join("\n"), found)
-}
-
-/// Gives each boneyard block back to the paragraph it stood before (or inside), dropping
-/// paragraphs that were nothing but a block.
-fn attach_boneyard(script: &mut Script, blocks: &[String]) {
-    let mut pending: Vec<String> = Vec::new();
-    for field in &mut script.title_page.fields {
-        let (value, found) = take_markers(&field.value);
-        field.value = if found.is_empty() { value } else { value.trim_end().to_string() };
-        pending.extend(found.into_iter().filter_map(|n| blocks.get(n).cloned()));
-    }
-    let mut kept = Vec::with_capacity(script.elements.len());
-    for mut element in std::mem::take(&mut script.elements) {
-        let (text, found) = take_markers(&element.text);
-        let had = !found.is_empty();
-        element.text = text;
-        if let Some(number) = element.scene_number.take() {
-            let (number, more) = take_markers(&number);
-            pending.extend(more.into_iter().filter_map(|n| blocks.get(n).cloned()));
-            element.scene_number = (!number.trim().is_empty()).then_some(number);
-        }
-        pending.extend(found.into_iter().filter_map(|n| blocks.get(n).cloned()));
-        if had && element.text.trim().is_empty() && element.kind != ElementKind::PageBreak {
-            continue;
-        }
-        element.boneyard = std::mem::take(&mut pending);
-        kept.push(element);
-    }
-    script.elements = kept;
-    script.boneyard_end = pending;
+    Ok(())
 }
 
 struct Builder {
@@ -170,13 +129,21 @@ impl Builder {
     }
 }
 
-/// Parse a Fountain document.
+/// Parse a Fountain document. Boneyard blocks are kept on the paragraphs they stand before
+/// ([`Element::boneyard`]) and parsed around exactly as if they were not there.
 pub fn parse(source: &str) -> Result<Script, CoreError> {
     if source.len() > MAX_INPUT_BYTES {
         return Err(CoreError::TooLarge);
     }
     let source = source.strip_prefix('\u{feff}').unwrap_or(source).replace("\r\n", "\n").replace('\r', "\n");
-    let (source, boneyard) = extract_boneyard(&source);
+    let blocks = boneyard_blocks(&source);
+    let mut script = parse_body(&remove_boneyard(&source, &blocks))?;
+    attach_boneyard(&mut script, &source, &blocks)?;
+    Ok(script)
+}
+
+/// Parse a normalized source with no boneyard.
+fn parse_body(source: &str) -> Result<Script, CoreError> {
     let all_lines: Vec<&str> = source.split('\n').collect();
 
     let (title_page, body_start) = parse_title_page(&all_lines);
@@ -254,9 +221,7 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
             i = push_action(&mut builder, lines, i, line)?;
         }
     }
-    let mut script = Script { title_page, elements: builder.elements, ..Script::default() };
-    attach_boneyard(&mut script, &boneyard);
-    Ok(script)
+    Ok(Script { title_page, elements: builder.elements, ..Script::default() })
 }
 
 fn parse_title_page(lines: &[&str]) -> (TitlePage, usize) {
@@ -411,11 +376,10 @@ pub fn write(script: &Script) -> String {
             out.push_str(if continues_block { "\n" } else { "\n\n" });
         }
         in_block = continues_block || element.kind == ElementKind::Character;
-        // Set-aside text goes back where it stood: on its own line inside a speech, so the
-        // speech holds together, or as its own paragraph.
+        // Set-aside text goes back at the start of the paragraph it stood before, on the same
+        // line, so the paragraph reads exactly as it did.
         for block in &element.boneyard {
             out.push_str(block);
-            out.push_str(if continues_block { "\n" } else { "\n\n" });
         }
         let text = element.text.as_str();
         match element.kind {

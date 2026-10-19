@@ -157,36 +157,66 @@ fn spec_examples() {
     assert_eq!(script.elements[1].text, "Ten.\n\nJack.");
 }
 
-/// The boneyard is kept: every `/* … */` block goes with the paragraph it stood before, is never
-/// printed, and comes back where it was.
+/// The source with every `/* … */` cut out, as the parser has always read it.
+fn without_boneyard(source: &str) -> String {
+    let mut out = String::new();
+    let mut rest = source;
+    while let Some(start) = rest.find("/*") {
+        let Some(len) = rest[start + 2..].find("*/") else { break };
+        out.push_str(&rest[..start]);
+        rest = &rest[start + 2 + len + 2..];
+    }
+    out.push_str(rest);
+    out
+}
+
+fn shape(script: &Script) -> Vec<(K, String, Option<String>, bool)> {
+    script.elements.iter().map(|e| (e.kind, e.text.clone(), e.scene_number.clone(), e.dual)).collect()
+}
+
+/// The boneyard never changes how a script parses, is never printed, and is written back so
+/// the script reads the same again.
 #[test]
-fn boneyard_is_kept_and_written_back() {
-    use storyteller_core::ElementKind as K;
-    let source = "INT. HUT - DAY\n\n/* A cut line.\n\nTwo paragraphs of it. */\n\nNora taps the glass.\n\nNORA\n(quietly)\n/* a cut beat */\nOkay.\n\nShe waits./* inline aside */\n\n/* the old ending */\n";
-    let script = fountain::parse(source).unwrap();
-    let kinds: Vec<K> = script.elements.iter().map(|e| e.kind).collect();
-    assert_eq!(kinds, [K::SceneHeading, K::Action, K::Character, K::Parenthetical, K::Dialogue, K::Action], "no paragraph is made of a block");
-    assert_eq!(script.elements[1].boneyard, ["/* A cut line.\n\nTwo paragraphs of it. */"]);
-    assert_eq!(script.elements[1].text, "Nora taps the glass.");
-    assert_eq!(script.elements[4].boneyard, ["/* a cut beat */"], "a block inside a speech stays with the line after it");
-    assert_eq!(script.elements[4].text, "Okay.");
-    assert_eq!(script.elements[5].text, "She waits.");
-    assert_eq!(script.elements[5].boneyard, ["/* inline aside */"], "an inline block keeps its text, beside its paragraph");
-    assert_eq!(script.boneyard_end, ["/* the old ending */"]);
-    // Never printed.
-    let pages = storyteller_core::paginate::paginate(&script, &storyteller_core::layout::Layout::default());
-    let printed: String = pages.pages.iter().flat_map(|p| p.lines.iter().map(|l| l.text())).collect::<Vec<_>>().join("\n");
-    assert!(!printed.contains("cut") && !printed.contains("ending") && !printed.contains("aside"), "{printed}");
-    // Written back, and read again the same.
-    let written = fountain::write(&script);
-    assert!(written.contains("/* A cut line.\n\nTwo paragraphs of it. */\n\nNora taps the glass."), "{written}");
-    assert!(written.contains("(quietly)\n/* a cut beat */\nOkay."), "the speech holds together: {written}");
-    assert_eq!(fountain::parse(&written).unwrap(), script);
+fn boneyard_is_kept_without_changing_the_parse() {
+    let cases = [
+        "INT. HUT - DAY\n\n/* A cut line.\n\nTwo paragraphs of it. */\n\nNora taps the glass.\n",
+        "/* before a heading */\nINT. HUT - DAY\n\nx\n",
+        "x\n\n/* before a speaker */\nNORA\nHello.\n",
+        "NORA\n(quietly)\n/* a cut beat */\nOkay.\n",
+        "x\n\n/* before a transition */\nCUT TO:\n\nEXT. FLATS - NIGHT\n",
+        "x\n\nCUT TO: /* trailing */\n\nEXT. FLATS - NIGHT\n",
+        "She waits./* inline aside */ And waits.\n",
+        "INT. HUT - DAY\n\nThe end.\n\n/* the old ending */\n",
+        "Title: PROBE /* working title */\n\nINT. A - DAY\n\nx\n",
+        "Text with \u{E000}7\u{E001} private-use characters stays.\n\n/* and a block */\n\nMore.\n",
+        "Unclosed /* is just text.\n",
+    ];
+    for source in cases {
+        let script = fountain::parse(source).unwrap();
+        let reference = fountain::parse(&without_boneyard(source)).unwrap();
+        assert_eq!(shape(&script), shape(&reference), "parsed as if the blocks were not there: {source:?}");
+        assert_eq!(script.title_page, reference.title_page, "{source:?}");
+        let blocks: usize = script.elements.iter().map(|e| e.boneyard.len()).sum::<usize>() + script.boneyard_end.len();
+        assert_eq!(blocks, source.matches("*/").count(), "every block is kept: {source:?}");
+        let written = fountain::write(&script);
+        let again = fountain::parse(&written).unwrap();
+        assert_eq!(shape(&again), shape(&script), "written back, it reads the same: {source:?} -> {written:?}");
+        assert_eq!(fountain::write(&again), written, "and writes the same again: {source:?}");
+        let pages = storyteller_core::paginate::paginate(&script, &storyteller_core::layout::Layout::default());
+        let printed: Vec<String> = pages.pages.iter().flat_map(|p| p.lines.iter().map(|l| l.text())).collect();
+        let kept: Vec<&String> = script.elements.iter().flat_map(|e| e.boneyard.iter()).chain(script.boneyard_end.iter()).collect();
+        for block in kept {
+            assert!(printed.iter().all(|l| !l.contains(block.as_str())), "nothing of it prints: {source:?}");
+        }
+    }
 }
 
 #[test]
-fn boneyard_in_the_title_page_moves_to_the_first_paragraph() {
-    let script = fountain::parse("Title: PROBE /* working title */\n\nINT. A - DAY\n\nx\n").unwrap();
-    assert_eq!(script.title_page.get("Title"), Some("PROBE"));
-    assert_eq!(script.elements[0].boneyard, ["/* working title */"]);
+fn boneyard_goes_with_the_paragraph_it_stands_before() {
+    let script = fountain::parse("NORA\n(quietly)\nOkay./* a cut beat */\nStill.\n\nINT. A - DAY\n\nx\n\n/* at the end */\n").unwrap();
+    let with: Vec<(K, &[String])> = script.elements.iter().map(|e| (e.kind, e.boneyard.as_slice())).collect();
+    // A block inside a speech's line goes with the next paragraph, and the speech is unchanged.
+    assert_eq!(script.elements[2].text, "Okay.\nStill.");
+    assert_eq!(with[3], (K::SceneHeading, &["/* a cut beat */".to_string()][..]));
+    assert_eq!(script.boneyard_end, ["/* at the end */"]);
 }
