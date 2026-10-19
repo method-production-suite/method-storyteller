@@ -337,8 +337,9 @@ pub fn set_text(session: &mut Session, index: usize, text: &str, typing: bool) -
     if element.text == text {
         return Ok(());
     }
-    // Typing "int." or "ext." at the start of action makes it a scene heading, as in Final Draft.
-    let becomes_heading = typing && element.kind == ElementKind::Action && flow::is_heading_start(&text);
+    // Typing "int." or "ext." at the start of action makes it a scene heading, as in Final Draft,
+    // however many keys arrive at once.
+    let becomes_heading = typing && element.kind == ElementKind::Action && flow::becomes_heading(&element.text, &text);
     session.checkpoint(if typing { EditKind::Typing(index) } else { EditKind::Other });
     if let Some(element) = session.script.elements.get_mut(index) {
         element.set_text(text);
