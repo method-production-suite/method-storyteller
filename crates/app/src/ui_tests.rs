@@ -212,6 +212,34 @@ fn rename_onto_another_character_asks_to_merge() {
 }
 
 #[test]
+fn with_nothing_to_open_the_sample_is_shown_unsaved() {
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1280.0, 800.0))
+        .with_max_steps(64)
+        .build_eframe(|cc| StorytellerApp::without_menu(cc, None, None, Location::Memory));
+    harness.run_steps(3);
+    let app = harness.state();
+    assert!(app.showing_sample(), "the sample opens");
+    assert!(app.session.path.is_none(), "with no path, so Save never writes the bundled file");
+    assert!(!app.session.dirty);
+    assert!(app.session.script.elements.len() > 1000, "the whole of Field Station");
+    assert_eq!(app.display_title(), "Field Station (sample)");
+    assert_eq!(app.status, super::sample::SAMPLE_LINE);
+    assert!(app.prefs.get().general.sample_seen, "shown once");
+}
+
+#[test]
+fn help_opens_the_sample_any_time() {
+    let (mut harness, _file) = harness(SCRIPT);
+    assert!(!harness.state().showing_sample(), "a file given at launch opens instead of the sample");
+    assert!(harness.state().prefs.get().general.sample_seen, "and retires the first-launch sample unshown");
+    harness.state_mut().queued.push("help.open_sample".into());
+    harness.run_steps(3);
+    assert!(harness.state().showing_sample(), "Help > Open Sample Script");
+    assert!(harness.state().session.path.is_none());
+}
+
+#[test]
 fn select_all_selects_the_paragraph_and_the_edit_menu_lists_the_clipboard() {
     let (mut harness, _file) = harness(SCRIPT);
     harness.state_mut().editor.pending_focus = Some((1, 0));

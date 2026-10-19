@@ -39,7 +39,7 @@ const GO_TO_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Alt+G" } else { "Cmd
 const FIND_NEXT_KEY: &str = if cfg!(target_os = "macos") { "Cmd+G" } else { "F3" };
 const FIND_PREVIOUS_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Shift+G" } else { "Shift+F3" };
 
-const APP_COMMANDS: [AppCommand; 30] = [
+const APP_COMMANDS: [AppCommand; 31] = [
     AppCommand { id: "app.title_page", label: "Title Page…", menu: "File/Title Page…", shortcut: Some("Cmd+Shift+T") },
     AppCommand { id: "prefs.new_fountain", label: "Save New Scripts as Fountain", menu: "File/Save New Scripts as Fountain", shortcut: None },
     AppCommand {
@@ -72,6 +72,7 @@ const APP_COMMANDS: [AppCommand; 30] = [
     AppCommand { id: "help.user_guide", label: "User Guide", menu: "Help/User Guide", shortcut: None },
     AppCommand { id: "help.shortcuts", label: "Keyboard Shortcuts", menu: "Help/Keyboard Shortcuts", shortcut: None },
     AppCommand { id: "help.whats_new", label: "What's New", menu: "Help/What's New", shortcut: None },
+    AppCommand { id: "help.open_sample", label: "Open Sample Script", menu: "Help/Open Sample Script", shortcut: None },
     AppCommand { id: "help.check_updates", label: "Check for Updates…", menu: "Help/Check for Updates…", shortcut: None },
     AppCommand {
         id: "prefs.check_updates_automatically",
@@ -105,6 +106,7 @@ enum Pending {
     Close,
     New,
     Open(Option<PathBuf>),
+    Sample,
 }
 
 struct TitleDraft {
@@ -162,6 +164,8 @@ pub struct StorytellerApp {
     updates: crate::updates::Updates,
     /// The last update line put in the status, to put it there only when it changes.
     update_line: Option<String>,
+    /// The open script is a fresh copy of the sample (see `sample.rs`).
+    sample: bool,
     /// Input for the next frame: Edit > Cut and Copy, after the text field has its focus back.
     next_frame_input: Vec<Event>,
     /// Drawn for the offscreen pictures: the window as a Mac shows it, menus in the menu bar.
@@ -241,6 +245,7 @@ impl StorytellerApp {
                 prefs_automatic,
             ),
             update_line: None,
+            sample: false,
             next_frame_input: Vec::new(),
             #[cfg(test)]
             pictures: false,
@@ -255,8 +260,18 @@ impl StorytellerApp {
         let file = file.or_else(|| app.first_from_finder());
         let ctx = cc.egui_ctx.clone();
         storyteller_macos_open::set_wake(move || ctx.request_repaint());
+        // The first launch with nothing to open shows the sample, once. A writer who already has
+        // scripts (a file given, or recent files) retires it unshown.
+        let general = &app.prefs.get().general;
+        let first_launch = !general.sample_seen;
+        let show_sample = first_launch && general.recent.is_empty() && file.is_none();
+        if first_launch {
+            app.prefs.update(|p| p.general.sample_seen = true);
+        }
         if let Some(path) = file {
             app.open_path(&path);
+        } else if show_sample {
+            app.open_sample();
         }
         if let Some(port) = control_port {
             let ctx = cc.egui_ctx.clone();
@@ -387,6 +402,7 @@ impl StorytellerApp {
             "help.about" => self.help.about = true,
             "help.shortcuts" => self.help.shortcuts = true,
             "help.whats_new" => self.help.whats_new = true,
+            "help.open_sample" => self.guard_unsaved(ctx, Pending::Sample),
             "help.licenses" => self.help.licenses = Some(self.help.licenses.unwrap_or(0)),
             "help.user_guide" => self.open_link(help::USER_GUIDE, "Opened the user guide in your browser."),
             "help.website" => self.open_link(help::SUITE_WEBSITE, "Opened methodproduction.com in your browser."),
@@ -497,6 +513,7 @@ impl StorytellerApp {
                 self.run("file.new", Map::new());
                 self.after_open();
             }
+            Pending::Sample => self.open_sample(),
             Pending::Open(path) => {
                 let path = path
                     .or_else(|| rfd::FileDialog::new().add_filter("Screenplay", &["fountain", "spmd", "txt", "osf", "fadein", "fdx"]).pick_file());
@@ -525,6 +542,7 @@ impl StorytellerApp {
         self.editor = EditorState::default();
         self.editor.pending_focus = Some((0, 0));
         self.discard_confirmed = false;
+        self.sample = false;
     }
 
     /// Save, asking for a path when there is none (or `as_new`). Returns whether it saved.
@@ -533,13 +551,10 @@ impl StorytellerApp {
             (Some(path), false) => Some(path.clone()),
             _ => {
                 let preferred = self.preferred_extension();
-                let name = self
-                    .session
-                    .path
-                    .as_ref()
-                    .and_then(|p| p.file_name())
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| format!("Untitled.{preferred}"));
+                let name = self.session.path.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| {
+                    let stem = if self.showing_sample() { sample::SAMPLE_NAME } else { "Untitled" };
+                    format!("{stem}.{preferred}")
+                });
                 // The working format the writer chose comes first; the others stay one click away.
                 let fountain = ("Fountain", "fountain");
                 let osf = ("Open Screenplay Format", "osf");
@@ -1539,7 +1554,7 @@ impl eframe::App for StorytellerApp {
         if let Some(deadline) = tick.next_deadline {
             ctx.request_repaint_after(deadline.saturating_duration_since(Instant::now()));
         }
-        let title = format!("{} — {APP_NAME}", self.session.title());
+        let title = format!("{} — {APP_NAME}", self.display_title());
         if title != self.window_title {
             ctx.send_viewport_cmd(ViewportCommand::Title(title.clone()));
             self.window_title = title;
@@ -1573,6 +1588,8 @@ fn capitalise(text: &str) -> String {
 
 #[path = "find_bar.rs"]
 mod find_bar;
+#[path = "sample.rs"]
+mod sample;
 
 #[path = "spelling.rs"]
 mod spelling;
