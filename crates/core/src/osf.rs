@@ -7,8 +7,11 @@
 //!
 //! Everything the model does not use is kept and written back: other top-level sections
 //! (settings, styles, lists …) verbatim in [`OsfDocument`], and each paragraph's style name,
-//! other attributes, style overrides and other children in [`OsfParagraph`]. Text-run attributes
-//! other than bold, italic and underline (strikethrough, colour, revision) are not kept yet.
+//! other attributes, style overrides and other children in [`OsfParagraph`]. A run's `revision`
+//! becomes the paragraph's revised spans, and `<lists><revision_colors>` with `settings@revision`
+//! the script's revision sets; a set's mark colour and page colour, which OSF has no place for,
+//! ride on `method_storyteller_color` and `method_storyteller_page_color`. Other text-run
+//! attributes (strikethrough, colour) are not kept yet.
 //!
 //! A paragraph's `note` holds plain text only. Script notes with a range, colour or author (from
 //! an `.fdx`) are written into `note` as well, and also as `<method_storyteller_note …/>` children
@@ -23,10 +26,13 @@ use std::collections::HashMap;
 use quick_xml::XmlVersion;
 use quick_xml::events::Event;
 
-use crate::fdx::{all_attrs, default_note_form, escape, note_attributes};
+use crate::fdx::{all_attrs, default_note_form, escape, note_attributes, revision_set_attributes, revisions_attributes, set_tag_attr};
 use crate::inline::{self, Run, Style};
 use crate::layout::{Align, ElementStyle, Layout, chars_per_line};
-use crate::model::{Element, ElementKind, FdxNote, FdxNoteForm, OsfDocument, OsfParagraph, OsfSection, Script, ScriptNote, TitleField, TitlePage};
+use crate::model::{
+    Element, ElementKind, FdxNote, FdxNoteForm, OsfDocument, OsfParagraph, OsfSection, Revised, RevisionSet, Revisions, Script, ScriptNote,
+    TitleField, TitlePage, mark_revised,
+};
 use crate::{CoreError, MAX_ELEMENTS, MAX_INPUT_BYTES};
 
 /// Deepest element nesting accepted.
@@ -35,6 +41,11 @@ const MAX_DEPTH: usize = 128;
 const MARKER: &str = "method_storyteller";
 /// Our element for a script note's colour, author, range and Final Draft data.
 const NOTE_MARKER: &str = "method_storyteller_note";
+
+/// The element name a raw section starts with, compared loosely.
+fn top_name(raw: &str) -> String {
+    key(raw.trim_start().trim_start_matches('<').split(|c: char| c.is_whitespace() || c == '>' || c == '/').next().unwrap_or_default())
+}
 
 /// An attribute name compared loosely: lower case, without underscores.
 fn key(name: &str) -> String {
@@ -234,6 +245,7 @@ struct Para {
     attributes: Vec<(String, String)>,
     style: Vec<(String, String)>,
     runs: Vec<Run>,
+    revised: Vec<Revised>,
     children: String,
 }
 
@@ -244,7 +256,7 @@ fn paras(xml: &str) -> Result<Vec<Para>, CoreError> {
     let mut out: Vec<Para> = Vec::new();
     let mut depth = 0usize;
     let mut current: Option<Para> = None;
-    let mut run: Option<Style> = None;
+    let mut run: Option<(Style, u32)> = None;
     let mut capture: Option<(usize, usize)> = None;
     loop {
         let before = usize::try_from(reader.buffer_position()).unwrap_or(usize::MAX);
@@ -299,8 +311,9 @@ fn paras(xml: &str) -> Result<Vec<Para>, CoreError> {
                             italic: truthy(get(&attributes, "italic")),
                             underline: truthy(get(&attributes, "underline")),
                         };
+                        let revision = get(&attributes, "revision").and_then(|r| r.trim().parse().ok()).unwrap_or(0);
                         if !empty {
-                            run = Some(style);
+                            run = Some((style, revision));
                         }
                     }
                     (_, true) => {
@@ -360,8 +373,11 @@ fn paras(xml: &str) -> Result<Vec<Para>, CoreError> {
     Ok(out)
 }
 
-fn push_run(para: &mut Para, text: &str, style: Style) {
+fn push_run(para: &mut Para, text: &str, (style, revision): (Style, u32)) {
     let text = text.replace("\r\n", "\n");
+    let at: usize = para.runs.iter().map(|r| r.text.chars().count()).sum();
+    let len = text.chars().count();
+    mark_revised(&mut para.revised, u32::try_from(at).unwrap_or(u32::MAX), u32::try_from(len).unwrap_or(u32::MAX), revision);
     match para.runs.last_mut() {
         Some(last) if last.style == style => last.text.push_str(&text),
         _ => para.runs.push(Run { text, style, note: false }),
@@ -386,7 +402,8 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
     let (root, top) = split(source)?;
     let version = get(&root, "version").unwrap_or("30").to_string();
     let styles = Styles::read(&top);
-    let mut document = OsfDocument { version, sections: Vec::new(), archive_entries: Vec::new() };
+    let revisions = read_revisions(&top);
+    let mut document = OsfDocument { version, sections: Vec::new(), archive_entries: Vec::new(), revisions: Some(revisions.clone()) };
     let mut elements: Vec<Element> = Vec::new();
     let mut title_page = TitlePage::default();
     let mut dual_next = false;
@@ -405,7 +422,7 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
             document.sections.push(OsfSection::Raw(section.raw.clone()));
         }
     }
-    Ok(Script { title_page, elements, fdx: None, osf: Some(Box::new(document)) })
+    Ok(Script { title_page, elements, revisions, fdx: None, osf: Some(Box::new(document)) })
 }
 
 fn read_para(para: Para, styles: &Styles, elements: &mut Vec<Element>, dual_next: &mut bool) -> Result<(), CoreError> {
@@ -449,6 +466,7 @@ fn read_para(para: Para, styles: &Styles, elements: &mut Vec<Element>, dual_next
     }
     let mut element = Element::new(kind, markup);
     element.notes = notes;
+    element.revised = para.revised.clone();
     if kind == ElementKind::SceneHeading {
         element.scene_number =
             get(&para.attributes, "scenenumber").or_else(|| get(&para.attributes, "number")).filter(|n| !n.trim().is_empty()).map(str::to_string);
@@ -687,6 +705,163 @@ fn apply_style(attributes: &[(String, String)], style: &mut ElementStyle, width:
 }
 
 // ---------------------------------------------------------------------------------------------
+// Revisions
+
+/// OSF's revision colours in order (`color_index`), with the page colours we print them in.
+/// The names are the format's; the colours are our own choice, as the format has none.
+const PALETTE: [(&str, &str); 10] = [
+    ("White", "#FFFFFF"),
+    ("Blue", "#C6E2FF"),
+    ("Pink", "#FFCCE0"),
+    ("Yellow", "#FFF7B2"),
+    ("Green", "#CCF2CC"),
+    ("Goldenrod", "#F2D57E"),
+    ("Buff", "#F0DCB4"),
+    ("Salmon", "#FFB4A0"),
+    ("Cherry", "#E06070"),
+    ("Tan", "#D2B48C"),
+];
+
+fn rgb(value: &str) -> Option<(i32, i32, i32)> {
+    let hex = value.trim().strip_prefix('#').filter(|h| h.len() == 6)?;
+    let part = |r: std::ops::Range<usize>| hex.get(r).and_then(|p| i32::from_str_radix(p, 16).ok());
+    Some((part(0..2)?, part(2..4)?, part(4..6)?))
+}
+
+/// The palette colour a set is written as: one its name says, else the nearest to its page
+/// colour, else one by its number.
+fn palette_index(set: &RevisionSet) -> usize {
+    let words: Vec<String> = set.name.split(|c: char| !c.is_alphabetic()).map(str::to_ascii_lowercase).collect();
+    if let Some(index) = PALETTE.iter().position(|(name, _)| words.iter().any(|w| *w == name.to_ascii_lowercase())) {
+        return index;
+    }
+    if let Some((r, g, b)) = set.page_color.as_deref().and_then(rgb) {
+        let distance = |(_, hex): &(&str, &str)| rgb(hex).map_or(i32::MAX, |(pr, pg, pb)| (pr - r).pow(2) + (pg - g).pow(2) + (pb - b).pow(2));
+        if let Some((index, _)) = PALETTE.iter().enumerate().min_by_key(|(_, entry)| distance(entry)) {
+            return index;
+        }
+    }
+    (set.id as usize) % PALETTE.len()
+}
+
+/// Our attributes and Final Draft's, as `prefix_key` pairs.
+fn prefixed<'a>(prefix: &'a str, attributes: &'a [(String, String)]) -> impl Iterator<Item = (String, String)> + 'a {
+    attributes.iter().map(move |(k, v)| (format!("{prefix}{k}"), v.clone()))
+}
+
+fn unprefixed(prefix: &str, attributes: &[(String, String)]) -> Vec<(String, String)> {
+    attributes.iter().filter_map(|(k, v)| Some((k.strip_prefix(prefix)?.to_string(), v.clone()))).collect()
+}
+
+/// Revision sets from `<lists><revision_colors>` and the active one from `settings@revision`.
+fn read_revisions(top: &[TopLevel]) -> Revisions {
+    let mut revisions = Revisions::default();
+    for section in top {
+        if section.name.eq_ignore_ascii_case("settings") {
+            revisions.active = tags(&section.raw).first().and_then(|(_, a)| get(a, "revision")).and_then(|r| r.trim().parse().ok());
+        }
+        if !section.name.eq_ignore_ascii_case("lists") {
+            continue;
+        }
+        for (tag, attributes) in tags(&section.raw) {
+            match key(&tag).as_str() {
+                "revisioncolors" => revisions.fdx_attributes = unprefixed("fdx_", &attributes),
+                "revisioncolor" if revisions.sets.len() < MAX_ELEMENTS => {
+                    let palette = get(&attributes, "color_name").and_then(|n| PALETTE.iter().find(|(p, _)| p.eq_ignore_ascii_case(n.trim())));
+                    revisions.sets.push(RevisionSet {
+                        id: get(&attributes, "index").and_then(|i| i.trim().parse().ok()).unwrap_or(0),
+                        name: get(&attributes, "name").unwrap_or_default().to_string(),
+                        mark: get(&attributes, "mark").unwrap_or_default().to_string(),
+                        color: get(&attributes, "method_storyteller_color").map(str::to_string),
+                        page_color: match get(&attributes, "method_storyteller_page_color") {
+                            Some(page) => Some(page.to_string()).filter(|p| !p.is_empty()),
+                            None => palette.map(|(_, hex)| hex.to_string()),
+                        },
+                        fdx_attributes: unprefixed("fdx_", &attributes),
+                    });
+                }
+                _ => {}
+            }
+        }
+    }
+    revisions
+}
+
+fn revision_colors(revisions: &Revisions) -> String {
+    let mut out = String::from("<revision_colors");
+    let bare = Revisions { fdx_attributes: Vec::new(), ..revisions.clone() };
+    if !revisions.fdx_attributes.is_empty() && revisions.fdx_attributes != revisions_attributes(&bare) {
+        for (k, v) in prefixed("fdx_", &revisions.fdx_attributes) {
+            write_attr(&k, &v, &mut out);
+        }
+    }
+    if revisions.sets.is_empty() {
+        out.push_str("/>");
+        return out;
+    }
+    out.push('>');
+    for set in &revisions.sets {
+        let index = palette_index(set);
+        let (color_name, palette_color) = PALETTE.get(index).copied().unwrap_or(("White", "#FFFFFF"));
+        out.push_str("<revision_color");
+        write_attr("name", &set.name, &mut out);
+        write_attr("index", &set.id.to_string(), &mut out);
+        write_attr("color_name", color_name, &mut out);
+        write_attr("color_index", &index.to_string(), &mut out);
+        write_attr("mark", &set.mark, &mut out);
+        // No page colour at all is said too, or it would read back as the palette's.
+        match set.page_color.as_deref() {
+            Some(page) if page.eq_ignore_ascii_case(palette_color) => {}
+            page => write_attr("method_storyteller_page_color", page.unwrap_or_default(), &mut out),
+        }
+        if let Some(color) = &set.color {
+            write_attr("method_storyteller_color", color, &mut out);
+        }
+        let bare = RevisionSet { fdx_attributes: Vec::new(), ..set.clone() };
+        if !set.fdx_attributes.is_empty() && set.fdx_attributes != revision_set_attributes(&bare) {
+            for (k, v) in prefixed("fdx_", &set.fdx_attributes) {
+                write_attr(&k, &v, &mut out);
+            }
+        }
+        out.push_str("/>");
+    }
+    out.push_str("</revision_colors>");
+    out
+}
+
+/// A `<lists>` section with its revision colours replaced by `revisions`.
+fn with_revision_colors(lists: &str, revisions: &Revisions) -> String {
+    let fresh = revision_colors(revisions);
+    if let Some(start) = lists.find("<revision_colors") {
+        let rest = lists.get(start..).unwrap_or_default();
+        let len = match (rest.find("</revision_colors>"), rest.find('>')) {
+            (_, Some(gt)) if rest.get(..=gt).is_some_and(|t| t.ends_with("/>")) => gt + 1,
+            (Some(close), _) => close + "</revision_colors>".len(),
+            _ => rest.len(),
+        };
+        return format!("{}{fresh}{}", lists.get(..start).unwrap_or_default(), lists.get(start + len..).unwrap_or_default());
+    }
+    match lists.find('>') {
+        Some(gt) if lists.get(..=gt).is_some_and(|t| t.ends_with("/>")) => {
+            format!("{}>{fresh}</lists>", lists.get(..gt.saturating_sub(1)).unwrap_or_default())
+        }
+        Some(gt) => format!("{}{fresh}{}", lists.get(..=gt).unwrap_or_default(), lists.get(gt + 1..).unwrap_or_default()),
+        None => lists.to_string(),
+    }
+}
+
+/// A `<settings>` tag with `revision` set to the active set.
+fn with_active_revision(settings: &str, active: Option<u32>) -> String {
+    let tag_end = settings.find('>').map_or(settings.len(), |at| at + 1);
+    let tag = settings.get(..tag_end).unwrap_or_default();
+    let same = tags(tag).first().and_then(|(_, a)| get(a, "revision")).and_then(|r| r.trim().parse::<u32>().ok()) == active;
+    match active {
+        Some(active) if !same => format!("{}{}", set_tag_attr(tag, "revision", &active.to_string()), settings.get(tag_end..).unwrap_or_default()),
+        _ => settings.to_string(),
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
 // Writing
 
 /// The OSF style a kind is written as when the paragraph brought no style of its own.
@@ -736,26 +911,44 @@ fn write_attr(name: &str, value: &str, out: &mut String) {
     out.push('"');
 }
 
-fn write_runs(runs: &[Run], out: &mut String) {
+/// Writes text runs, split where `element`'s revised text starts and ends.
+fn write_runs(runs: &[Run], element: Option<&Element>, out: &mut String) {
     let printed: Vec<&Run> = runs.iter().filter(|r| !r.note).collect();
     if printed.is_empty() {
         out.push_str("      <text></text>\n");
         return;
     }
+    let mut at = 0u32;
     for run in printed {
-        out.push_str("      <text");
-        if run.style.bold {
-            out.push_str(" bold=\"1\"");
+        let chars: Vec<char> = run.text.chars().collect();
+        let len = u32::try_from(chars.len()).unwrap_or(u32::MAX);
+        let mut from = 0u32;
+        loop {
+            let here = at.saturating_add(from);
+            let to = element.and_then(|e| e.next_revision_edge(here)).map(|edge| edge.saturating_sub(at)).filter(|end| *end < len).unwrap_or(len);
+            out.push_str("      <text");
+            if run.style.bold {
+                out.push_str(" bold=\"1\"");
+            }
+            if run.style.italic {
+                out.push_str(" italic=\"1\"");
+            }
+            if run.style.underline {
+                out.push_str(" underline=\"1\"");
+            }
+            if let Some(revision) = element.and_then(|e| e.revision_at(here)) {
+                out.push_str(&format!(" revision=\"{revision}\""));
+            }
+            out.push('>');
+            let piece: String = chars.iter().skip(from as usize).take(to.saturating_sub(from) as usize).collect();
+            escape(&piece, out);
+            out.push_str("</text>\n");
+            from = to;
+            if from >= len {
+                break;
+            }
         }
-        if run.style.italic {
-            out.push_str(" italic=\"1\"");
-        }
-        if run.style.underline {
-            out.push_str(" underline=\"1\"");
-        }
-        out.push('>');
-        escape(&run.text, out);
-        out.push_str("</text>\n");
+        at = at.saturating_add(len);
     }
 }
 
@@ -840,7 +1033,7 @@ fn write_para(element: &Element, extras: &ParaExtras, spelling: Spelling, styles
         out.push_str(osf.children.trim());
         out.push('\n');
     }
-    write_runs(&runs, out);
+    write_runs(&runs, Some(element), out);
     out.push_str("    </para>\n");
 }
 
@@ -906,7 +1099,7 @@ fn write_title_page(title: &TitlePage, spelling: Spelling, out: &mut String) {
                 write_attr("bookmark", bookmark, out);
             }
             out.push_str(&format!(">\n      <style {}=\"Normal Text\" align=\"{align}\"/>\n", spelling.base_style()));
-            write_runs(&inline::parse(line), out);
+            write_runs(&inline::parse(line), None, out);
             out.push_str("    </para>\n");
         }
         out.push_str(&format!("    <para>\n      <style {}=\"Normal Text\"/>\n      <text></text>\n    </para>\n", spelling.base_style()));
@@ -927,6 +1120,8 @@ pub fn write(script: &Script) -> String {
             out.push_str(">\n");
             let mut title_written = false;
             let mut paragraphs_written = false;
+            let revisions_same = document.revisions.as_ref() == Some(&script.revisions);
+            let mut lists_written = false;
             for section in &document.sections {
                 match section {
                     OsfSection::Paragraphs => {
@@ -945,8 +1140,17 @@ pub fn write(script: &Script) -> String {
                     }
                     OsfSection::TitlePage { .. } => {}
                     OsfSection::Raw(raw) => {
+                        let raw = raw.trim();
+                        let raw = match top_name(raw).as_str() {
+                            "lists" if !revisions_same => {
+                                lists_written = true;
+                                with_revision_colors(raw, &script.revisions)
+                            }
+                            "settings" if !revisions_same => with_active_revision(raw, script.revisions.active),
+                            _ => raw.to_string(),
+                        };
                         out.push_str("  ");
-                        out.push_str(raw.trim());
+                        out.push_str(&raw);
                         out.push('\n');
                     }
                 }
@@ -957,15 +1161,21 @@ pub fn write(script: &Script) -> String {
             if !title_written {
                 write_title_page(&script.title_page, spelling, &mut out);
             }
+            if !revisions_same && !lists_written && !script.revisions.sets.is_empty() {
+                out.push_str(&format!("  <lists>{}</lists>\n", revision_colors(&script.revisions)));
+            }
         }
         None => {
             out.push_str("<document type=\"Open Screenplay Format document\" version=\"30\">\n");
-            out.push_str(DEFAULT_SETTINGS);
+            out.push_str(&with_active_revision(DEFAULT_SETTINGS, script.revisions.active));
             out.push('\n');
             out.push_str(DEFAULT_STYLES);
             out.push('\n');
             write_paragraphs(script, Spelling::Snake, true, &mut out);
             write_title_page(&script.title_page, Spelling::Snake, &mut out);
+            if !script.revisions.sets.is_empty() || !script.revisions.fdx_attributes.is_empty() {
+                out.push_str(&format!("  <lists>{}</lists>\n", revision_colors(&script.revisions)));
+            }
         }
     }
     out.push_str("</document>\n");

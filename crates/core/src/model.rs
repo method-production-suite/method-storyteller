@@ -128,6 +128,9 @@ pub struct Element {
     /// the text are separate: they hold text only.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notes: Vec<ScriptNote>,
+    /// Revised text: spans of the printed text marked with a revision set (see [`Revised`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub revised: Vec<Revised>,
     /// Final Draft data this paragraph carried that the model does not use (see [`FdxParagraph`]).
     #[serde(skip)]
     pub fdx: Option<Box<FdxParagraph>>,
@@ -157,6 +160,53 @@ pub struct ScriptNote {
     /// Final Draft data the note carried that the model does not use.
     #[serde(skip)]
     pub fdx: Option<Box<FdxNote>>,
+}
+
+/// Text marked as changed in a revision.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Revised {
+    /// Characters of the paragraph's printed text, `from..to`.
+    pub from: u32,
+    pub to: u32,
+    /// The [`RevisionSet::id`] it was changed in.
+    pub set: u32,
+}
+
+/// One revision set, such as "Blue Rev.": the colour and mark its changes print with.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RevisionSet {
+    /// The number revised text refers to (Final Draft's `ID`, OSF's `index`).
+    pub id: u32,
+    pub name: String,
+    /// The margin mark, usually `*`.
+    pub mark: String,
+    /// Colour of the mark and revised text, `#RRGGBB`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    /// Colour of the pages issued in this set, `#RRGGBB`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page_color: Option<String>,
+    /// Final Draft attributes the model does not use (`FullRevision`, `Style` …), every one in file order.
+    #[serde(skip)]
+    pub fdx_attributes: Vec<(String, String)>,
+}
+
+/// The script's revision sets and which one new changes go into.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Revisions {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active: Option<u32>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sets: Vec<RevisionSet>,
+    /// Attributes of Final Draft's `Revisions` element (`RevisionMode`, `Location` …), in file order.
+    #[serde(skip)]
+    pub fdx_attributes: Vec<(String, String)>,
+}
+
+impl Revisions {
+    pub fn is_empty(&self) -> bool {
+        self.active.is_none() && self.sets.is_empty() && self.fdx_attributes.is_empty()
+    }
 }
 
 /// How a Final Draft file stores a script note.
@@ -209,6 +259,9 @@ pub struct OsfDocument {
     pub sections: Vec<OsfSection>,
     /// Other members of the `.fadein` archive it came in, kept as they were.
     pub archive_entries: Vec<ArchiveEntry>,
+    /// The revisions as read; the revision list and setting are written back as they were while
+    /// they are the same.
+    pub revisions: Option<Revisions>,
 }
 
 /// A member of a ZIP archive, kept compressed exactly as read so it can be written back.
@@ -262,6 +315,8 @@ pub struct FdxDocument {
     pub ranged_notes: Vec<(u32, u32, ScriptNote)>,
     /// The `UnanchoredScriptNotes` list as read.
     pub unanchored_notes: Vec<ScriptNote>,
+    /// The revisions as read; the `Revisions` section is written back as it was while they are the same.
+    pub revisions: Option<Revisions>,
 }
 
 /// One top-level section of an imported Final Draft document.
@@ -280,7 +335,17 @@ fn is_zero(value: &u8) -> bool {
 
 impl Element {
     pub fn new(kind: ElementKind, text: impl Into<String>) -> Self {
-        let mut element = Element { kind, text: text.into(), scene_number: None, dual: false, level: 0, notes: Vec::new(), fdx: None, osf: None };
+        let mut element = Element {
+            kind,
+            text: text.into(),
+            scene_number: None,
+            dual: false,
+            level: 0,
+            notes: Vec::new(),
+            revised: Vec::new(),
+            fdx: None,
+            osf: None,
+        };
         if kind == ElementKind::Section {
             element.level = 1;
         }
@@ -333,6 +398,28 @@ impl Element {
     /// Character name without extensions such as `(V.O.)` or a trailing `^`.
     pub fn character_name(&self) -> &str {
         character_name(&self.text)
+    }
+
+    /// The revision set the printed character at `at` was changed in.
+    pub fn revision_at(&self, at: u32) -> Option<u32> {
+        self.revised.iter().find(|r| r.from <= at && at < r.to).map(|r| r.set)
+    }
+
+    /// The first place after `at` where revised text starts or ends.
+    pub(crate) fn next_revision_edge(&self, at: u32) -> Option<u32> {
+        self.revised.iter().flat_map(|r| [r.from, r.to]).filter(|edge| *edge > at).min()
+    }
+}
+
+/// Marks `len` characters from `from` as revised in `set`, joining a span it continues.
+pub(crate) fn mark_revised(spans: &mut Vec<Revised>, from: u32, len: u32, set: u32) {
+    if set == 0 || len == 0 {
+        return;
+    }
+    let to = from.saturating_add(len);
+    match spans.last_mut() {
+        Some(last) if last.set == set && last.to == from => last.to = to,
+        _ => spans.push(Revised { from, to, set }),
     }
 }
 
@@ -401,6 +488,9 @@ fn keys_match(a: &str, b: &str) -> bool {
 pub struct Script {
     pub title_page: TitlePage,
     pub elements: Vec<Element>,
+    /// Revision sets and the active set.
+    #[serde(default, skip_serializing_if = "Revisions::is_empty")]
+    pub revisions: Revisions,
     /// Final Draft data from an imported `.fdx` that the model does not use; written back on FDX export.
     #[serde(skip)]
     pub fdx: Option<Box<FdxDocument>>,
@@ -412,7 +502,7 @@ pub struct Script {
 impl Script {
     /// A new, empty script with one scene heading to start typing in.
     pub fn blank() -> Self {
-        Script { title_page: TitlePage::default(), elements: vec![Element::new(ElementKind::SceneHeading, "")], fdx: None, osf: None }
+        Script { elements: vec![Element::new(ElementKind::SceneHeading, "")], ..Script::default() }
     }
 
     /// Normalize every element (see [`Element::normalize`]).
