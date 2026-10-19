@@ -1,4 +1,4 @@
-# Dependabot version updates (SUITE-STANDARDS.md §6): grouped, weekly. Security updates are not
+# Dependabot version updates (SUITE-STANDARDS.md §6): grouped, monthly. Security updates are not
 # grouped: each arrives as its own pull request as soon as an advisory is published (enable them
 # in Settings > Code security). GitHub Actions are left out: the suite's pinned SHAs move in
 # every repository at once, together.
@@ -9,7 +9,7 @@ updates:
   - package-ecosystem: cargo
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
     open-pull-requests-limit: 5
     commit-message:
       prefix: "deps"

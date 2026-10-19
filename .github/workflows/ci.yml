@@ -1,14 +1,14 @@
 name: ci
-# Lean CI (SUITE-STANDARDS.md §6, 2026-10-18; the free plan runs few jobs at a time across the
-# whole org):
-# - a pull request opens as a draft and runs nothing; `gh pr ready` (ready_for_review) starts it,
-#   and later pushes to a ready pull request run again. It runs the Linux gates (skipped for a
-#   docs-only change), the crate-age check on the lock entries it changes, and cargo deny;
-# - a push to main runs the whole-lock crate-age check and cargo deny only: the gates ran on the
-#   pull request, and the full build on macOS, Windows and Linux runs nightly (nightly.yml) and
-#   for every release (release.yml);
-# - weekly, Mondays 06:00 UTC: the whole-lock crate-age check and cargo deny again (new
-#   advisories, and versions that have aged out of the exceptions list).
+# CI on pull requests and main (SUITE-STANDARDS.md §6, 2026-10-19, the ArtCraft-style plan): only
+# the quick dependency checks run here. The session that wrote a change runs `cargo xtask ci`
+# locally before marking its pull request ready, and pastes the result under "Tested locally".
+# The full build on macOS, Windows and Linux runs weekly (full.yml) and before every release
+# (release.yml).
+# - A pull request opens as a draft and runs nothing; `gh pr ready` (ready_for_review) starts
+#   it, and later pushes to a ready pull request run again. The crate-age check looks at the
+#   lock entries it changes.
+# - A push to main, and the weekly run (Mondays 06:00 UTC), check the whole lock: new
+#   advisories, and versions that have aged out of the exceptions list.
 on:
   push:
     branches: [main]
@@ -24,75 +24,6 @@ concurrency:
 permissions:
   contents: read
 jobs:
-  # What a pull request changed: docs-only changes (Markdown, docs/, site/, the README pictures)
-  # skip the Rust build. Files the build compiles in or checks still build: CHANGELOG.md (What's
-  # New), ATTRIBUTION.md, the licences and NOTICE (the Licenses window), docs/releases/ (the
-  # updater). The gates are skipped with `if:`, not `paths-ignore`, so the required check still
-  # reports.
-  changes:
-    if: github.event_name == 'pull_request' && !github.event.pull_request.draft
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      rust: ${{ steps.diff.outputs.rust }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - id: diff
-        env:
-          PR_BASE: ${{ github.event.pull_request.base.sha }}
-        run: |
-          set -euo pipefail
-          # With nothing to compare with, build.
-          if [ -z "$PR_BASE" ] || ! git cat-file -e "${PR_BASE}^{commit}" 2>/dev/null; then
-            echo "rust=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          # On its own line, so a failing diff stops the job instead of reading as docs-only.
-          files="$(git diff --name-only "$PR_BASE" HEAD)"
-          others="$(printf '%s\n' "$files" | grep -Ev '(\.md$|^docs/|^site/|^assets/screens/)' || true)"
-          built="$(printf '%s\n' "$files" | grep -E '^(CHANGELOG\.md|ATTRIBUTION\.md|docs/releases/)' || true)"
-          others="$others$built"
-          if [ -n "$others" ]; then
-            echo "rust=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "Docs-only change: the Rust build is skipped."
-            echo "rust=false" >> "$GITHUB_OUTPUT"
-          fi
-
-  # The Linux gates, on pull requests: a named job rather than a one-entry matrix, since a matrix
-  # skipped by a job-level `if:` reports one check named `gates` instead of the required one
-  # (actions/runner#952). No incremental state and line-tables-only debug info keep target, and
-  # so the cache, small. The cache is only restored here: the nightly saves it on main, so the
-  # repository stays under GitHub's 10 GB.
-  gates-linux:
-    name: gates (ubuntu-latest)
-    needs: changes
-    if: needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
-    env:
-      CARGO_INCREMENTAL: 0
-      CARGO_PROFILE_DEV_DEBUG: line-tables-only
-      CARGO_PROFILE_TEST_DEBUG: line-tables-only
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: gates-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
-          restore-keys: gates-${{ runner.os }}-
-      - name: Linux packages for eframe
-        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libgl1-mesa-dev libwayland-dev
-      - run: cargo xtask ci
-
   cooldown:
     # Crates published less than 14 days ago fail (scripts/check-crate-ages.py, SUITE-STANDARDS
     # §6): a pull request checks the entries it adds or bumps; every push to main and the weekly

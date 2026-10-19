@@ -1,22 +1,22 @@
-name: nightly
-# Lean CI (SUITE-STANDARDS.md §6, 2026-10-18): the full build, on macOS, Windows and Linux,
-# runs once a night on main, and by hand (Actions > nightly > Run workflow) before a release is
-# tagged. A scheduled run skips itself when main has not moved since the last green nightly.
-# Pull requests and pushes to main run the Linux gates only (ci.yml); release.yml builds
-# everything again for a release.
+name: full
+# The full build (SUITE-STANDARDS.md §6, 2026-10-19, the ArtCraft-style plan): `cargo xtask ci`
+# on macOS, Windows and Linux, weekly on main (Mondays 05:00 UTC), and by hand (Actions > full >
+# Run workflow) on the commit to be released, before its tag. A scheduled run skips itself when
+# main has not moved since the last green run. Pull requests and pushes to main run only the
+# dependency checks (ci.yml); release.yml builds everything again for the release.
 on:
   schedule:
-    - cron: "0 5 * * *"
+    - cron: "0 5 * * 1"
   workflow_dispatch:
 permissions:
   contents: read
   actions: read
 concurrency:
-  group: nightly-${{ github.ref }}
+  group: full-${{ github.ref }}
   cancel-in-progress: false
 jobs:
   # Whether there is anything new to build: a scheduled run compares main's HEAD with the commit
-  # the last successful nightly built. A run started by hand always builds.
+  # the last successful full run built. A run started by hand always builds.
   decide:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -35,9 +35,9 @@ jobs:
             echo "build=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          last="$(gh run list --workflow nightly.yml --branch main --status success --limit 1 --json headSha --jq '.[0].headSha // ""')"
+          last="$(gh run list --workflow full.yml --branch main --status success --limit 1 --json headSha --jq '.[0].headSha // ""')"
           if [ "$last" = "$HEAD_SHA" ]; then
-            echo "main is still at $HEAD_SHA, which the last green nightly built: nothing to do."
+            echo "main is still at $HEAD_SHA, which the last green full run built: nothing to do."
             echo "build=false" >> "$GITHUB_OUTPUT"
           else
             echo "build=true" >> "$GITHUB_OUTPUT"
@@ -46,7 +46,7 @@ jobs:
   gates:
     needs: decide
     if: needs.decide.outputs.build == 'true'
-    name: nightly (${{ matrix.os }})
+    name: full (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
@@ -81,8 +81,8 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libgl1-mesa-dev libwayland-dev
       - run: cargo xtask ci
-      # The nightly is where every system's cache is saved, Linux included (pull requests only
-      # restore); it saves on main only, and only when the key missed.
+      # This is where every system's cache is saved; it saves on main only, and only when the
+      # key missed.
       - if: github.ref == 'refs/heads/main' && steps.cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
