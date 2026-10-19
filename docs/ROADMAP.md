@@ -22,12 +22,13 @@ says otherwise.
    Open Screenplay Format holds more (revision marks, locked page numbers) but has no revision
    dates or tag placement. Options: OSF with `method_` extension data as the production format;
    Fountain plus a small sidecar file; a package format of our own. **Recommend: OSF with
-   extensions**, offered when a writer first locks pages or turns on revision mode, with
-   Fountain staying the drafting default. Needed before M5.
-2. **Default working format for new scripts.** Built today: Fountain, with Open Screenplay
-   Format one menu choice away (File > Save New Scripts as…). **Reopened (owner, 2026-10-18):**
-   OSF may suit better for what it can hold. A side-by-side study is coming as
-   `docs/research/osf-vs-fountain.md`; the pick it ends with lands here.
+   extensions**: OSF is now the standard (decision 2), so production data goes there. Needed
+   before M5.
+2. **Default working format for new scripts.** **Decided by the owner, 2026-10-18: Open
+   Screenplay Format is the standard and the default for new scripts.** Fountain stays fully
+   supported: open, Save As, File > Save New Scripts as Fountain, and copy as Fountain. Existing
+   files keep their format on Save. The study is [research/osf-vs-fountain.md](research/osf-vs-fountain.md);
+   its gaps are closed first (below).
 3. **Tab after text in a character cue.** The usual convention starts a parenthetical, with an
    option to open the extension list. **Built on the recommendation: parenthetical**; the
    extension option comes with stored autocomplete lists. To confirm in the parity check (M7).
