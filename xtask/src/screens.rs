@@ -17,7 +17,7 @@ const APP_SHOTS: [&str; 3] = ["hero", "page", "import"];
 /// The settings variable craft-settings reads for the app id `com.methodstoryteller.desktop`;
 /// empty means no settings folder at all.
 const CONFIG_VAR: &str = "COM_METHODSTORYTELLER_DESKTOP_CONFIG_DIR";
-const SAMPLE: &str = "examples/field-station.fountain";
+const SAMPLE: &str = "examples/field-station.osf";
 
 pub fn run(root: &Path) -> Result<(), String> {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
@@ -28,11 +28,15 @@ pub fn run(root: &Path) -> Result<(), String> {
     let work = root.join("target/screens");
     let _ = std::fs::remove_dir_all(&work);
     std::fs::create_dir_all(&work).map_err(|e| e.to_string())?;
-    let fountain = work.join("field-station.fountain");
-    std::fs::copy(root.join(SAMPLE), &fountain).map_err(|e| format!("{SAMPLE}: {e}"))?;
-    let fdx = work.join("field-station.fdx");
+    // The master is Open Screenplay Format; the import shot opens its .fdx, and the terminal
+    // shows its Fountain text.
+    let script = work.join("field-station.osf");
+    std::fs::copy(root.join(SAMPLE), &script).map_err(|e| format!("{SAMPLE}: {e}"))?;
     let cli = root.join("target/release/method-storyteller");
-    run_quiet(Command::new(&cli).arg("convert").arg(&fountain).arg(&fdx))?;
+    let fdx = work.join("field-station.fdx");
+    run_quiet(Command::new(&cli).arg("convert").arg(&script).arg(&fdx))?;
+    let fountain = work.join("field-station.fountain");
+    run_quiet(Command::new(&cli).arg("convert").arg(&script).arg(&fountain))?;
 
     let status = Command::new(&cargo)
         .args([
@@ -49,7 +53,7 @@ pub fn run(root: &Path) -> Result<(), String> {
         ])
         .env(CONFIG_VAR, "")
         .env("STORYTELLER_SCREENS_OUT", &work)
-        .env("STORYTELLER_SCREENS_FOUNTAIN", &fountain)
+        .env("STORYTELLER_SCREENS_SCRIPT", &script)
         .env("STORYTELLER_SCREENS_FDX", &fdx)
         .current_dir(root)
         .status()
