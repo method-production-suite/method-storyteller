@@ -62,6 +62,8 @@ pub struct EditorState {
     /// Focus this element at this byte offset on the next frame.
     pub pending_focus: Option<(usize, usize)>,
     pub focused: Option<usize>,
+    /// The focused element's selection when it last had the keyboard.
+    pub selection: Option<(usize, CCursorRange)>,
     /// The current find match, `(element, start, end)` in bytes, drawn highlighted.
     pub highlight: Option<(usize, usize, usize)>,
     /// Scroll this element into view on the next frame (a find match) without focusing it.
@@ -329,6 +331,9 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                         }
                         if has_focus {
                             editor.focused = Some(index);
+                            // Kept for Edit > Cut and Copy: opening a menu in the window takes the
+                            // focus, and the selection with it.
+                            editor.selection = output.cursor_range.map(|r| (index, r));
                             if let Some(cursor) = output.cursor_range {
                                 let pos = output.galley.pos_from_cursor(cursor.primary);
                                 editor.first_row = pos.min.y < row * 0.5;

@@ -158,6 +158,8 @@ pub struct StorytellerApp {
     updates: crate::updates::Updates,
     /// The last update line put in the status, to put it there only when it changes.
     update_line: Option<String>,
+    /// Input for the next frame: Edit > Cut and Copy, after the text field has its focus back.
+    next_frame_input: Vec<Event>,
     /// Drawn for the offscreen pictures: the window as a Mac shows it, menus in the menu bar.
     #[cfg(test)]
     pictures: bool,
@@ -233,6 +235,7 @@ impl StorytellerApp {
                 prefs_automatic,
             ),
             update_line: None,
+            next_frame_input: Vec::new(),
             #[cfg(test)]
             pictures: false,
         };
@@ -296,10 +299,21 @@ impl StorytellerApp {
                 self.title_dialog = Some(TitleDraft { fields });
             }
             "app.go_to" => self.go_to = Some(GoToDraft::default()),
-            // The focused text field acts on these as on its own keys.
-            "app.cut" => ctx.send_viewport_cmd(ViewportCommand::RequestCut),
-            "app.copy" => ctx.send_viewport_cmd(ViewportCommand::RequestCopy),
-            "app.paste" => ctx.send_viewport_cmd(ViewportCommand::RequestPaste),
+            // The text field the caret is in acts on these as on its own keys. Clicking the menu
+            // drawn in the window can take its focus, so it gets the focus back first; its
+            // selection is kept with it. Paste asks the window, which reads the clipboard.
+            "app.cut" => {
+                self.focus_caret_field(ctx);
+                self.next_frame_input.push(Event::Cut);
+            }
+            "app.copy" => {
+                self.focus_caret_field(ctx);
+                self.next_frame_input.push(Event::Copy);
+            }
+            "app.paste" => {
+                self.focus_caret_field(ctx);
+                ctx.send_viewport_cmd(ViewportCommand::RequestPaste);
+            }
             "app.select_all" => self.select_all(ctx),
             "app.rename_character" => {
                 let names: Vec<String> = storyteller_engine::commands::character_names(&self.session.script).into_iter().map(|(n, _)| n).collect();
@@ -414,17 +428,29 @@ impl StorytellerApp {
         rows
     }
 
-    /// Edit > Select All: the whole of the paragraph the caret is in, as ⌘A selects it.
-    fn select_all(&mut self, ctx: &egui::Context) {
+    /// The keyboard focus back on the text field of the paragraph the caret is in, with the
+    /// selection it had when it last held the keyboard.
+    fn focus_caret_field(&mut self, ctx: &egui::Context) -> egui::Id {
         self.session.clamp_caret();
         let index = self.session.caret.element;
-        let Some(text) = self.session.element(index).map(|e| e.text.clone()) else { return };
         let id = egui::Id::new(("storyteller.element", index));
+        if let Some((_, range)) = self.editor.selection.filter(|(i, _)| *i == index) {
+            let mut state = egui::text_edit::TextEditState::load(ctx, id).unwrap_or_default();
+            state.cursor.set_char_range(Some(range));
+            state.store(ctx, id);
+        }
+        ctx.memory_mut(|m| m.request_focus(id));
+        id
+    }
+
+    /// Edit > Select All: the whole of the paragraph the caret is in, as ⌘A selects it.
+    fn select_all(&mut self, ctx: &egui::Context) {
+        let id = self.focus_caret_field(ctx);
+        let Some(text) = self.session.element(self.session.caret.element).map(|e| e.text.clone()) else { return };
         let mut state = egui::text_edit::TextEditState::load(ctx, id).unwrap_or_default();
         let range = egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(text.chars().count()));
         state.cursor.set_char_range(Some(range));
         state.store(ctx, id);
-        ctx.memory_mut(|m| m.request_focus(id));
     }
 
     fn refocus(&mut self) {
@@ -1441,6 +1467,12 @@ impl eframe::App for StorytellerApp {
     }
 
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Edit > Cut and Copy, chosen last frame: the field has its focus back now.
+        let input = std::mem::take(&mut self.next_frame_input);
+        if !input.is_empty() {
+            ctx.input_mut(|i| i.events.extend(input));
+            ctx.request_repaint();
+        }
         self.handle_screenshot(ctx);
         self.handle_control(ctx);
         self.sync_native_menu();

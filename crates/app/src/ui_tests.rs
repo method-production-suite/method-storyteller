@@ -237,3 +237,20 @@ fn select_all_selects_the_paragraph_and_the_edit_menu_lists_the_clipboard() {
         "the keys stay with the text fields"
     );
 }
+
+#[test]
+fn edit_cut_from_the_window_menu_cuts_the_selection() {
+    let (mut harness, _file) = harness(SCRIPT);
+    harness.state_mut().editor.pending_focus = Some((1, 0));
+    harness.run_steps(3);
+    harness.state_mut().queued.push("app.select_all".into());
+    harness.run_steps(3);
+    // Through the menu drawn in the window, as on Linux and Windows: the click takes the focus.
+    harness.get_by_label("Edit").click();
+    harness.run_steps(2);
+    harness.get_by_label("Cut").click();
+    harness.run_steps(4);
+    assert_eq!(harness.state().session.script.elements[1].text, "", "the selected paragraph is cut");
+    let id = egui::Id::new(("storyteller.element", 1));
+    assert!(harness.ctx.memory(|m| m.has_focus(id)), "and the paragraph has the keyboard again");
+}
