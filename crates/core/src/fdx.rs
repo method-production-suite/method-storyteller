@@ -836,16 +836,29 @@ impl Importer {
     }
 
     /// Reads the `LockedPages` list onto the paragraphs each page starts in.
-    fn place_locked_pages(&mut self) {
+    fn place_locked_pages(&mut self) -> Result<(), CoreError> {
         let Some(xml) = self.document.sections.iter().find_map(|s| match s {
             FdxSection::Raw(xml) if section_is(xml, "LockedPages") => Some(xml.clone()),
             _ => None,
         }) else {
-            return;
+            return Ok(());
         };
         let starts: Vec<(usize, u32)> = self.starts.iter().enumerate().filter_map(|(i, s)| s.map(|s| (i, s))).collect();
-        for (_, attributes) in tags(&xml).into_iter().skip(1).filter(|(name, _)| name == "LockedPage").take(MAX_ELEMENTS) {
-            let position = number(get(&attributes, "Position")).unwrap_or(0);
+        let entries: Vec<Vec<(String, String)>> = tags(&xml).into_iter().skip(1).filter(|(name, _)| name == "LockedPage").map(|(_, a)| a).collect();
+        if entries.len() > MAX_ELEMENTS {
+            return Err(CoreError::TooManyElements);
+        }
+        // A page without a position starts where the one before it does.
+        let mut previous = 0;
+        let mut placed: Vec<(u32, Vec<(String, String)>)> = entries
+            .into_iter()
+            .map(|attributes| {
+                previous = number(get(&attributes, "Position")).unwrap_or(previous);
+                (previous, attributes)
+            })
+            .collect();
+        placed.sort_by_key(|(position, _)| *position);
+        for (position, attributes) in placed {
             let mut kept = attributes.clone();
             for (key, value) in &mut kept {
                 if key == "Position" {
@@ -864,11 +877,11 @@ impl Importer {
                 element.page_starts.push(page);
             }
         }
-        self.document.locked_pages.sort_by_key(|(position, _)| *position);
+        Ok(())
     }
 
     /// Reads the top-level note lists onto the paragraphs they belong to.
-    fn place_listed_notes(&mut self) {
+    fn place_listed_notes(&mut self) -> Result<(), CoreError> {
         let mut ranged = Vec::new();
         let mut unanchored = Vec::new();
         for section in &self.document.sections {
@@ -880,7 +893,11 @@ impl Importer {
             } else {
                 continue;
             };
-            for child in child_elements(xml).into_iter().take(MAX_ELEMENTS) {
+            let children = child_elements(xml);
+            if children.len() > MAX_ELEMENTS {
+                return Err(CoreError::TooManyElements);
+            }
+            for child in children {
                 let Some(read) = read_note(child, form) else { continue };
                 match form {
                     FdxNoteForm::Ranged => ranged.push((read.range.unwrap_or_default(), read.note)),
@@ -907,16 +924,17 @@ impl Importer {
             }
         }
         self.document.ranged_notes.sort_by_key(|(from, to, _)| (*from, *to));
+        Ok(())
     }
 
-    fn into_script(mut self) -> Script {
-        self.place_listed_notes();
+    fn into_script(mut self) -> Result<Script, CoreError> {
+        self.place_listed_notes()?;
         let revisions = self.document.sections.iter().find_map(|s| match s {
             FdxSection::Raw(xml) if section_is(xml, "Revisions") => Some(read_revisions(xml)),
             _ => None,
         });
         self.document.revisions = revisions.clone();
-        self.place_locked_pages();
+        self.place_locked_pages()?;
         apply_hidden_types(&mut self.elements, &self.document.sections);
         let title_page = self
             .document
@@ -927,7 +945,7 @@ impl Importer {
                 FdxSection::Raw(_) => None,
             })
             .unwrap_or_default();
-        Script { title_page, elements: self.elements, revisions: revisions.unwrap_or_default(), fdx: Some(Box::new(self.document)), osf: None }
+        Ok(Script { title_page, elements: self.elements, revisions: revisions.unwrap_or_default(), fdx: Some(Box::new(self.document)), osf: None })
     }
 }
 
@@ -1019,7 +1037,7 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
     if !saw_root {
         return Err(CoreError::NotFdx("no <FinalDraft> root element".into()));
     }
-    Ok(importer.into_script())
+    importer.into_script()
 }
 
 /// Which paragraph types the file's `ElementSettings` mark as hidden (`HiddenText` in the font
@@ -1541,7 +1559,10 @@ fn locked_pages(elements: &[Element]) -> Vec<(u32, &PageStart)> {
 pub(crate) fn locked_page_attributes(page: &PageStart, position: Option<u32>) -> Vec<(String, String)> {
     let mut attributes = page.fdx_attributes.clone();
     keep_or_set(&mut attributes, "PageNumber", Some(page.label.clone()), |v| v == page.label);
-    set_or_remove(&mut attributes, "Position", Some(position.map(|p| p.to_string()).unwrap_or_default()));
+    // A page that came without a position is written without one.
+    if page.fdx_attributes.is_empty() || get(&attributes, "Position").is_some() {
+        set_or_remove(&mut attributes, "Position", Some(position.map(|p| p.to_string()).unwrap_or_default()));
+    }
     if page.fdx_attributes.is_empty() {
         attributes.sort();
     }

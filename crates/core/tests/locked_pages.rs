@@ -136,3 +136,42 @@ fn edits_move_positions_and_new_locks_are_written() {
         assert_eq!(pages(&back), pages(&script));
     }
 }
+
+#[test]
+fn blank_pages_repeated_labels_and_order_survive_osf() {
+    // Page 2 is blank (2 and 3 start at the same place), page 3 is listed before page 2, and the
+    // last paragraph repeats the label before it.
+    let doc = DOC.replace(r#"PageNumber="2" Position="54"/>"#, r#"PageNumber="3" Position="84"/>"#).replace(
+        r#"PageNumber="3" Position="84"/>
+  </LockedPages>"#,
+        r#"PageNumber="2" Position="84"/>
+  </LockedPages>"#,
+    );
+    let script = fdx::parse(&doc).unwrap();
+    assert_eq!(pages(&script), [(0, 0, "1".into()), (2, 0, "3".into()), (2, 0, "2".into())]);
+    let via_osf = osf::parse(&osf::write(&script)).unwrap();
+    assert_eq!(pages(&via_osf), pages(&script));
+    assert_eq!(fdx_data(&via_osf), fdx_data(&script));
+
+    let mut script = fountain::parse("One.\n\nTwo.\n\nThree.\n").unwrap();
+    script.elements[0].page_starts.push(PageStart { at: 0, label: "4".into(), ..PageStart::default() });
+    script.elements[2].page_starts.push(PageStart { at: 0, label: "4".into(), ..PageStart::default() });
+    assert_eq!(pages(&osf::parse(&osf::write(&script)).unwrap()), pages(&script), "a repeated label is a page of its own");
+}
+
+#[test]
+fn a_page_without_a_position_stays_without_one() {
+    let doc = DOC.replace(r#"PageNumber="3" Position="84"/>"#, r#"PageNumber="3"/>"#);
+    let mut script = fdx::parse(&doc).unwrap();
+    assert_eq!(pages(&script)[2], (1, 31, "3".into()), "it starts where the page before it does");
+    script.elements[0].text.push_str(" LATER");
+    let xml = fdx::write(&script);
+    assert!(xml.contains(r#"LevelIndex="0" LockLevel="0" PageNumber="3"/>"#), "{xml}");
+}
+
+#[test]
+fn too_many_locked_pages_are_refused() {
+    let many = r#"<LockedPage PageNumber="1" Position="0"/>"#.repeat(storyteller_core::MAX_ELEMENTS + 1);
+    let doc = DOC.replace("<LockedPages>", &format!("<LockedPages>{many}"));
+    assert_eq!(fdx::parse(&doc).unwrap_err(), storyteller_core::CoreError::TooManyElements);
+}

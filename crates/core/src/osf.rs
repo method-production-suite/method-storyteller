@@ -503,13 +503,15 @@ fn read_para(
     }
     // Children other than our own go back as they came.
     let children = strip_ours(&para.children);
-    // Locked pages: a page starts with the paragraph whose page number changes, or where one of our
-    // own page elements says.
+    // Locked pages: a page starts with the paragraph whose page number changes, unless our own
+    // page elements say exactly which pages start in it.
     if let Some(current) = page.as_mut() {
         let label = get(&para.attributes, "page_number").map(str::to_string);
-        let ours: Vec<PageStart> =
-            tags(&para.children).into_iter().filter(|(tag, _)| tag == PAGE_MARKER).map(|(_, a)| page_from(&a)).take(MAX_ELEMENTS).collect();
-        if label.is_some() && label != *current && !ours.iter().any(|p| p.at == 0) {
+        let ours: Vec<PageStart> = tags(&para.children).into_iter().filter(|(tag, _)| tag == PAGE_MARKER).map(|(_, a)| page_from(&a)).collect();
+        if ours.len() > MAX_ELEMENTS {
+            return Err(CoreError::TooManyElements);
+        }
+        if label.is_some() && label != *current && ours.is_empty() {
             element.page_starts.push(PageStart { at: 0, label: label.clone().unwrap_or_default(), fdx_attributes: Vec::new() });
         }
         element.page_starts.extend(ours);
@@ -1003,12 +1005,23 @@ fn page_from(attributes: &[(String, String)]) -> PageStart {
 
 /// Our element for a page start that `page_number` alone cannot say: one inside the paragraph,
 /// or one with Final Draft data writing `.fdx` would not make anyway.
-fn page_element(page: &PageStart) -> Option<String> {
+fn has_fdx_extras(page: &PageStart) -> bool {
     let bare = PageStart { fdx_attributes: Vec::new(), ..page.clone() };
-    let extras = !page.fdx_attributes.is_empty() && page.fdx_attributes != locked_page_attributes(&bare, None);
-    if page.at == 0 && !extras {
-        return None;
+    !page.fdx_attributes.is_empty() && page.fdx_attributes != locked_page_attributes(&bare, None)
+}
+
+/// Whether `page_number` alone says which pages start in a paragraph: one page, starting with
+/// it, numbered differently from the page before, and nothing more to carry.
+fn page_number_says_it(starts: &[PageStart], before: Option<&str>) -> bool {
+    match starts {
+        [] => true,
+        [only] => only.at == 0 && Some(only.label.as_str()) != before && !has_fdx_extras(only),
+        _ => false,
     }
+}
+
+fn page_element(page: &PageStart) -> String {
+    let extras = has_fdx_extras(page);
     let mut out = format!("<{PAGE_MARKER}");
     write_attr("at", &page.at.to_string(), &mut out);
     write_attr("label", &page.label, &mut out);
@@ -1018,7 +1031,7 @@ fn page_element(page: &PageStart) -> Option<String> {
         }
     }
     out.push_str("/>");
-    Some(out)
+    out
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1121,6 +1134,8 @@ struct ParaExtras {
     synopsis: Option<String>,
     /// The locked page the paragraph starts on.
     page_number: Option<String>,
+    /// Write every page that starts in the paragraph as one of our elements.
+    page_elements: bool,
 }
 
 fn write_para(element: &Element, extras: &ParaExtras, spelling: Spelling, styles_known: bool, out: &mut String) {
@@ -1182,9 +1197,9 @@ fn write_para(element: &Element, extras: &ParaExtras, spelling: Spelling, styles
         out.push_str(&marker);
         out.push('\n');
     }
-    for page in element.page_starts.iter().filter_map(page_element) {
+    for page in element.page_starts.iter().filter(|_| extras.page_elements) {
         out.push_str("      ");
-        out.push_str(&page);
+        out.push_str(&page_element(page));
         out.push('\n');
     }
     if !element.notes.is_empty() {
@@ -1241,13 +1256,14 @@ fn write_paragraphs(script: &Script, spelling: Spelling, styles_known: bool, out
             }
             elements.get(end).is_some_and(|e| e.kind == ElementKind::Character && e.dual)
         };
-        if let Some(first) = element.page_starts.iter().find(|p| p.at == 0) {
-            page = Some(first.label.clone());
+        let page_elements = locked && !page_number_says_it(&element.page_starts, page.as_deref());
+        if let Some(last) = element.page_starts.iter().rfind(|p| p.at == 0) {
+            page = Some(last.label.clone());
         }
         let page_number = if locked { page.clone() } else { None };
         write_para(
             element,
-            &ParaExtras { page_break: std::mem::take(&mut page_break), dual_first, synopsis, page_number },
+            &ParaExtras { page_break: std::mem::take(&mut page_break), dual_first, synopsis, page_number, page_elements },
             spelling,
             styles_known,
             out,
