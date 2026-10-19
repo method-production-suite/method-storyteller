@@ -437,7 +437,7 @@ fn save_warnings_name_what_a_format_drops() {
     assert_eq!(saved_message("Saved", std::path::Path::new("a.osf"), &plain, FileFormat::Osf), "Saved a.osf");
 }
 
-/// Saving as Fountain says that revisions and script notes do not go with it.
+/// Saving as Fountain says that revisions, script notes and ignored words do not go with it.
 #[test]
 fn fountain_save_warns_about_revisions_and_notes() {
     use storyteller_core::model::{Revised, ScriptNote};
@@ -448,6 +448,12 @@ fn fountain_save_warns_about_revisions_and_notes() {
     let fountain = save_warnings(&s, FileFormat::Fountain);
     assert!(fountain.iter().any(|w| w.starts_with("1 revised passage will lose")), "{fountain:?}");
     assert!(fountain.iter().any(|w| w.starts_with("1 script note with a colour")), "{fountain:?}");
+    s.spelling_ignored = vec!["seismograf".into(), "zorbly".into()];
+    let fountain = save_warnings(&s, FileFormat::Fountain);
+    assert!(
+        fountain.iter().any(|w| w == "2 words ignored by spell check will be checked again next time (Fountain has no ignore list)"),
+        "{fountain:?}"
+    );
     assert!(save_warnings(&s, FileFormat::Osf).is_empty() && save_warnings(&s, FileFormat::Fdx).is_empty());
 }
 

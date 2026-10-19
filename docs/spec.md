@@ -216,8 +216,9 @@ files.
 | Open Screenplay Format (`.osf`, and `.fadein`, a ZIP holding it) | ✓ | ✓ | The standard working format and the default for new scripts. Elements, emphasis, scene numbers, dual dialogue, notes, synopses, title page, page layout and element styles. Reads versions 1.2 to 4.0 in all their spellings; writes 3.0 for new documents and an imported document's own version otherwise. Keeps every part it does not model (settings, styles, lists, revision marks, vendor data) and writes it back. Sections, and synopses not attached to a paragraph, carry a `<method_storyteller kind="…"/>` marker. Script notes go into the paragraph's plain `note`, with their range, colour, author and Final Draft data in `<method_storyteller_note …/>` children. Revision sets map to `<lists><revision_colors>` and the active set to `settings@revision`, revised text to `text@revision`. |
 | PDF | – | ✓ | Courier Prime embedded, selectable text, a bookmark per scene. |
 
-Saving says what a format will not keep: to Fountain, shots (read back as action) and speeches
-in more than one paragraph (joined); to Open Screenplay Format, sections (other OSF apps may print
+Saving says what a format will not keep: to Fountain, shots (read back as action), speeches
+in more than one paragraph (joined), revision marks, coloured script notes and the words spell
+check ignores (checked again next time); to Open Screenplay Format, sections (other OSF apps may print
 them). The message names the count and the format that keeps them (`files::save_warnings`).
 
 Limits: inputs over 32 MiB or 200 000 elements are refused with a message, not a crash.
