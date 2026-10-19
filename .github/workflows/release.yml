@@ -22,9 +22,14 @@
 #                      WINDOWS_CERTIFICATE_PASSWORD. The suite's model step (Method
 #                      Schedule's), for the app and the installer; no certificate exists
 #                      yet, so it stays off.
+#   Updates (macOS):   TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD (the
+#                      minisign update key in 1Password, "Method Storyteller - Update signing
+#                      key"; its public half is PUBKEY in crates/app/src/updates.rs). With the
+#                      key and a notarized build, the release also carries the updater archive
+#                      Method-Storyteller_<version>_aarch64.app.tar.gz, its .sig, and
+#                      latest.json, which installed apps read (`cargo xtask updater-archive`
+#                      and `update-manifest`, xtask/src/updater.rs).
 # Every compile happens before any secret reaches the runner.
-# No updater archive or latest.json yet: Storyteller has no updater (SUITE-STANDARDS.md
-# section 1 brings one through method-libs).
 #
 # Least privilege: only the draft job writes. First-party actions only, pinned to the suite's
 # full commit SHAs; no caches (release builds start clean). The two AppImage tools are
@@ -114,6 +119,7 @@ jobs:
       HAS_DEVELOPER_ID: ${{ secrets.DEVELOPER_ID_CERT_P12_BASE64 != '' && secrets.CERT_PASSWORD != '' && secrets.KEYCHAIN_PASSWORD != '' }}
       HAS_NOTARY_KEY: ${{ secrets.AC_API_KEY_ID != '' && secrets.AC_API_ISSUER_ID != '' && secrets.AC_API_KEY_P8_BASE64 != '' }}
       HAS_WIN_SIGNING: ${{ secrets.WINDOWS_CERTIFICATE != '' }}
+      HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
       # appimagetool 1.9.1 and the type 2 runtime 20251108 (AppImage project releases).
       APPIMAGETOOL_URL: https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
       APPIMAGETOOL_SHA256: ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
@@ -275,6 +281,20 @@ jobs:
             spctl --assess --type open --context context:primary-signature --verbose=4 "$dmg"
           fi
 
+      # Only a notarized build is offered to installed apps: they would refuse anything
+      # else, and an update must open without a warning.
+      - name: The updater archive and its signature (macOS)
+        if: runner.os == 'macOS' && env.MACOS_NOTARIZE == 'yes' && env.HAS_UPDATER_KEY == 'true'
+        env:
+          UPDATER_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          UPDATER_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAG: ${{ needs.check.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # xtask was built with everything else, before any secret.
+          cargo xtask updater-archive --app "target/bundle/macos/Method Storyteller.app" --version "${TAG#v}" --out-dir target/bundle/updater
+          ls -l target/bundle/updater
+
       - name: Forget the signing material (macOS)
         if: always() && runner.os == 'macOS'
         run: |
@@ -341,6 +361,7 @@ jobs:
           case "$RUNNER_OS" in
             macOS)
               cp target/bundle/macos/Method-Storyteller-macOS.dmg dist/
+              if [ -d target/bundle/updater ]; then cp target/bundle/updater/* dist/; fi
               echo "${MACOS_NOTARIZE:-no}" > meta/macos-notarized
               ;;
             Windows) cp target/bundle/windows/Method-Storyteller-windows-x64-setup.exe dist/ ;;
@@ -390,12 +411,23 @@ jobs:
           path: meta
           merge-multiple: true
       - name: Every installer is here, under its version-free name
+        env:
+          TAG: ${{ needs.check.outputs.tag }}
         run: |
           set -euo pipefail
           for f in Method-Storyteller-macOS.dmg Method-Storyteller-windows-x64-setup.exe \
                    Method-Storyteller-linux-amd64.deb Method-Storyteller-linux-x86_64.AppImage; do
             if [ ! -s "dist/$f" ]; then echo "::error::dist/$f is missing."; exit 1; fi
           done
+          # The update manifest, when the Mac build brought the signed updater archive. It is
+          # checked against the app's own public key before it is written.
+          version="${TAG#v}"
+          archive="Method-Storyteller_${version}_aarch64.app.tar.gz"
+          if [ -s "dist/$archive" ] && [ -s "dist/$archive.sig" ]; then
+            cargo xtask update-manifest --dir dist --version "$version" --out dist/latest.json
+          else
+            echo "::notice::No updater archive in this release (no update key, or not notarized): no latest.json, so installed apps won't see it (docs/RELEASING.md)."
+          fi
           (cd dist && sha256sum -- * | tee "$RUNNER_TEMP/SHA256SUMS.txt")
           mv "$RUNNER_TEMP/SHA256SUMS.txt" dist/
       - name: Draft the release
