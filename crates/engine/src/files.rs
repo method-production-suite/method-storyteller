@@ -13,10 +13,10 @@ use crate::container;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FileFormat {
-    #[default]
     Fountain,
     Fdx,
-    /// Open Screenplay Format, plain XML (`.osf`).
+    /// Open Screenplay Format, plain XML (`.osf`): the standard for new scripts.
+    #[default]
     Osf,
     /// Open Screenplay Format in a ZIP archive (`.fadein`).
     FadeIn,
@@ -120,6 +120,57 @@ pub fn encode(script: &Script, format: FileFormat, layout: &Layout) -> Result<Ve
         }
         FileFormat::Pdf => storyteller_pdf::export(script, layout, &storyteller_pdf::PdfOptions { creator: crate::app_version() })?,
     })
+}
+
+/// What saving `script` as `format` would lose or show differently in other apps, in words a
+/// writer can act on. Empty when nothing is lost. Studied in docs/research/osf-vs-fountain.md.
+pub fn save_warnings(script: &Script, format: FileFormat) -> Vec<String> {
+    use storyteller_core::ElementKind as K;
+    let mut warnings = Vec::new();
+    let plural = |n: usize, one: &str, many: &str| if n == 1 { format!("1 {one}") } else { format!("{n} {many}") };
+    match format {
+        FileFormat::Fountain => {
+            let shots = script.elements.iter().filter(|e| e.kind == K::Shot).count();
+            if shots > 0 {
+                warnings.push(format!("{} will read back as action (Fountain has no shot)", plural(shots, "shot", "shots")));
+            }
+            // Speeches with more than one dialogue paragraph: count where each run starts.
+            let kinds: Vec<K> = script.elements.iter().map(|e| e.kind).collect();
+            let joined = (1..kinds.len())
+                .filter(|&i| {
+                    kinds.get(i) == Some(&K::Dialogue) && kinds.get(i - 1) == Some(&K::Dialogue) && (i < 2 || kinds.get(i - 2) != Some(&K::Dialogue))
+                })
+                .count();
+            if joined > 0 {
+                warnings.push(format!(
+                    "{} in more than one paragraph will become one paragraph each (Fountain has one per speech)",
+                    plural(joined, "speech", "speeches")
+                ));
+            }
+        }
+        FileFormat::Osf | FileFormat::FadeIn => {
+            let sections = script.elements.iter().filter(|e| e.kind == K::Section).count();
+            if sections > 0 {
+                warnings.push(format!(
+                    "{} kept for Method Storyteller; other OSF apps may print them as text (OSF has no outline element)",
+                    plural(sections, "section is", "sections are")
+                ));
+            }
+        }
+        FileFormat::Fdx | FileFormat::Pdf => {}
+    }
+    warnings
+}
+
+/// A save's message: "Saved <path>", then anything the format did not keep.
+pub fn saved_message(verb: &str, path: &Path, script: &Script, format: FileFormat) -> String {
+    let warnings = save_warnings(script, format);
+    let other = if format == FileFormat::Fountain { "Open Screenplay Format" } else { "Fountain" };
+    match warnings.as_slice() {
+        [] => format!("{verb} {}", path.display()),
+        _ if format == FileFormat::Fountain => format!("{verb} {}. Note: {}. Save as {other} to keep them.", path.display(), warnings.join("; ")),
+        _ => format!("{verb} {}. Note: {}.", path.display(), warnings.join("; ")),
+    }
 }
 
 /// Atomically write a script in a format.

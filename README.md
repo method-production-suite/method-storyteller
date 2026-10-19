@@ -6,8 +6,8 @@
 </h1>
 
 An open-source screenwriting app: free, native on macOS, Windows and Linux (built from source for
-now; installers are coming), and your script is an open file you own (plain-text Fountain by
-default).
+now; installers are coming), and your script is an open file you own (Open Screenplay Format by
+default, Fountain one choice away).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/screens/hero-dark.png">
@@ -19,9 +19,9 @@ default).
   Character, location and time-of-day autocomplete.
 - **Industry pagination.** Courier Prime 12 pt, standard margins, 54 lines a page, `(MORE)` and
   `(CONT'D)` at page breaks, scene headings that never strand at the bottom of a page.
-- **Open formats, your choice.** Write in Fountain (plain text, diff-friendly) or Open Screenplay
-  Format (structured XML that keeps more production detail). File > Save New Scripts as… sets the
-  default. Opens and saves `.fdx` and `.fadein`; exports PDF.
+- **Open formats, your choice.** New scripts are Open Screenplay Format (structured XML that keeps
+  production detail); Fountain (plain text, diff-friendly) is fully supported and one choice away
+  (File > Save New Scripts as…). Opens and saves `.fdx` and `.fadein`; exports PDF.
 - **Title page, scene navigator and scene numbers.**
 - **Scriptable.** Every action is a named command, every widget has an automation id, and a
   JSON-lines control channel drives the app or a headless engine.
@@ -46,8 +46,9 @@ default).
 
 - Free, and open source under MIT OR Apache-2.0.
 - No account, and it works offline.
-- Your script is a [Fountain](https://fountain.io/syntax) file: plain text in a documented
-  format that any text editor opens, now and in 20 years.
+- Your script is an Open Screenplay Format file: open, structured XML that keeps production
+  detail. Prefer plain text? Choose [Fountain](https://fountain.io/syntax) (File > Save New
+  Scripts as Fountain), which any text editor opens, now and in 20 years.
 
 ## Status
 

@@ -218,3 +218,23 @@ fn hostile_note_lists_do_not_break_the_import() {
     assert_eq!(script.elements.iter().map(|e| e.notes.len()).sum::<usize>(), 5);
     assert!(fdx::parse(&fdx::write(&script)).is_ok());
 }
+
+#[test]
+fn awkward_attributes_and_spaces_survive() {
+    // A `>` inside a quoted attribute, and an author on two lines.
+    let doc = DOC.replace(r#"WriterName="A. Writer"><Paragraph><Text>Which one?"#, r#"WriterName='a>b'><Paragraph><Text>Which one?"#);
+    let mut script = fdx::parse(&doc).unwrap();
+    assert_eq!(script.elements[1].notes[2].author.as_deref(), Some("a>b"));
+    script.elements[0].text = "INT. FIELD STATION - LATER NIGHT".into();
+    let xml = fdx::write(&script);
+    assert!(xml.contains(r#"Range="37,46" Type="General" WriterID="w1" WriterName="a&gt;b">"#), "{xml}");
+    let back = fdx::parse(&xml).unwrap();
+    assert_eq!(notes(&back), notes(&script));
+
+    script.elements[1].notes[1].author = Some("R.\nLee".into());
+    let back = fdx::parse(&fdx::write(&script)).unwrap();
+    assert_eq!(back.elements[1].notes[1].author.as_deref(), Some("R.\nLee"));
+
+    let script = fountain::parse("A lamp [[ spaced ]]glows.\n").unwrap();
+    assert_eq!(fdx::parse(&fdx::write(&script)).unwrap().elements[0].text, script.elements[0].text);
+}

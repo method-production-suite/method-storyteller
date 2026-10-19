@@ -195,7 +195,15 @@ fn write_attr(key: &str, value: &str, out: &mut String) {
     out.push(' ');
     out.push_str(key);
     out.push_str("=\"");
-    escape(value, out);
+    // In an attribute XML turns literal line breaks and tabs into spaces, so they go as references.
+    for c in value.chars() {
+        match c {
+            '\n' => out.push_str("&#10;"),
+            '\t' => out.push_str("&#9;"),
+            '\r' => out.push_str("&#13;"),
+            c => escape(c.encode_utf8(&mut [0; 4]), out),
+        }
+    }
     out.push('"');
 }
 
@@ -791,9 +799,11 @@ impl Importer {
                 }
             }
         }
+        // Paragraph starts only grow, so each note's paragraph is found by binary search.
+        let starts: Vec<(usize, u32)> = self.starts.iter().enumerate().filter_map(|(i, s)| s.map(|s| (i, s))).collect();
         for ((from, to), mut note) in ranged {
-            let place = self.starts.iter().enumerate().filter_map(|(i, s)| s.map(|s| (i, s))).rfind(|(_, s)| *s <= from);
-            let Some((index, start)) = place.or_else(|| self.starts.iter().enumerate().find_map(|(i, s)| s.map(|s| (i, s)))) else { continue };
+            let after = starts.partition_point(|(_, s)| *s <= from);
+            let Some(&(index, start)) = starts.get(after.saturating_sub(1)) else { continue };
             let from_here = from.saturating_sub(start);
             note.range = Some((from_here, to.max(from).saturating_sub(start)));
             self.document.ranged_notes.push((from, to.max(from), note.clone()));
@@ -1251,19 +1261,27 @@ fn inline_note_xml(note: &ScriptNote) -> String {
 
 /// A note of the `ScriptNotes` list, covering `from..to` of the whole script.
 fn ranged_note_xml(note: &ScriptNote, from: u32, to: u32) -> String {
-    match note_unchanged(note) {
-        Some(raw) => {
-            let tag_end = raw.find('>').map_or(raw.len(), |at| at + 1);
-            let tag = set_tag_attr(raw.get(..tag_end).unwrap_or_default(), "Range", &format!("{from},{to}"));
-            format!("{tag}{}", raw.get(tag_end..).unwrap_or_default())
+    let attributes = note_attributes(note, FdxNoteForm::Ranged, Some((from, to)));
+    // An unchanged note keeps its body as read, under a start tag rebuilt with the new range.
+    if let Some(raw) = note_unchanged(note) {
+        let mut reader = quick_xml::Reader::from_str(raw);
+        if let Ok(Event::Start(_)) = reader.read_event() {
+            let body = raw.get(usize::try_from(reader.buffer_position()).unwrap_or(usize::MAX)..).unwrap_or_default();
+            let mut out = String::from("<ScriptNote");
+            for (key, value) in &attributes {
+                write_attr(key, value, &mut out);
+            }
+            out.push('>');
+            out.push_str(body);
+            return out;
         }
-        None => note_xml(note, &note_attributes(note, FdxNoteForm::Ranged, Some((from, to)))),
     }
+    note_xml(note, &attributes)
 }
 
 /// The note written for a plain `[[note]]`.
 fn plain_note_xml(text: &str) -> String {
-    note_xml(&ScriptNote { text: text.trim().to_string(), ..ScriptNote::default() }, &[(INLINE_NOTE_ATTR.to_string(), "Yes".to_string())])
+    note_xml(&ScriptNote { text: text.to_string(), ..ScriptNote::default() }, &[(INLINE_NOTE_ATTR.to_string(), "Yes".to_string())])
 }
 
 fn write_note_list<I: IntoIterator<Item = String>>(name: &str, notes: I, out: &mut String) {

@@ -824,7 +824,7 @@ fn write_para(element: &Element, extras: &ParaExtras, spelling: Spelling, styles
         out.push('\n');
     }
     if !element.notes.is_empty() {
-        for text in &plain {
+        for text in runs.iter().filter(|r| r.note).map(|r| r.text.as_str()) {
             out.push_str(&format!("      <{NOTE_MARKER}"));
             write_attr("text", text, out);
             out.push_str(" plain=\"1\"/>\n");
