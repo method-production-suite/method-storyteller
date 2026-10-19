@@ -108,8 +108,11 @@ pub fn sign(archive: &Path, version: &str, key_b64: &str, password: &str) -> Res
     File::open(archive).and_then(|mut f| f.read_to_end(&mut bytes)).map_err(|e| format!("{}: {e}", archive.display()))?;
     let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
     let trusted = format!("timestamp:{timestamp}\tfile:{name}\tversion:{version}");
-    let signature = minisign::sign(None, &secret, Cursor::new(&bytes), Some(&trusted), Some("signature from the Method Storyteller update key"))
-        .map_err(|e| format!("signing {name}: {e}"))?;
+    // With the public key, minisign checks the new signature before it returns it.
+    let public = minisign::PublicKey::from_secret_key(&secret).map_err(|e| format!("the update key's public half: {e}"))?;
+    let signature =
+        minisign::sign(Some(&public), &secret, Cursor::new(&bytes), Some(&trusted), Some("signature from the Method Storyteller update key"))
+            .map_err(|e| format!("signing {name}: {e}"))?;
     Ok(STANDARD.encode(signature.to_string()))
 }
 
@@ -224,6 +227,16 @@ mod tests {
             "https://github.com/method-production-suite/method-storyteller/releases/download/v0.2.0/Method-Storyteller_0.2.0_aarch64.app.tar.gz"
         );
 
+        // The suite updater itself accepts it: the signature with the version it announces,
+        // and the archive unpacks to the bundle.
+        let archive_bytes = std::fs::read(&archive).unwrap();
+        method_update::verify::verify_signature(&archive_bytes, &sig, &public_b64, "0.2.0", true).unwrap();
+        assert!(method_update::verify::verify_signature(&archive_bytes, &sig, &public_b64, "0.3.0", true).is_err());
+        let unpacked = dir.join("unpacked");
+        method_update::install::unpack_app_archive(&archive_bytes, &unpacked).unwrap();
+        let found: Vec<_> = walk(&unpacked).into_iter().filter(|p| p.ends_with("Contents/MacOS/method-storyteller-app")).collect();
+        assert_eq!(found.len(), 1, "the unpacked archive holds the app binary: {:?}", walk(&unpacked));
+
         // Refused: another version, another key, a changed archive.
         assert!(manifest(&out, "0.3.0", &public_b64, "", 0).is_err());
         let other = minisign::KeyPair::generate_unencrypted_keypair().unwrap();
@@ -232,6 +245,19 @@ mod tests {
         std::fs::write(&archive, b"tampered").unwrap();
         assert!(manifest(&out, "0.2.0", &public_b64, "", 0).is_err());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn walk(dir: &Path) -> Vec<PathBuf> {
+        let mut out = Vec::new();
+        for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                out.extend(walk(&path));
+            } else {
+                out.push(path);
+            }
+        }
+        out
     }
 
     #[test]

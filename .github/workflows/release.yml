@@ -291,8 +291,11 @@ jobs:
           TAG: ${{ needs.check.outputs.tag }}
         run: |
           set -euo pipefail
-          # xtask was built with everything else, before any secret.
-          cargo xtask updater-archive --app "target/bundle/macos/Method Storyteller.app" --version "${TAG#v}" --out-dir target/bundle/updater
+          # The xtask binary built with everything else, before any secret, run directly: not
+          # `cargo xtask`, which would rebuild (and run build scripts) on a stale fingerprint
+          # while the key is in the environment.
+          test -x target/debug/xtask
+          target/debug/xtask updater-archive --app "target/bundle/macos/Method Storyteller.app" --version "${TAG#v}" --out-dir target/bundle/updater
           ls -l target/bundle/updater
 
       - name: Forget the signing material (macOS)

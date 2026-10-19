@@ -4661,6 +4661,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
  "flate2",
+ "method-update",
  "minisign",
  "serde_json",
  "storyteller-core",
