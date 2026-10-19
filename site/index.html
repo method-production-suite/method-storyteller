@@ -42,7 +42,7 @@
       <a href="#features">Features</a>
       <a href="#formats">Files</a>
       <a href="#open-files">Open files</a>
-      <a href="#build">Build it</a>
+      <a href="#download">Download</a>
       <a href="https://github.com/method-production-suite/method-storyteller">Source</a>
     </nav>
   </div>
@@ -57,15 +57,15 @@
           <img src="assets/brand/wordmark.svg" alt="Method Storyteller" width="516" height="63">
         </picture>
       </h1>
-      <p class="status"><span class="badge alpha">In development</span> Not released yet. Build it from source on macOS, Windows or Linux.</p>
+      <p class="status"><span class="badge alpha">Early alpha</span> Version 0.2.0, for Mac (Apple silicon); Windows and Linux built, not yet tested by a person.</p>
       <p class="pitch">Write the script. The formatting takes care of itself.</p>
       <p class="lede">A free, open-source screenwriting app. Tab and Enter move between scene
         heading, action, character, parenthetical and dialogue the way screenwriters expect,
         the pages break the industry way, and your script is an open file on your own
         computer.</p>
-      <div class="cta">
-        <a class="btn primary" href="#build">Build from source</a>
-        <a class="btn ghost" href="#features">See what it does</a>
+      <div class="cta" id="download">
+        <a class="btn primary" href="https://github.com/method-production-suite/method-storyteller/releases/latest/download/Method-Storyteller-macOS.dmg">Download for Mac</a>
+        <a class="btn ghost" href="https://github.com/method-production-suite/method-storyteller/releases/latest">Other platforms</a>
       </div>
       <p class="fine">No account, no subscription, and it works offline.</p>
     </div>
@@ -239,10 +239,10 @@
 
   <section class="band" id="build" aria-labelledby="build-title">
     <div class="wrap">
-      <p class="kicker">Build it</p>
+      <p class="kicker">Build it yourself</p>
       <h2 id="build-title">Run it from source</h2>
-      <p class="intro">There is no release yet. With Rust installed, the app builds and runs
-        on macOS, Windows and Linux.</p>
+      <p class="intro">Prefer to build it? With Rust installed, the app builds and runs on macOS,
+        Windows and Linux.</p>
 <pre class="term"><code><span class="p">$ </span>git clone https://github.com/method-production-suite/method-storyteller
 <span class="p">$ </span>cd method-storyteller
 <span class="p">$ </span>cargo run --release -p method-storyteller -- examples/field-station.osf</code></pre>
