@@ -98,10 +98,18 @@ pub fn convert_text(text: &str, from: K, to: K) -> (String, isize) {
     (text, 0)
 }
 
-/// Whether action text is just `int.` or `ext.` being typed, which turns the paragraph into a
-/// scene heading (Final Draft's behaviour; `Est. 1962` and the like stay action).
-pub fn is_heading_start(text: &str) -> bool {
-    matches!(text.trim_start().to_ascii_lowercase().as_str(), "int." | "ext.")
+/// Whether an edit of action text from `old` to `new` turns it into a scene heading: the line
+/// held nothing yet, or only the start of `int.`/`ext.`/`i/e`, and now opens with one of them.
+/// So several keys arriving in one frame, or a whole heading pasted into an empty line
+/// (`EXT. RIDGE - DAWN`), still make a heading, while existing action that starts that way
+/// is left alone, and so is `Est. 1962`.
+pub fn becomes_heading(old: &str, new: &str) -> bool {
+    const INTROS: [&str; 3] = ["int.", "ext.", "i/e"];
+    let old = old.trim_start().to_lowercase();
+    let new = new.trim_start().to_lowercase();
+    let unfinished = old.trim_end().is_empty() || INTROS.iter().any(|intro| intro.starts_with(old.as_str()) || old.starts_with(intro));
+    let opens = INTROS.iter().any(|intro| new.strip_prefix(intro).is_some_and(|rest| *intro != "i/e" || rest.is_empty() || rest.starts_with(' ')));
+    unfinished && opens
 }
 
 /// Smart quotes: when `new` is `old` with one straight quote typed before byte `caret`, the
@@ -182,9 +190,16 @@ mod tests {
     }
 
     #[test]
-    fn heading_intros() {
-        assert!(is_heading_start("int.") && is_heading_start("EXT."));
-        assert!(!is_heading_start("int. kitchen") && !is_heading_start("interior") && !is_heading_start("Est."));
+    fn a_heading_typed_fast_or_pasted_into_an_empty_line_becomes_one() {
+        assert!(becomes_heading("int", "int."), "typed a key at a time");
+        assert!(becomes_heading("", "EXT. RIDGE - DAWN"), "pasted, or keys arriving together");
+        assert!(becomes_heading("E", "EXT. RIDGE"));
+        assert!(becomes_heading("", "INT./EXT. CAR - DAY"));
+        assert!(becomes_heading("", "I/E CAR - DAY"));
+        assert!(!becomes_heading("", "Est. 1962, says the sign."), "EST stays action");
+        assert!(!becomes_heading("", "Interior design."));
+        assert!(!becomes_heading("", "I/Eat"));
+        assert!(!becomes_heading("She drives.", "Ext. of the car: she drives."), "existing action is left alone");
     }
 
     #[test]
