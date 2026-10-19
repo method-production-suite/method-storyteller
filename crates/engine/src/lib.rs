@@ -9,6 +9,7 @@ pub mod files;
 pub mod find;
 pub mod flow;
 pub mod session;
+pub mod spell;
 
 pub use commands::{Command, CommandError, Outcome, Registry};
 pub use session::{Caret, Session};

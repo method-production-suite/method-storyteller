@@ -45,6 +45,8 @@ pub struct Session {
     last_edit: Option<EditKind>,
     paginated: Option<Paginated>,
     lengths: Option<Vec<SceneLength>>,
+    /// The writer's learned words (see [`crate::spell::Personal`]); the app fills them from its settings.
+    pub spelling: crate::spell::Personal,
 }
 
 impl Default for Session {
@@ -72,6 +74,7 @@ impl Session {
             last_edit: None,
             paginated: None,
             lengths: None,
+            spelling: crate::spell::Personal::default(),
         }
     }
 

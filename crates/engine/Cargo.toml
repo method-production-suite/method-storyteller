@@ -21,6 +21,8 @@ thiserror = { workspace = true }
 # The .fadein container (a ZIP); both are already in the tree through png.
 flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
 crc32fast = "1.5"
+# Spell check: a pure-Rust Hunspell-compatible checker (MPL-2.0, used unmodified).
+spellbook = "=0.4.2"
 
 [dev-dependencies]
 tempfile = { workspace = true }

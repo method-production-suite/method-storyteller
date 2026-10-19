@@ -945,7 +945,14 @@ impl Importer {
                 FdxSection::Raw(_) => None,
             })
             .unwrap_or_default();
-        Ok(Script { title_page, elements: self.elements, revisions: revisions.unwrap_or_default(), fdx: Some(Box::new(self.document)), osf: None })
+        Ok(Script {
+            title_page,
+            elements: self.elements,
+            revisions: revisions.unwrap_or_default(),
+            fdx: Some(Box::new(self.document)),
+            osf: None,
+            spelling_ignored: Vec::new(),
+        })
     }
 }
 

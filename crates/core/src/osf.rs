@@ -437,7 +437,7 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
             document.sections.push(OsfSection::Raw(section.raw.clone()));
         }
     }
-    Ok(Script { title_page, elements, revisions, fdx: None, osf: Some(Box::new(document)) })
+    Ok(Script { title_page, elements, revisions, fdx: None, osf: Some(Box::new(document)), spelling_ignored: Vec::new() })
 }
 
 fn read_para(
