@@ -1,6 +1,7 @@
-# Exact versions allowed under the 14-day cooldown on main, read by scripts/check-crate-ages.py
-# (SUITE-STANDARDS.md §6). Only for a version that cannot be pinned back. One "name version"
-# per line, then the reason and the date it turns 14 days old. No release is tagged while a
-# listed version is still under 14 days: the release workflow runs the check with
-# --no-exceptions. Remove a line once the version is 14 days old.
+# Exact versions allowed under the 14-day cooldown, read by scripts/check-crate-ages.py
+# (SUITE-STANDARDS.md §6). One "name version" per line, then the reason:
+# - a security fix that cannot wait: name its RUSTSEC id; releases may ship it;
+# - a version that cannot be pinned back: give the date it turns 14 days old; main stays
+#   green, but no release ships it (the release workflow runs the check with --release).
+# Remove a line once the version is 14 days old.
 muda 0.21.2   # craft-quit, at its pinned craft-libs revision, requires ^0.21.2; 14 days old on 2026-10-22

@@ -95,12 +95,12 @@ jobs:
             exit 1
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
-      - name: Every locked crate is at least 14 days old, exceptions included
+      - name: Every locked crate is at least 14 days old, apart from security fixes
         # SUITE-STANDARDS.md §6: main may list a young crate in scripts/crate-age-exceptions.txt
-        # while it ages out, but no release ships one.
+        # while it ages out, but no release ships one; a listed security fix (RUSTSEC) may.
         run: |
           set -euo pipefail
-          python3 scripts/check-crate-ages.py --no-exceptions \
+          python3 scripts/check-crate-ages.py --release \
             --allow-git https://github.com/storytold/craft-libs \
             --allow-git https://github.com/method-production-suite/method-libs
 
