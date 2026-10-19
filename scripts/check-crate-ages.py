@@ -2,7 +2,7 @@
 """Supply-chain cooldown check: fail if any crates.io package in Cargo.lock is too new.
 
 Usage: python3 scripts/check-crate-ages.py [--days 14] [--lock Cargo.lock] [--only-changed REF]
-                                          [--allow-git URL ...]
+                                          [--allow-git URL ...] [--cache FILE]
 
 Looks up each locked crates.io crate's versions (one request per crate, one per second, per
 crates.io's crawler policy, retrying when asked to slow down) and lists any locked version
@@ -44,20 +44,20 @@ def external_packages(lock_text):
 
 def versions(name):
     """{version: (published, yanked)} for every version of a crate. Retries a 429 or a 5xx,
-    waiting as long as the server asks (or doubling from 5 s), up to six times."""
+    waiting as long as the server asks (or doubling from 10 s, up to 5 minutes), nine times."""
     req = urllib.request.Request(f"https://crates.io/api/v1/crates/{name}", headers={"User-Agent": UA})
-    wait = 5
-    for attempt in range(7):
+    wait = 10
+    for attempt in range(10):
         try:
             with urllib.request.urlopen(req, timeout=30) as r:
                 data = json.load(r)
             break
         except urllib.error.HTTPError as e:
-            if attempt == 6 or (e.code != 429 and e.code < 500):
+            if attempt == 9 or (e.code != 429 and e.code < 500):
                 raise
             asked = e.headers.get("Retry-After", "")
             time.sleep(int(asked) if asked.isdigit() else wait)
-            wait = min(wait * 2, 120)
+            wait = min(wait * 2, 300)
     return {
         v["num"]: (dt.datetime.fromisoformat(v["created_at"].replace("Z", "+00:00")), v["yanked"])
         for v in data["versions"]
@@ -97,6 +97,7 @@ def main():
     ap.add_argument("--lock", default="Cargo.lock")
     ap.add_argument("--only-changed", metavar="REF")
     ap.add_argument("--allow-git", action="append", default=[], metavar="URL")
+    ap.add_argument("--cache", metavar="FILE", help="keep fetched version lists here, so a local run can resume")
     args = ap.parse_args()
 
     with open(args.lock) as f:
@@ -127,12 +128,23 @@ def main():
     now = dt.datetime.now(dt.timezone.utc)
     cutoff = now - dt.timedelta(days=args.days)
     known = {}
+    if args.cache:
+        try:
+            with open(args.cache) as f:
+                known = {
+                    name: {v: (dt.datetime.fromisoformat(when), yanked) for v, (when, yanked) in vs.items()}
+                    for name, vs in json.load(f).items()
+                }
+        except FileNotFoundError:
+            pass
     pins = []
     for i, (name, version) in enumerate(sorted(pkgs)):
-        if name not in known:
-            if known:
-                time.sleep(1)
+        if name not in known or version not in known[name]:
+            time.sleep(1)
             known[name] = versions(name)
+            if args.cache:
+                with open(args.cache, "w") as f:
+                    json.dump({n: {v: (w.isoformat(), y) for v, (w, y) in vs.items()} for n, vs in known.items()}, f)
         when, yanked = known[name][version]
         age = (now - when).days
         flag = ""
