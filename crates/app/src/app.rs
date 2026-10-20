@@ -135,6 +135,27 @@ struct TitleDraft {
     fields: Vec<(String, String)>,
 }
 
+/// The Scene Properties dialog: a scene's title, summary and colour.
+struct SceneDraft {
+    heading: usize,
+    title: String,
+    summary: String,
+    color: Option<String>,
+    focused: bool,
+}
+
+/// The colours a scene can take, as the Scene Properties dialog offers them: name and #RRGGBB.
+const SCENE_COLORS: [(&str, &str); 8] = [
+    ("Red", "#E06666"),
+    ("Orange", "#F6B26B"),
+    ("Yellow", "#FFD966"),
+    ("Green", "#93C47D"),
+    ("Teal", "#76A5AF"),
+    ("Blue", "#6FA8DC"),
+    ("Purple", "#8E7CC3"),
+    ("Pink", "#C27BA0"),
+];
+
 /// The Rename Character dialog.
 #[derive(Default)]
 struct RenameDraft {
@@ -189,6 +210,7 @@ pub struct StorytellerApp {
     /// File > New TV Script: the shape chosen so far.
     new_tv: Option<storyteller_core::model::TvShape>,
     rename: Option<RenameDraft>,
+    scene_dialog: Option<SceneDraft>,
     find: Option<find_bar::FindBar>,
     spelling: Option<spelling::SpellDialog>,
     spell_cache: spelling::SpellCache,
@@ -303,6 +325,7 @@ impl StorytellerApp {
             go_to: None,
             new_tv: None,
             rename: None,
+            scene_dialog: None,
             find: None,
             spelling: None,
             spell_cache: spelling::SpellCache::default(),
@@ -1355,6 +1378,7 @@ impl StorytellerApp {
         ui.label(egui::RichText::new("SCENES").small().strong().color(ui.visuals().weak_text_color()));
         ui.add_space(theme::SPACE_1);
         let mut copy_from = None;
+        let mut properties_of = None;
         // Each New Act line heads the scenes after it; an act with no scenes yet still shows.
         let acts: Vec<(usize, String)> = self
             .session
@@ -1408,12 +1432,19 @@ impl StorytellerApp {
                 }
                 let number = scene.number.as_deref().unwrap_or("");
                 let heading = if scene.heading.trim().is_empty() { "(untitled scene)" } else { scene.heading.as_str() };
+                // A scene's own title stands in for its heading; its colour marks the row.
+                let meta = self.session.script.elements.get(scene.element).map(|e| e.scene.clone()).unwrap_or_default();
+                let shown = if meta.title.is_empty() { heading.to_string() } else { meta.title.clone() };
                 let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), theme::NAV_ROW_HEIGHT), egui::Sense::click());
                 let selected = n + 1 == current;
                 if selected || response.hovered() {
                     ui.painter().rect_filled(rect, 5.0, if selected { selected_fill } else { hover_fill });
                 }
                 let painter = ui.painter().with_clip_rect(rect);
+                if let Some((r, g, b)) = meta.rgb() {
+                    let stripe = egui::Rect::from_min_size(rect.left_top() + egui::vec2(2.0, 4.0), egui::vec2(4.0, rect.height() - 8.0));
+                    painter.rect_filled(stripe, 2.0, egui::Color32::from_rgb(r, g, b));
+                }
                 let small = egui::FontId::proportional(theme::TYPE_SMALL);
                 painter.text(rect.left_center() + egui::vec2(30.0, 0.0), egui::Align2::RIGHT_CENTER, number, small.clone(), weak);
                 painter.text(rect.right_center() - egui::vec2(8.0, 0.0), egui::Align2::RIGHT_CENTER, scene.page.to_string(), small.clone(), weak);
@@ -1423,19 +1454,29 @@ impl StorytellerApp {
                     painter.text(rect.right_center() - egui::vec2(34.0, 0.0), egui::Align2::RIGHT_CENTER, length, small, weak);
                 }
                 let galley = ui.fonts_mut(|f| {
-                    let mut job = egui::text::LayoutJob::simple_singleline(heading.to_string(), egui::FontId::proportional(theme::TYPE_BODY), text);
+                    let mut job = egui::text::LayoutJob::simple_singleline(shown.clone(), egui::FontId::proportional(theme::TYPE_BODY), text);
                     job.wrap = egui::text::TextWrapping::truncate_at_width(rect.width() - 118.0);
                     f.layout_job(job)
                 });
                 painter.galley(rect.left_center() + egui::vec2(38.0, -galley.size().y / 2.0), galley, text);
-                let detail = match &length {
+                let mut detail = match &length {
                     Some(length) => format!("{heading}\nPage {}, length {length}", scene.page),
                     None => format!("{heading}\nPage {}", scene.page),
                 };
+                if !meta.title.is_empty() {
+                    detail = format!("{}\n{detail}", meta.title);
+                }
+                if !meta.summary.is_empty() {
+                    detail = format!("{detail}\n\n{}", meta.summary);
+                }
                 let response = response.on_hover_text(detail);
-                self.automation.add(format!("navigator.scene.{n}"), "listitem", heading.to_string(), &response);
+                self.automation.add(format!("navigator.scene.{n}"), "listitem", shown.clone(), &response);
                 let element = scene.element;
                 response.context_menu(|ui| {
+                    if ui.button("Scene Properties…").clicked() {
+                        properties_of = Some(element);
+                        ui.close();
+                    }
                     if ui.button("Copy Scene").clicked() {
                         copy_from = Some(element);
                         ui.close();
@@ -1470,6 +1511,9 @@ impl StorytellerApp {
             let entry = first_scene.map_or(act, |heading| scene_entry(script, heading));
             self.session.caret = Caret { element: entry, offset: 0 };
             self.focus_next_frame = Some((entry, 0));
+        }
+        if let Some(heading) = properties_of {
+            self.open_scene_dialog(heading);
         }
         if let Some(heading) = copy_from {
             let ctx = ui.ctx().clone();
@@ -1613,6 +1657,87 @@ impl StorytellerApp {
             }
             Some(false) => self.title_dialog = None,
             None => {}
+        }
+    }
+
+    /// Opens Scene Properties for the scene headed at `heading`.
+    fn open_scene_dialog(&mut self, heading: usize) {
+        let meta = self.session.script.elements.get(heading).map(|e| e.scene.clone()).unwrap_or_default();
+        // A colour from a file in another shade is shown as the nearest of ours only when it is one.
+        let color = meta.rgb().map(|(r, g, b)| format!("#{r:02X}{g:02X}{b:02X}"));
+        self.scene_dialog = Some(SceneDraft { heading, title: meta.title, summary: meta.summary, color, focused: false });
+    }
+
+    /// Scene Properties: the scene's title, summary and colour, one Undo.
+    fn scene_properties_dialog(&mut self, ctx: &egui::Context) {
+        let Some(draft) = &mut self.scene_dialog else { return };
+        let heading = self.session.script.elements.get(draft.heading).map(|e| e.text.clone()).unwrap_or_default();
+        let mut ok = false;
+        let mut close = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+        egui::Window::new("Scene Properties").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_TOP, [0.0, 120.0]).show(ctx, |ui| {
+            ui.label(egui::RichText::new(if heading.trim().is_empty() { "(untitled scene)" } else { heading.as_str() }).strong());
+            ui.add_space(theme::SPACE_2);
+            ui.label("Title");
+            let title = ui.add(egui::TextEdit::singleline(&mut draft.title).hint_text("A few words for the navigator").desired_width(320.0));
+            self.automation.add("dialog.scene.title", "textbox", "Title", &title);
+            if !draft.focused {
+                title.request_focus();
+                draft.focused = true;
+            }
+            ui.label("Summary");
+            let summary =
+                ui.add(egui::TextEdit::multiline(&mut draft.summary).hint_text("What happens in the scene").desired_rows(3).desired_width(320.0));
+            self.automation.add("dialog.scene.summary", "textbox", "Summary", &summary);
+            ui.label("Colour");
+            ui.horizontal(|ui| {
+                let none = ui.selectable_label(draft.color.is_none(), "None");
+                self.automation.add("dialog.scene.color.none", "radio", "None", &none);
+                if none.clicked() {
+                    draft.color = None;
+                }
+                for (name, hex) in SCENE_COLORS {
+                    let fill = storyteller_core::model::SceneMeta { color: Some(hex.to_string()), ..Default::default() }
+                        .rgb()
+                        .map(|(r, g, b)| egui::Color32::from_rgb(r, g, b))
+                        .unwrap_or_default();
+                    let chosen = draft.color.as_deref() == Some(hex);
+                    let (rect, swatch) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
+                    ui.painter().rect_filled(rect.shrink(2.0), 4.0, fill);
+                    if chosen {
+                        ui.painter().rect_stroke(rect, 5.0, egui::Stroke::new(2.0, ui.visuals().strong_text_color()), egui::StrokeKind::Inside);
+                    }
+                    let swatch = swatch.on_hover_text(name);
+                    self.automation.add(format!("dialog.scene.color.{}", name.to_lowercase()), "radio", name, &swatch);
+                    if swatch.clicked() {
+                        draft.color = Some(hex.to_string());
+                    }
+                }
+            });
+            ui.add_space(theme::SPACE_2);
+            ui.horizontal(|ui| {
+                let save = ui.button("OK");
+                self.automation.add("dialog.scene.ok", "button", "OK", &save);
+                let cancel = ui.button("Cancel");
+                self.automation.add("dialog.scene.cancel", "button", "Cancel", &cancel);
+                ok |= save.clicked();
+                close |= cancel.clicked();
+            });
+        });
+        if ok && let Some(draft) = self.scene_dialog.take() {
+            let target = params(&[
+                ("index", json!(draft.heading)),
+                ("title", json!(draft.title)),
+                ("summary", json!(draft.summary)),
+                ("color", json!(draft.color.unwrap_or_default())),
+            ]);
+            if let Err(error) = self.registry.run("scene.set_properties", &mut self.session, &target) {
+                self.status = error.to_string();
+            }
+            self.refocus();
+            ctx.request_repaint();
+        } else if close {
+            self.scene_dialog = None;
+            self.refocus();
         }
     }
 
@@ -1892,6 +2017,7 @@ impl StorytellerApp {
         self.new_tv_dialog(&ctx);
         self.spelling_dialog(&ctx);
         self.rename_dialog(&ctx);
+        self.scene_properties_dialog(&ctx);
         self.help_windows(&ctx);
         self.unsaved_prompt(&ctx);
         self.recovery_prompt(&ctx);

@@ -198,10 +198,9 @@ wait for a decision above.
 7. **M4, notes and navigation** [partial] M. Done: scene lengths in the navigator, a click
    into the scene's action, Go To (page, scene), find and replace, rename a character, spell
    check, script notes in all three `.fdx` generations and OSF, Copy Scene and pasting
-   screenplay text as elements (decision 9, first half). Next, in order: a selection across
-   paragraphs, so any range copies and cuts with its element types (decision 9, second half),
-   scene titles, summaries and colours, drag to
-   reorder scenes in the navigator (one Undo), bookmarks for Go To, the character table, show
+   screenplay text as elements (decision 9, first half), scene titles, summaries and colours.
+   Next, in order: a selection across paragraphs, so any range copies and cuts with its
+   element types (decision 9, second half), drag to reorder scenes in the navigator (one Undo), bookmarks for Go To, the character table, show
    and hide outline paragraphs.
 8. **Lossless `.fdx`** [have, the owner's check to come] M (owner, 2026-10-18). Everything `.fdx` and Open Screenplay
    Format can both hold converts exactly both ways (OSF to `.fdx`, `.fdx` to OSF, `.fdx` to

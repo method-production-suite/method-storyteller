@@ -223,6 +223,13 @@ pub fn save_warnings(script: &Script, format: FileFormat) -> Vec<String> {
                     plural(notes, "script note", "script notes")
                 ));
             }
+            let described = script.elements.iter().filter(|e| !e.scene.is_empty()).count();
+            if described > 0 {
+                warnings.push(format!(
+                    "{} will be left out (Fountain has no place for them)",
+                    plural(described, "scene's title, summary or colour", "scenes' titles, summaries or colours")
+                ));
+            }
             let ignored = script.spelling_ignored.len();
             if ignored > 0 {
                 warnings.push(format!(

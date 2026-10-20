@@ -25,6 +25,7 @@ use quick_xml::events::{BytesRef, BytesStart, Event};
 
 use crate::inline::{self, Run, Style};
 use crate::layout::{Align, ElementStyle, Layout, chars_per_line};
+use crate::model::SceneMeta;
 use crate::model::{
     Element, ElementKind, FdxDocument, FdxNote, FdxNoteForm, FdxParagraph, FdxSection, PageStart, Revised, RevisionSet, Revisions, Script,
     ScriptNote, TitleField, TitlePage, mark_revised,
@@ -239,23 +240,134 @@ pub(crate) fn set_tag_attr(tag: &str, name: &str, value: &str) -> String {
     format!("{} {name}=\"{value}\"{}", tag.get(..close).unwrap_or_default().trim_end(), tag.get(close..).unwrap_or_default())
 }
 
+/// The paragraph's own `SceneProperties`, which Final Draft writes first among its children:
+/// (where its start tag begins, where it ends, where the whole element ends). An omitted scene
+/// keeps its original heading, with properties of its own, nested further in.
+fn scene_properties(children: &str) -> Option<(usize, usize, usize)> {
+    let start = children.len() - children.trim_start().len();
+    if !children.get(start..)?.starts_with("<SceneProperties") {
+        return None;
+    }
+    let tag_end = start + children.get(start..)?.find('>')? + 1;
+    if children.get(..tag_end)?.ends_with("/>") {
+        return Some((start, tag_end, tag_end));
+    }
+    let close = "</SceneProperties>";
+    let end = tag_end + children.get(tag_end..)?.find(close)? + close.len();
+    Some((start, tag_end, end))
+}
+
+/// The scene title, summary and colour a heading's `SceneProperties` holds.
+fn scene_meta(children: &str) -> SceneMeta {
+    let Some((start, tag_end, end)) = scene_properties(children) else { return SceneMeta::default() };
+    let tag = children.get(start..tag_end).unwrap_or_default();
+    let mut reader = quick_xml::Reader::from_str(tag);
+    let attributes = match reader.read_event() {
+        Ok(Event::Start(e) | Event::Empty(e)) => all_attrs(&e),
+        _ => Vec::new(),
+    };
+    let attr = |name: &str| attributes.iter().find(|(k, _)| k == name).map(|(_, v)| v.clone());
+    let inner = children.get(tag_end..end).unwrap_or_default();
+    let summary = inner
+        .find("<Summary>")
+        .and_then(|at| {
+            let from = at + "<Summary>".len();
+            inner.get(from..from + inner.get(from..)?.find("</Summary>")?)
+        })
+        .map(|raw| {
+            // Plain text, as Final Draft writes it; paragraphs inside, if any, one a line.
+            let text = if raw.contains("<Text") {
+                raw.split("<Text")
+                    .skip(1)
+                    .filter_map(|t| t.split_once('>').and_then(|(_, rest)| rest.split_once("</Text>")).map(|(text, _)| text))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            } else {
+                raw.to_string()
+            };
+            quick_xml::escape::unescape(text.trim()).map(|t| t.into_owned()).unwrap_or_else(|_| text.trim().to_string())
+        })
+        .unwrap_or_default();
+    SceneMeta { title: attr("Title").unwrap_or_default(), summary, color: attr("Color").filter(|c| !c.is_empty()) }
+}
+
+/// A colour as Final Draft writes it, `#RRRRGGGGBBBB`; one already in that form, as it is.
+fn fdx_color(color: &str) -> String {
+    let hex = color.trim().trim_start_matches('#');
+    if hex.len() == 6 && hex.chars().all(|c| c.is_ascii_hexdigit()) {
+        let up = hex.to_uppercase();
+        let (r, g, b) = (&up[0..2], &up[2..4], &up[4..6]);
+        return format!("#{r}{r}{g}{g}{b}{b}");
+    }
+    color.to_string()
+}
+
+/// `text` escaped for XML content.
+fn escaped(text: &str) -> String {
+    let mut out = String::new();
+    escape(text, &mut out);
+    out
+}
+
 /// A scene heading's children with its `SceneProperties` page and length set from our own
-/// pagination: updated in place when the file had one, otherwise added first.
-fn scene_children(children: &str, page: u32, eighths: u32) -> String {
+/// pagination, and its title, summary and colour from the scene's, when they changed: updated
+/// in place when the file had one, otherwise added first.
+fn scene_children(children: &str, page: u32, eighths: u32, meta: &SceneMeta) -> String {
     let length = paginate::format_eighths(eighths);
     let page = page.to_string();
-    // Only the paragraph's own properties, which Final Draft writes first: an omitted scene keeps
-    // its original heading, with properties of its own, nested further in.
-    let start = children.len() - children.trim_start().len();
-    if children.trim_start().starts_with("<SceneProperties")
-        && let Some(len) = children.get(start..).and_then(|rest| rest.find('>'))
-    {
-        let end = start + len + 1;
-        let tag = children.get(start..end).unwrap_or_default();
-        let tag = set_tag_attr(&set_tag_attr(tag, "Length", &length), "Page", &page);
-        return format!("{}{tag}{}", children.get(..start).unwrap_or_default(), children.get(end..).unwrap_or_default());
+    let Some((start, tag_end, end)) = scene_properties(children) else {
+        let mut tag = format!("<SceneProperties Length=\"{length}\" Page=\"{page}\" Title=\"{}\"", escaped(&meta.title));
+        if let Some(color) = &meta.color {
+            tag.push_str(&format!(" Color=\"{}\"", escaped(&fdx_color(color))));
+        }
+        let properties = if meta.summary.is_empty() {
+            format!("{tag}/>")
+        } else {
+            format!("{tag}><Summary>{}</Summary></SceneProperties>", escaped(&meta.summary))
+        };
+        return format!("{properties}{children}");
+    };
+    let before = children.get(..start).unwrap_or_default();
+    let after = children.get(end..).unwrap_or_default();
+    let mut tag = set_tag_attr(&set_tag_attr(children.get(start..tag_end).unwrap_or_default(), "Length", &length), "Page", &page);
+    let mut inner = children.get(tag_end..end).unwrap_or_default().to_string();
+    let read = scene_meta(children);
+    if read == *meta {
+        return format!("{before}{tag}{inner}{after}");
     }
-    format!("<SceneProperties Length=\"{length}\" Page=\"{page}\" Title=\"\"/>{children}")
+    // Something changed: title and colour in the tag, the summary in its own element.
+    tag = set_tag_attr(&tag, "Title", &escaped(&meta.title));
+    tag = match &meta.color {
+        Some(color) => set_tag_attr(&tag, "Color", &escaped(&fdx_color(color))),
+        None => remove_tag_attr(&tag, "Color"),
+    };
+    if read.summary != meta.summary {
+        let summary = if meta.summary.is_empty() { String::new() } else { format!("<Summary>{}</Summary>", escaped(&meta.summary)) };
+        if let Some(at) = inner.find("<Summary>")
+            && let Some(len) = inner.get(at..).and_then(|rest| rest.find("</Summary>"))
+        {
+            inner.replace_range(at..at + len + "</Summary>".len(), &summary);
+        } else if !summary.is_empty() {
+            if tag.ends_with("/>") {
+                tag = format!("{}>", tag.trim_end_matches("/>").trim_end());
+                inner = format!("{summary}</SceneProperties>");
+            } else if let Some(close) = inner.rfind("</SceneProperties>") {
+                inner.insert_str(close, &summary);
+            }
+        }
+    }
+    format!("{before}{tag}{inner}{after}")
+}
+
+/// `tag` without the attribute `name`.
+fn remove_tag_attr(tag: &str, name: &str) -> String {
+    let key = format!(" {name}=\"");
+    let Some(at) = tag.find(&key) else { return tag.to_string() };
+    let start = at + key.len();
+    match tag.get(start..).and_then(|rest| rest.find('"')) {
+        Some(len) => format!("{}{}", tag.get(..at).unwrap_or_default(), tag.get(start + len + 1..).unwrap_or_default()),
+        None => tag.to_string(),
+    }
 }
 
 fn write_paragraph(element: &Element, scene: Option<(u32, u32)>, new_page: bool, indent: &str, out: &mut String) {
@@ -281,7 +393,7 @@ fn write_paragraph(element: &Element, scene: Option<(u32, u32)>, new_page: bool,
     out.push_str(">\n");
     let kept = element.fdx.as_ref().map_or("", |f| f.children.as_str());
     let children = match scene {
-        Some((page, eighths)) => scene_children(kept, page, eighths),
+        Some((page, eighths)) => scene_children(kept, page, eighths, &element.scene),
         None => kept.to_string(),
     };
     if !children.is_empty() {
@@ -871,6 +983,7 @@ impl Importer {
         element.revised = paragraph.revised;
         if kind == ElementKind::SceneHeading {
             element.scene_number = paragraph.number;
+            element.scene = scene_meta(&paragraph.children);
         }
         if kind == ElementKind::Section {
             element.level = level.unwrap_or(paragraph.level).clamp(1, 6);

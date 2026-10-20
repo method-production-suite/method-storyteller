@@ -749,3 +749,27 @@ fn spelling_follows_the_writers_english() {
     assert_eq!(Language::for_region("DE"), Language::Us);
     assert_eq!(Language::from_id("en_GB"), Some(Language::Uk));
 }
+
+#[test]
+fn scene_properties_set_in_one_undo_and_fountain_says_it_drops_them() {
+    let registry = Registry::new();
+    let mut s = Session::new(storyteller_core::fountain::parse("INT. HUT - DAY\n\nRain.\n\nEXT. RIDGE - DAWN\n\nWind.\n").unwrap());
+    // Any element of the scene names it.
+    run(
+        &registry,
+        &mut s,
+        "scene.set_properties",
+        json!({ "index": 3, "title": "The ridge\nat dawn", "summary": "Nora climbs.", "color": "#93c47d" }),
+    );
+    let meta = s.script.elements[2].scene.clone();
+    assert_eq!((meta.title.as_str(), meta.summary.as_str(), meta.color.as_deref()), ("The ridge at dawn", "Nora climbs.", Some("#93C47D")));
+    assert!(s.script.elements[0].scene.is_empty(), "only that scene");
+    let warnings = storyteller_engine::files::save_warnings(&s.script, storyteller_engine::files::FileFormat::Fountain);
+    assert!(warnings.iter().any(|w| w.contains("title, summary or colour")), "{warnings:?}");
+    run(&registry, &mut s, "scene.set_properties", json!({ "index": 2, "color": "" }));
+    assert_eq!(s.script.elements[2].scene.color, None);
+    run(&registry, &mut s, "edit.undo", json!({}));
+    assert_eq!(s.script.elements[2].scene.color.as_deref(), Some("#93C47D"));
+    let refused = registry.run("scene.set_properties", &mut s, &serde_json::from_value(json!({ "index": 2, "color": "green" })).unwrap());
+    assert!(refused.is_err(), "a colour is #RRGGBB");
+}
