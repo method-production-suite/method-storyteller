@@ -11,6 +11,9 @@ for its own version in Help > What's New, once after an update.
   Format and its production data beside it, with its own icon in the Finder. File > Save New
   Scripts as… still offers plain Open Screenplay Format and Fountain.
 
+- Scene titles, summaries and colours: right-click a scene in the navigator > Scene Properties….
+  The title shows in the navigator, the colour marks the row, and the summary shows on hover.
+  They come in from and go back to `.fdx` files.
 - Spell check in US or UK English (Edit > US English Spelling, UK English Spelling); the first
   run chooses from your region.
 - After the app closes without saving, the next launch offers the unsaved changes: open the

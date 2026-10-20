@@ -1169,6 +1169,59 @@ fn all_commands() -> Vec<Command> {
             },
         },
         Command {
+            id: "scene.set_properties",
+            label: "Scene Properties",
+            menu: "",
+            shortcut: None,
+            params: const {
+                &[
+                    INDEX,
+                    param("title", String, false, "The scene's short title (empty for none)"),
+                    param("summary", String, false, "What happens in it (empty for none)"),
+                    param("color", String, false, "#RRGGBB (empty for none)"),
+                ]
+            },
+            enabled: always,
+            run: |s, p| {
+                // The scene the element is in: its heading.
+                let index = element_index(s, p)?;
+                let heading = s
+                    .script
+                    .elements
+                    .iter()
+                    .take(index + 1)
+                    .rposition(|e| e.kind == ElementKind::SceneHeading)
+                    .ok_or_else(|| CommandError::Invalid { name: "index", reason: "that is not in a scene".into() })?;
+                let mut meta = s.script.elements.get(heading).map(|e| e.scene.clone()).unwrap_or_default();
+                if let Some(title) = opt_string(p, "title")? {
+                    meta.title = title.replace(['\n', '\r'], " ").trim().to_string();
+                }
+                if let Some(summary) = opt_string(p, "summary")? {
+                    meta.summary = summary.replace('\r', "").trim().to_string();
+                }
+                if let Some(color) = opt_string(p, "color")? {
+                    let color = color.trim();
+                    let valid = color.len() == 7 && color.starts_with('#') && color.chars().skip(1).all(|c| c.is_ascii_hexdigit());
+                    if !color.is_empty() && !valid {
+                        return Err(CommandError::Invalid { name: "color", reason: "a colour is #RRGGBB, such as #3366CC".into() });
+                    }
+                    let new = storyteller_core::model::SceneMeta { color: (!color.is_empty()).then(|| color.to_uppercase()), ..Default::default() };
+                    // The same colour as before keeps the way the file wrote it.
+                    if new.rgb() != meta.rgb() {
+                        meta.color = new.color;
+                    }
+                }
+                if s.script.elements.get(heading).is_some_and(|e| e.scene == meta) {
+                    return Ok(Outcome::done());
+                }
+                s.checkpoint(EditKind::Other);
+                if let Some(element) = s.script.elements.get_mut(heading) {
+                    element.scene = meta;
+                }
+                Ok(Outcome::value(json!({ "heading": heading })))
+            },
+        },
+        Command {
             id: "format.style",
             label: "Bold, Italic or Underline",
             menu: "",

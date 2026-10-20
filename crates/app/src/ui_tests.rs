@@ -678,3 +678,30 @@ fn the_spelling_menu_switches_between_us_and_uk_english() {
     assert_eq!(harness.state().checked("prefs.spelling_uk"), Some(true));
     assert!(harness.state().editor.misspelled.get(&1).is_none_or(|w| w.is_empty()), "and right in UK English");
 }
+
+#[test]
+fn scene_properties_title_and_colour_the_navigator_row() {
+    let (mut harness, _file) = harness("INT. HUT - DAY\n\nRain.\n\nEXT. RIDGE - DAWN\n\nWind.\n");
+    harness.state_mut().prefs.update(|p| p.view.navigator = true);
+    harness.run_steps(3);
+    harness.state_mut().open_scene_dialog(2);
+    harness.run_steps(3);
+    harness.get_by_label("Title").focus();
+    if let Some(draft) = harness.state_mut().scene_dialog.as_mut() {
+        draft.title = "The climb".into();
+        draft.summary = "Nora climbs.".into();
+    }
+    let blue = harness.state().automation.find("dialog.scene.color.blue").map(|w| w.rect.center()).unwrap();
+    let press = |pressed| egui::Event::PointerButton { pos: blue, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE };
+    harness.input_mut().events.extend([egui::Event::PointerMoved(blue), press(true)]);
+    harness.step();
+    harness.input_mut().events.push(press(false));
+    harness.run_steps(2);
+    harness.get_by_label("OK").click();
+    harness.run_steps(3);
+    assert!(harness.state().scene_dialog.is_none());
+    let meta = &harness.state().session.script.elements[2].scene;
+    assert_eq!((meta.title.as_str(), meta.summary.as_str(), meta.color.as_deref()), ("The climb", "Nora climbs.", Some("#6FA8DC")));
+    let row = harness.state().automation.find("navigator.scene.1").map(|w| w.label.clone());
+    assert_eq!(row.as_deref(), Some("The climb"), "the title stands in for the heading");
+}

@@ -238,6 +238,40 @@ pub struct Element {
     /// text the writer set aside. Never printed or paginated; written back to Fountain.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub boneyard: Vec<String>,
+    /// A scene heading's own title, summary and colour (`.fdx` `SceneProperties`).
+    #[serde(default, skip_serializing_if = "SceneMeta::is_empty")]
+    pub scene: SceneMeta,
+}
+
+/// What a writer says about a scene beyond its heading: a short title, a summary and a colour,
+/// shown in the navigator. Not printed.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SceneMeta {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub title: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub summary: String,
+    /// `#RRGGBB`, or `.fdx`'s own `#RRRRGGGGBBBB`, as written.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+}
+
+impl SceneMeta {
+    pub fn is_empty(&self) -> bool {
+        self.title.is_empty() && self.summary.is_empty() && self.color.is_none()
+    }
+
+    /// The colour as red, green and blue, from `#RRGGBB` or `#RRRRGGGGBBBB`.
+    pub fn rgb(&self) -> Option<(u8, u8, u8)> {
+        let hex = self.color.as_deref()?.trim().trim_start_matches('#');
+        let channel = |i: usize, width: usize| hex.get(i * width..i * width + 2).and_then(|h| u8::from_str_radix(h, 16).ok());
+        let width = match hex.len() {
+            6 => 2,
+            12 => 4,
+            _ => return None,
+        };
+        Some((channel(0, width)?, channel(1, width)?, channel(2, width)?))
+    }
 }
 
 /// A script note: a comment on a paragraph, or on part of it, that never prints.
@@ -476,6 +510,7 @@ impl Element {
             fdx: None,
             osf: None,
             boneyard: Vec::new(),
+            scene: SceneMeta::default(),
         };
         if kind == ElementKind::Section {
             element.level = 1;

@@ -46,6 +46,8 @@ const MARKER: &str = "method_storyteller";
 const NOTE_MARKER: &str = "method_storyteller_note";
 /// Our element for a locked page that starts inside a paragraph, or carries Final Draft data.
 const PAGE_MARKER: &str = "method_storyteller_page";
+/// Our element for a scene heading's title, summary and colour, which OSF has no place for.
+const SCENE_MARKER: &str = "method_storyteller_scene";
 
 /// The element name a raw section starts with, compared loosely.
 fn top_name(raw: &str) -> String {
@@ -509,6 +511,16 @@ fn read_para(
     }
     // Children other than our own go back as they came.
     let children = strip_ours(&para.children);
+    if kind == ElementKind::SceneHeading
+        && let Some(scene) = tags(&para.children).into_iter().find(|(tag, _)| tag == SCENE_MARKER).map(|(_, a)| a)
+    {
+        let value = |name: &str| get(&scene, name).unwrap_or_default().to_string();
+        element.scene = crate::model::SceneMeta {
+            title: value("title"),
+            summary: value("summary"),
+            color: get(&scene, "color").filter(|c| !c.is_empty()).map(str::to_string),
+        };
+    }
     // Locked pages: a page starts with the paragraph whose page number changes, unless our own
     // page elements say exactly which pages start in it.
     if let Some(current) = page.as_mut() {
@@ -560,7 +572,10 @@ fn strip_ours(children: &str) -> String {
             Event::End(_) => depth = depth.saturating_sub(1),
             Event::Empty(start)
                 if depth == 0
-                    && matches!(start.local_name().as_ref(), "method_storyteller" | "method_storyteller_note" | "method_storyteller_page") =>
+                    && matches!(
+                        start.local_name().as_ref(),
+                        "method_storyteller" | "method_storyteller_note" | "method_storyteller_page" | "method_storyteller_scene"
+                    ) =>
             {
                 out.push_str(children.get(from..before).unwrap_or_default());
                 from = after;
@@ -1203,6 +1218,15 @@ fn write_para(element: &Element, extras: &ParaExtras, spelling: Spelling, styles
         out.push_str("      ");
         out.push_str(&page_element(page));
         out.push('\n');
+    }
+    if element.kind == ElementKind::SceneHeading && !element.scene.is_empty() {
+        out.push_str(&format!("      <{SCENE_MARKER}"));
+        write_attr("title", &element.scene.title, out);
+        write_attr("summary", &element.scene.summary, out);
+        if let Some(color) = &element.scene.color {
+            write_attr("color", color, out);
+        }
+        out.push_str("/>\n");
     }
     if !element.notes.is_empty() {
         for text in runs.iter().filter(|r| r.note).map(|r| r.text.as_str()) {
