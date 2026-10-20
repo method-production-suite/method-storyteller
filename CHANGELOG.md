@@ -5,11 +5,6 @@ for its own version in Help > What's New, once after an update.
 
 ## Unreleased
 
-### New
-
-- Production > Characters: every speaking character with their speeches, scenes, words and
-  first scene; a name goes to their first line.
-
 ## 0.5.0
 
 ### New
@@ -20,12 +15,14 @@ for its own version in Help > What's New, once after an update.
 - Scene titles, summaries and colours: right-click a scene in the navigator > Scene Properties….
   The title shows in the navigator, the colour marks the row, and the summary shows on hover.
   They come in from and go back to `.fdx` files.
-- Spell check in US or UK English (Edit > US English Spelling, UK English Spelling); the first
-  run chooses from your region.
+- Spell check in US or UK English (Edit > US English Spelling, UK English Spelling). The first
+  launch of this version chooses from your region, after an update too.
 - After the app closes without saving, the next launch offers the unsaved changes: open the
   copy, throw it away, or decide later. Saving, or choosing Don't Save, clears the copy.
 - File > Close (⌘W) closes the script and leaves an empty one; File > Open Recent lists the last
   ten scripts.
+- Production > Characters: every speaking character with their speeches, scenes, words and
+  first scene; a name goes to their first line.
 
 ### Fixed
 

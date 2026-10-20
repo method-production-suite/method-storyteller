@@ -115,7 +115,8 @@ says otherwise.
   drop one on the Dock icon. Each should open in the app, and on a first launch the file should
   open instead of the Field Station sample. About 5 minutes; nothing is installed for good (the
   build is registered with the Finder for the test and unregistered after).
-- **The parity check (M7).** One scripted session with a licensed reference app settles the eight open questions in
+- **The parity check (M7).** Also: the shape a scene's Summary takes in a current `.fdx` (the
+  corpus has only plain text, which the app writes; paragraphs are read too). One scripted session with a licensed reference app settles the eight open questions in
   the V1 inventory: whether our `.fdx` exports open cleanly, encodings never seen filled in
   (alternates, tags in text, A-page locks), A-page and A-scene lettering edge cases, pagination
   cases the corpus lacks (dual dialogue at a break, scene CONTINUED, stacked CONT'D, line-spacing

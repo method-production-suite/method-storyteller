@@ -39,6 +39,12 @@ fn fdx_scene_properties_are_read() {
     assert_eq!(meta.summary, "Nora hears the \"voice\".");
     assert_eq!(meta.color.as_deref(), Some("#FFFF00000000"));
     assert_eq!(meta.rgb(), Some((255, 0, 0)));
+    // Paragraphs inside a summary: one a line, each one's styled runs joined as they read.
+    let styled = fdx::parse(&fdx_with(
+        r#"<SceneProperties Length="1/8" Page="1" Title=""><Summary><Paragraph><Text>Nora </Text><Text Style="Bold">runs</Text><Text>.</Text></Paragraph><Paragraph><Text>Sam waits.</Text></Paragraph></Summary></SceneProperties>"#,
+    ))
+    .unwrap();
+    assert_eq!(heading(&styled).summary, "Nora runs.\nSam waits.");
     let plain = fdx::parse(&fdx_with(r#"<SceneProperties Length="1/8" Page="1" Title=""/>"#)).unwrap();
     assert!(heading(&plain).is_empty());
 }
