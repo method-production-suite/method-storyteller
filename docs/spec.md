@@ -253,7 +253,7 @@ Limits: inputs over 32 MiB or 200 000 elements are refused with a message, not a
   its scenes (A to Z, then AA; a script is lettered when every scene number it has is letters,
   and after each edit its headings are lettered again in order, so a new or moved scene takes
   its place), lists each scene's speaking characters under the heading on the page,
-  `(NORA, SAM)`, in the order they first speak, starts each scene on a new page, prints action in
+  `(NORA, OWEN)`, in the order they first speak, starts each scene on a new page, prints action in
   capitals and double-spaces dialogue. Those three are element settings, so `.fdx` and OSF keep
   them; Fountain keeps the letters (`#A#`) but not the settings. Typing into a capitals type
   stores capitals, as for a scene heading; keeping the writer's own casing and showing capitals

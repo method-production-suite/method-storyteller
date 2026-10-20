@@ -275,13 +275,17 @@ fn scene_meta(children: &str) -> SceneMeta {
             inner.get(from..from + inner.get(from..)?.find("</Summary>")?)
         })
         .map(|raw| {
-            // Plain text, as Final Draft writes it; paragraphs inside, if any, one a line.
-            let text = if raw.contains("<Text") {
-                raw.split("<Text")
+            // Plain text, as every summary in the corpus is; paragraphs inside, if any, one a
+            // line, each paragraph's styled runs joined as they read.
+            let runs = |paragraph: &str| -> String {
+                paragraph
+                    .split("<Text")
                     .skip(1)
                     .filter_map(|t| t.split_once('>').and_then(|(_, rest)| rest.split_once("</Text>")).map(|(text, _)| text))
-                    .collect::<Vec<_>>()
-                    .join("\n")
+                    .collect()
+            };
+            let text = if raw.contains("<Text") {
+                if raw.contains("<Paragraph") { raw.split("<Paragraph").skip(1).map(runs).collect::<Vec<_>>().join("\n") } else { runs(raw) }
             } else {
                 raw.to_string()
             };

@@ -24,7 +24,7 @@ pub enum LineRole {
     PageNumber,
     SceneNumber,
     Title,
-    /// The characters of a lettered scene, listed under its heading: `(NORA, SAM)`.
+    /// The characters of a lettered scene, listed under its heading: `(NORA, OWEN)`.
     Cast,
 }
 

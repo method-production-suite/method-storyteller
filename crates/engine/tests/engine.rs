@@ -777,16 +777,16 @@ fn scene_properties_set_in_one_undo_and_fountain_says_it_drops_them() {
 #[test]
 fn the_character_table_counts_speeches_scenes_and_words() {
     let script = storyteller_core::fountain::parse(
-        "INT. HUT - DAY\n\nNORA\nIt held.\n\nSAM (O.S.)\nDid it?\n\nNORA (CONT'D)\n(quietly)\nFor now, yes.\n\nEXT. RIDGE - DAWN #4#\n\nSAM\nGo.\n",
+        "INT. HUT - DAY\n\nNORA\nIt held.\n\nOWEN (O.S.)\nDid it?\n\nNORA (CONT'D)\n(quietly)\nFor now, yes.\n\nEXT. RIDGE - DAWN #4#\n\nOWEN\nGo.\n",
     )
     .unwrap();
     let table = storyteller_engine::commands::character_table(&script);
     let row = |name: &str| table.iter().find(|r| r.name == name).unwrap();
-    assert_eq!(table.iter().map(|r| r.name.as_str()).collect::<Vec<_>>(), ["NORA", "SAM"], "two speeches each, then by name");
+    assert_eq!(table.iter().map(|r| r.name.as_str()).collect::<Vec<_>>(), ["NORA", "OWEN"], "two speeches each, then by name");
     assert_eq!((row("NORA").speeches, row("NORA").scenes, row("NORA").words), (2, 1, 5));
-    assert_eq!((row("SAM").speeches, row("SAM").scenes, row("SAM").words), (2, 2, 3));
+    assert_eq!((row("OWEN").speeches, row("OWEN").scenes, row("OWEN").words), (2, 2, 3));
     assert_eq!(row("NORA").first_scene.as_deref(), Some("1"), "unnumbered: by position");
-    assert_eq!(row("SAM").first, 3, "the first cue, extension and all");
+    assert_eq!(row("OWEN").first, 3, "the first cue, extension and all");
     let registry = Registry::new();
     let mut s = Session::new(script);
     assert_eq!(run(&registry, &mut s, "character.table", json!({}))["value"].as_array().map(Vec::len), Some(2));
