@@ -652,3 +652,13 @@ fn an_opened_script_keeps_its_end_lines_as_written() {
     run(&registry, &mut s, "element.set_text", json!({ "index": 2, "text": "Rain falls." }));
     assert_eq!(s.script.elements[3].text, "END OF ACT ONE", "the first edit brings it in step");
 }
+
+#[test]
+fn a_type_the_script_prints_in_capitals_is_typed_in_capitals() {
+    let registry = Registry::new();
+    let mut script = storyteller_core::fountain::parse("INT. HUT - DAY\n\nRain.\n").unwrap();
+    script.format.elements.push(storyteller_core::format::ElementFormat { name: "Action".into(), all_caps: true, ..Default::default() });
+    let mut s = Session::new(script);
+    run(&registry, &mut s, "element.set_text", json!({ "index": 1, "text": "Nora runs.", "typing": true }));
+    assert_eq!(s.script.elements[1].text, "NORA RUNS.");
+}

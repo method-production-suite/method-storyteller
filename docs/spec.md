@@ -163,6 +163,11 @@ settings and per-paragraph overrides, and these replace the defaults below.
   Blank lines before are stored as points (24 pt = 2 lines, 12 pt = 1). A paragraph may override
   its element's indents, spacing and alignment. In the corpus, for example, many scene headings
   carry `SpaceBefore="12"`, which gives one blank line.
+  An element type's settings also say whether it is double-spaced (a row between its lines;
+  1.5 rounds up), whether each element of the type starts a new page, and whether it prints in
+  capitals however it was typed (typing in it then gives capitals, as for a scene heading). A
+  multi-camera script uses all three: double-spaced dialogue, each scene on a new page, action
+  in capitals.
 - **Scene numbers** print in the left margin at 0.75" and the right margin at 7.38".
 - **Revision marks** (later, with revision mode) print in a column at 7.75".
 - **Wrapping:** at spaces, and after a hyphen inside a word. A hyphen or dash ending a line may

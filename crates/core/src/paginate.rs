@@ -103,8 +103,11 @@ impl Block {
         Block::new(self.element, self.kind, self.style, source, self.splittable)
     }
 
+    /// Rows the block takes: one a line, with the gaps of a double-spaced element between.
     fn height(&self) -> u16 {
-        u16::try_from(self.lines.len()).unwrap_or(u16::MAX)
+        let lines = u16::try_from(self.lines.len()).unwrap_or(u16::MAX);
+        let gaps = lines.saturating_sub(1).saturating_mul(self.style.spacing.max(1).saturating_sub(1));
+        lines.saturating_add(gaps)
     }
 
     /// Split the laid-out lines without re-wrapping (a last resort).
@@ -263,7 +266,7 @@ fn block_for(script: &Script, index: usize, layout: &Layout, style: ElementStyle
         Some(fdx) => crate::fdx::paragraph_style(fdx, style),
         None => style,
     };
-    let mut source = wrap::styled_chars(&element.text, element.kind.is_caps());
+    let mut source = wrap::styled_chars(&element.text, element.kind.is_caps() || style.caps);
     if layout.auto_contd && element.kind == ElementKind::Character && auto_contd_at(script, index) {
         source.extend(wrap::unstyled(&format!(" {}", layout.contd)));
     }
@@ -326,13 +329,15 @@ fn groups(script: &Script, layout: &Layout) -> Vec<Group> {
                 }
             }
             kind => {
-                // A new act starts a new page (a break on an empty page adds nothing).
-                if kind == ElementKind::NewAct {
-                    groups.push(Group::Break);
-                }
                 // Imported types such as `New Act` or `General` use their own settings.
                 let custom = element.fdx.as_ref().filter(|f| f.kind == kind).and_then(|f| layout.custom_style(&f.type_name));
-                if let Some(block) = block_for(script, index, layout, custom.unwrap_or_else(|| layout.style(kind))) {
+                let style = custom.unwrap_or_else(|| layout.style(kind));
+                // A new act starts a new page, as does any type set to (a break on an empty page
+                // adds nothing).
+                if kind == ElementKind::NewAct || style.new_page {
+                    groups.push(Group::Break);
+                }
+                if let Some(block) = block_for(script, index, layout, style) {
                     groups.push(Group::Block(block));
                 }
                 index += 1;
@@ -472,6 +477,9 @@ impl<'a> PageBuilder<'a> {
 
     fn place_block(&mut self, block: &Block, script: &Script, element_pages: &mut [u32], page: u32) {
         for (index, line) in block.lines.iter().enumerate() {
+            if index > 0 {
+                self.used = self.used.saturating_add(block.style.spacing.max(1).saturating_sub(1));
+            }
             self.push_line(line.col, &line.chars, LineRole::Element(block.kind), Some(block.element), 0);
             if index == 0 && block.kind == ElementKind::SceneHeading && self.layout.show_scene_numbers {
                 self.scene_numbers(block.element, script);
@@ -511,7 +519,10 @@ impl<'a> PageBuilder<'a> {
         }
         mark(element_pages, speech.cue.element, page);
         for part in &speech.parts {
-            for line in &part.lines {
+            for (index, line) in part.lines.iter().enumerate() {
+                if index > 0 {
+                    row = row.saturating_add(part.style.spacing.max(1).saturating_sub(1));
+                }
                 self.push_line(line.col, &line.chars, LineRole::Element(part.kind), Some(part.element), row);
                 row = row.saturating_add(1);
             }
@@ -763,7 +774,7 @@ pub fn title_page(title: &TitlePage, layout: &Layout) -> Option<Page> {
         return None;
     }
     let mut lines = Vec::new();
-    let center = ElementStyle { left: layout.action.left, width: layout.action.width, align: Align::Center, space_before: 0 };
+    let center = ElementStyle::new(layout.action.left, layout.action.width, Align::Center, 0);
     let mut row: u16 = 22;
     let centered = |value: Option<&str>, gap_after: u16, row: &mut u16, lines: &mut Vec<PageLine>| {
         let Some(value) = value.filter(|v| !v.trim().is_empty()) else { return };
@@ -781,7 +792,7 @@ pub fn title_page(title: &TitlePage, layout: &Layout) -> Option<Page> {
     let bottom = layout.body_top.saturating_add(layout.lines_per_page).saturating_sub(1);
     let left_block: Vec<&str> = ["Notes", "Copyright", "Contact"].iter().filter_map(|key| title.get(key)).collect();
     let left_text = left_block.join("\n\n");
-    let left_style = ElementStyle { left: layout.action.left, width: 35, align: Align::Left, space_before: 0 };
+    let left_style = ElementStyle::new(layout.action.left, 35, Align::Left, 0);
     let left_lines = layout_lines(&wrap::styled_chars(&left_text, false), left_style, false);
     let start = bottom.saturating_sub(u16::try_from(left_lines.len()).unwrap_or(0)).saturating_add(1);
     if !left_text.is_empty() {
@@ -791,7 +802,7 @@ pub fn title_page(title: &TitlePage, layout: &Layout) -> Option<Page> {
         }
     }
     if let Some(date) = title.get("Draft date") {
-        let right_style = ElementStyle { left: layout.page_number_right.saturating_sub(25), width: 25, align: Align::Right, space_before: 0 };
+        let right_style = ElementStyle::new(layout.page_number_right.saturating_sub(25), 25, Align::Right, 0);
         let date_lines = layout_lines(&wrap::styled_chars(date, false), right_style, false);
         let start = bottom.saturating_sub(u16::try_from(date_lines.len()).unwrap_or(0)).saturating_add(1);
         for (index, line) in date_lines.into_iter().enumerate() {
