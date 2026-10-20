@@ -94,6 +94,11 @@ says otherwise.
 
 ### Tests that need the owner's hands
 
+- **Windows and Linux, by a person (waiting on owner (Windows/Linux)).** Each release builds,
+  unit-tests and packages both in CI; nobody has yet installed and used them. When there is a
+  machine: install the setup `.exe` and the `.deb` or AppImage, open the Field Station sample,
+  type a scene, save, reopen.
+
 - **The writing feel (M3).** Write a few pages from scratch: Enter, Tab, the element picker,
   autocomplete, ⌘1–7 and ⌘⌥1–7. Say what feels wrong.
 - **Navigation and editing (M4).** In a real script: the scene lengths in
@@ -214,7 +219,7 @@ wait for a decision above.
    - the fidelity report, `docs/research/fdx-osf-fidelity.md`: what maps exactly, what is
      approximated, what cannot map and why, checked by a test;
    - the final check with the owner (above).
-8a. **TV structure** [in progress] M (owner, 2026-10-19; decision 13). One PR each, in order:
+8a. **TV structure** [have] M (owner, 2026-10-19; decision 13). One PR each, in order:
    - New Act and End of Act as element types (caps, centred, a new act starts a new page),
      read and written as `.fdx` New Act and End of Act, OSF styles, and centred Fountain lines;
    - New TV Script: Teaser or Cold Open, the acts and Tag laid out, one-hour or half-hour
@@ -222,8 +227,7 @@ wait for a decision above.
    - acts in the navigator (each act heading its scenes) and in Go To [have];
    - End of Act lines written and kept in step automatically (decision 18) [have];
    - a multi-camera sitcom shape: lettered scenes, each on a new page with its characters,
-     double-spaced dialogue, action in capitals (decision 17). Done: the page honours an
-     element's double spacing, new page and capitals, from the script's settings.
+     double-spaced dialogue, action in capitals (decision 17) [have].
 8b. **Bold, italic and underline in the editor** [missing] S (owner, 2026-10-19). The files
    already keep them (Fountain markup, `.fdx` and OSF runs); the editor shows the markup as typed.
    Format > Bold, Italic and Underline (⌘B, ⌘I, ⌘U) on a selection, and the editor drawing the
@@ -269,6 +273,9 @@ signed `.app.tar.gz`), the OSF and Fountain study, and the design pass. Each is 
   but never offers it after a crash. Offer it at launch, ahead of the first-launch sample.
 - **The editor lays out only the rows on screen** [missing] M. Every paragraph is laid out
   each frame today; long scripts will feel it first in the spelling underline and find marks.
+- **Capitals by display** [missing] S. Typing into a capitals type (a multi-camera script's
+  action) stores capitals today; keep the writer's casing and show capitals on screen and page
+  instead, once the editor draws a capitals type itself (MReview's note on #82).
 - **UK English dictionary** [missing] S (decision 16). US and UK English, a setting, the first
   run choosing from the system's region.
 

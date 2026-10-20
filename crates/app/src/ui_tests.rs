@@ -561,3 +561,18 @@ fn typing_on_an_act_line_brings_its_end_of_act_line() {
     assert_eq!(texts, ["ACT ONE B", "INT. HUT - DAY", "Rain.", "END OF ACT ONE B"]);
     assert_eq!(harness.state().session.caret.element, 0, "the caret stays on the act line");
 }
+
+#[test]
+fn new_tv_script_offers_a_multi_camera_half_hour() {
+    let (mut harness, _file) = harness(SCRIPT);
+    harness.state_mut().queued.push("file.new_tv".into());
+    harness.run_steps(3);
+    harness.get_by_label_contains("Multi-camera").click();
+    harness.run_steps(2);
+    harness.get_by_label("Create").click();
+    harness.run_steps(4);
+    let session = &harness.state().session;
+    assert!(session.script.is_lettered(), "lettered scenes");
+    assert_eq!(session.layout.dialogue.spacing, 2, "double-spaced dialogue");
+    assert_eq!(harness.state().prefs.get().general.tv_shape, storyteller_core::model::TvShape::MultiCam);
+}

@@ -1460,7 +1460,7 @@ impl StorytellerApp {
         }
     }
 
-    /// File > New TV Script: one-hour or half-hour, the last choice first.
+    /// File > New TV Script: one-hour, half-hour or multi-camera, the last choice first.
     fn new_tv_dialog(&mut self, ctx: &egui::Context) {
         use storyteller_core::model::TvShape;
         let Some(mut shape) = self.new_tv else { return };
@@ -1470,6 +1470,7 @@ impl StorytellerApp {
             for (option, label, acts) in [
                 (TvShape::OneHour, "One-hour", "Teaser, Acts One to Five, Tag"),
                 (TvShape::HalfHour, "Half-hour", "Cold Open, Acts One to Three, Tag"),
+                (TvShape::MultiCam, "Multi-camera half-hour", "Cold Open, Acts One and Two, Tag; lettered scenes, double-spaced dialogue"),
             ] {
                 let choice = ui.radio_value(&mut shape, option, format!("{label}: {acts}"));
                 self.automation.add(format!("dialog.new_tv.{}", option.id()), "radio", label, &choice);
