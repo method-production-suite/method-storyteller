@@ -167,3 +167,31 @@ fn a_multi_camera_script_keeps_its_letters_and_settings_in_fdx_and_osf() {
         assert_eq!(Layout::for_script(&back), layout, "{name}");
     }
 }
+
+#[test]
+fn numbering_letters_inserted_scenes() {
+    use storyteller_core::model::{Numbering, letters};
+    assert_eq!([0, 7, 8, 13, 14, 25, 26].map(|n| letters(n, false)), ["A", "H", "I", "N", "O", "Z", "AA"]);
+    assert_eq!([7, 8, 12, 13, 23, 24].map(|n| letters(n, true)), ["H", "J", "N", "P", "Z", "AA"], "without I and O");
+    let numbers = |script: &Script| {
+        script.elements.iter().filter(|e| e.kind == K::SceneHeading).map(|e| e.scene_number.clone().unwrap_or_default()).collect::<Vec<_>>()
+    };
+    let mut script = fountain::parse(
+        "INT. NEW - DAY\n\nINT. A - DAY #1#\n\nINT. NEW - DAY\n\nINT. NEW - DAY\n\nINT. B - DAY #2#\n\nINT. C - DAY #2A#\n\nINT. NEW - DAY\n\nINT. D - DAY #2B#\n\nINT. NEW - DAY\n",
+    )
+    .unwrap();
+    let changed = script.number_with(Numbering { keep_existing: true, ..Numbering::default() });
+    assert_eq!(numbers(&script), ["A1", "1", "1A", "1B", "2", "2A", "2AA", "2B", "2C"]);
+    assert_eq!(changed, 5);
+    // From scene 3 on, fresh, starting at 10.
+    let from = script.scene_indices()[2];
+    script.number_with(Numbering { start: 10, from, ..Numbering::default() });
+    assert_eq!(numbers(&script), ["A1", "1", "10", "11", "12", "13", "14", "15", "16"]);
+    // By hand: a number another scene has is refused.
+    let first = script.scene_indices()[0];
+    assert!(script.set_scene_number(first, "12").unwrap_err().contains("scene 5"));
+    script.set_scene_number(first, "0a").unwrap();
+    assert_eq!(numbers(&script)[0], "0A");
+    script.set_scene_number(first, "").unwrap();
+    assert_eq!(numbers(&script)[0], "");
+}

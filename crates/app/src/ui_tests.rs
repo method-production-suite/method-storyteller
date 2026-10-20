@@ -729,3 +729,25 @@ fn the_character_table_opens_and_a_name_goes_to_the_first_line() {
     harness.run_steps(4);
     assert_eq!(harness.state().session.caret.element, 4, "OWEN's cue");
 }
+
+#[test]
+fn number_scenes_asks_how_and_numbers() {
+    let (mut harness, _file) = harness("INT. A - DAY #5#\n\nINT. NEW - DAY\n\nINT. B - DAY #6#\n");
+    harness.state_mut().queued.push("scene.number".into());
+    harness.run_steps(3);
+    assert!(harness.state().numbering.as_ref().is_some_and(|d| d.keep_existing), "keeps existing numbers when there are some");
+    harness.get_by_label("Number").click();
+    harness.run_steps(3);
+    assert!(harness.state().numbering.is_none());
+    assert_eq!(harness.state().session.script.elements[1].scene_number.as_deref(), Some("5A"));
+    harness.state_mut().session.caret = storyteller_engine::Caret { element: 1, offset: 0 };
+    harness.state_mut().queued.push("app.edit_scene_number".into());
+    harness.run_steps(3);
+    if let Some(draft) = harness.state_mut().scene_number.as_mut() {
+        draft.number = "6".into();
+    }
+    harness.get_by_label("OK").click();
+    harness.run_steps(3);
+    let error = harness.state().scene_number.as_ref().and_then(|d| d.error.clone()).unwrap_or_default();
+    assert!(error.contains("already has the number 6"), "{error}");
+}

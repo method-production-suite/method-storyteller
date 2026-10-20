@@ -5,6 +5,12 @@ for its own version in Help > What's New, once after an update.
 
 ## Unreleased
 
+### New
+
+- Production > Number Scenes… keeps existing numbers and letters new scenes (12A, 12B; A1 before
+  the first), or numbers from any start and from the current scene on, and can leave out I and
+  O. Production > Edit Scene Number… sets one by hand.
+
 ## 0.5.0
 
 ### New

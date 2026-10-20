@@ -126,10 +126,14 @@ one step.
 - **Find and replace** (Edit > Find…, ⌘F; commands `find.next`, `find.replace`, `find.replace_all`): match case, whole words, optionally one element type; matches never span two elements; the current match is highlighted while typing stays in the find bar; Replace All is one Undo step; replacements in capitalised elements (headings, cues, transitions) stay capitalised.
 - **Rename character** (Production > Rename Character…; command `character.rename`): every cue for the name, keeping extensions such as `(V.O.)`; optionally every capitalised whole-word mention in other text too, each in its own case (`NORA` → `EMMA`, `Nora's` → `Emma's`; a lowercase `will` is never the character WILL); one Undo step. Renaming onto another character's name merges the two, so the app asks first; a new name with `(`, `)` or `^` is refused. A character list stored in an imported .fdx is not renamed yet.
 - **Spell check** (engine `spell.next`, `spell.ignore`, `spell.learn`, `spell.change`): the bundled English Hunspell dictionaries from SCOWL, US and UK (British, -ise spellings), read by `spellbook`; Edit > US English Spelling and UK English Spelling choose (decision 16), and the first run chooses from the system's region (British for GB, IE, AU, NZ, ZA, IN and the like, American otherwise). Character names from the cues, screenplay terms (INT., CONT'D, V.O. …) and words with digits are never flagged; `[[notes]]` are not checked; a word in capitals is right when its usual case is. Learned words are the writer's (kept in the app's settings); ignored words are kept with the script. Change is one Undo. In the app, misspelled words have a thin red underline as the writer types (View > Check Spelling While Typing, on by default), and Edit > Spelling… (⌘;) steps through them with suggestions, Change, Ignore and Learn.
-- **Scene numbers:** `Production → Number scenes` assigns 1, 2, 3…; existing numbers are kept
-  when "keep existing" is chosen (A-numbering for inserted scenes is a later-phase revision
-  feature). Toggle for showing them in the editor and PDF. Stored in Fountain as `#12#`, in FDX
-  as `Number="12"`.
+- **Scene numbers** (Production > Number Scenes…; command `scene.number`): a start number,
+  Keep existing numbers (on when any scene has one), From the current scene on, and Leave out
+  the letters I and O (decision 20, off by default, remembered). Kept numbers stay; a new scene
+  after `12` becomes `12A`, then `12B`; one before the first numbered scene becomes `A1`; one
+  between `12A` and `12B` goes a level deeper, `12AA`; no number is given twice. Production >
+  Edit Scene Number… (`scene.set_number`) sets or clears the caret's scene's number by hand,
+  refusing one another scene has. One Undo each. View > Scene Numbers shows them in the editor
+  and PDF. Stored in Fountain as `#12#`, in FDX as `Number="12"`, in OSF as `scene_number`.
 
 ### 4.5 Title page
 
