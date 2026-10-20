@@ -180,9 +180,21 @@ fn numbering_letters_inserted_scenes() {
         "INT. NEW - DAY\n\nINT. A - DAY #1#\n\nINT. NEW - DAY\n\nINT. NEW - DAY\n\nINT. B - DAY #2#\n\nINT. C - DAY #2A#\n\nINT. NEW - DAY\n\nINT. D - DAY #2B#\n\nINT. NEW - DAY\n",
     )
     .unwrap();
-    let changed = script.number_with(Numbering { keep_existing: true, ..Numbering::default() });
+    let done = script.number_with(Numbering { keep_existing: true, ..Numbering::default() });
     assert_eq!(numbers(&script), ["A1", "1", "1A", "1B", "2", "2A", "2AA", "2B", "2C"]);
-    assert_eq!(changed, 5);
+    assert_eq!((done.changed, done.unplaced.len()), (5, 0));
+    // Nothing sorts between 2 and an existing 2A: left unnumbered, and said so.
+    let mut tight = fountain::parse("INT. A - DAY #2#\n\nINT. NEW - DAY\n\nINT. B - DAY #2A#\n\nINT. NEW - DAY\n\nINT. C - DAY #3#\n").unwrap();
+    let done = tight.number_with(Numbering { keep_existing: true, ..Numbering::default() });
+    assert_eq!(numbers(&tight), ["2", "", "2A", "2B", "3"], "in order: 2, (none), 2A, 2B, 3");
+    assert_eq!(done.unplaced.iter().map(|u| (u.before.as_str(), u.after.as_str())).collect::<Vec<_>>(), [("2", "2A")]);
+    // Without I and O, after a suffix that has one: the next letter still follows it.
+    let mut io = fountain::parse("INT. A - DAY #4H#\n\nINT. NEW - DAY\n\nINT. B - DAY #4N#\n\nINT. NEW - DAY\n").unwrap();
+    io.number_with(Numbering { keep_existing: true, skip_io: true, ..Numbering::default() });
+    assert_eq!(numbers(&io), ["4H", "4J", "4N", "4P"]);
+    let mut kept = fountain::parse("INT. A - DAY #4I#\n\nINT. NEW - DAY\n").unwrap();
+    kept.number_with(Numbering { keep_existing: true, skip_io: true, ..Numbering::default() });
+    assert_eq!(numbers(&kept), ["4I", "4J"], "an existing 4I is followed by 4J, not B");
     // From scene 3 on, fresh, starting at 10.
     let from = script.scene_indices()[2];
     script.number_with(Numbering { start: 10, from, ..Numbering::default() });

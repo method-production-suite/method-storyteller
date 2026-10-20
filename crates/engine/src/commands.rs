@@ -1570,13 +1570,32 @@ fn all_commands() -> Vec<Command> {
                     skip_io: opt_bool(p, "skip_io")?.unwrap_or(false),
                 };
                 let mut numbered = s.script.clone();
-                let changed = numbered.number_with(options);
-                if changed == 0 {
-                    return Ok(Outcome::message("Every scene already has that number".to_string()));
+                let result = numbered.number_with(options);
+                // Scenes with no number between their neighbours, for the writer to set by hand.
+                let unplaced: Vec<std::string::String> = result
+                    .unplaced
+                    .iter()
+                    .map(|u| {
+                        let position = s.script.scene_indices().iter().position(|&h| h == u.heading).map_or(0, |p| p + 1);
+                        format!(
+                            "There's no number between {} and {} for scene {position}; set it by hand (Production > Edit Scene Number…).",
+                            u.before, u.after
+                        )
+                    })
+                    .collect();
+                if result.changed == 0 {
+                    let message = if unplaced.is_empty() { "Every scene already has that number".to_string() } else { unplaced.join(" ") };
+                    return Ok(Outcome::message(message));
                 }
                 s.checkpoint(EditKind::Other);
                 s.script = numbered;
-                Ok(Outcome::message(if changed == 1 { "Numbered 1 scene".to_string() } else { format!("Numbered {changed} scenes") }))
+                let changed = result.changed;
+                let done = if changed == 1 { "Numbered 1 scene.".to_string() } else { format!("Numbered {changed} scenes.") };
+                Ok(Outcome::message(if unplaced.is_empty() {
+                    done.trim_end_matches('.').to_string()
+                } else {
+                    format!("{done} {}", unplaced.join(" "))
+                }))
             },
         },
         Command {

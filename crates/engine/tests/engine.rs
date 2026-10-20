@@ -811,3 +811,13 @@ fn number_scenes_keeps_numbers_letters_new_scenes_and_edits_one() {
     let taken = registry.run("scene.set_number", &mut s, &serde_json::from_value(json!({ "index": 1, "number": "22" })).unwrap());
     assert!(taken.is_err(), "another scene has 22");
 }
+
+#[test]
+fn a_new_scene_with_no_number_between_its_neighbours_is_left_for_the_writer() {
+    let registry = Registry::new();
+    let mut s = Session::new(storyteller_core::fountain::parse("INT. A - DAY #2#\n\nINT. NEW - DAY\n\nINT. B - DAY #2A#\n").unwrap());
+    let out = run(&registry, &mut s, "scene.number", json!({ "keep_existing": true }));
+    assert_eq!(s.script.elements[1].scene_number, None);
+    assert_eq!(out["message"], "There's no number between 2 and 2A for scene 2; set it by hand (Production > Edit Scene Number…).");
+    assert!(!s.can_undo(), "nothing changed, so nothing to undo");
+}
