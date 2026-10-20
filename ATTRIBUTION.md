@@ -21,9 +21,12 @@ The fonts are distributed unmodified. PDF export embeds subsets of them, which t
 | `assets/dictionaries/en_US.dic` | Kevin Atkinson and the SCOWL contributors | [en_US Hunspell dictionary 2020.12.07](http://wordlist.aspell.net) (SCOWL size 60) | SCOWL's permissive notice, Ispell's BSD licence and the notices in [README_en_US.txt](assets/dictionaries/README_en_US.txt) |
 | `assets/dictionaries/en_US.aff` | as above; affix file after Geoff Kuenning's Ispell | as above | as above |
 | `assets/dictionaries/README_en_US.txt` | as above | as above | the notices themselves, kept verbatim |
+| `assets/dictionaries/en_GB-ise.dic` | Kevin Atkinson and the SCOWL contributors | [en_GB-ise Hunspell dictionary 2020.12.07](http://wordlist.aspell.net) (SCOWL size 60, British, -ise spellings) | SCOWL's permissive notice, Ispell's BSD licence and the notices in [README_en_GB-ise.txt](assets/dictionaries/README_en_GB-ise.txt) |
+| `assets/dictionaries/en_GB-ise.aff` | as above; affix file after Geoff Kuenning's Ispell | as above | as above |
+| `assets/dictionaries/README_en_GB-ise.txt` | as above | as above | the notices themselves, kept verbatim |
 
-The spell check's English dictionary, distributed unmodified. The app shows README_en_US.txt in
-Help > Licenses and Notices.
+The spell check's English dictionaries, US and UK, distributed unmodified. The app shows both
+README files in Help > Licenses and Notices.
 
 ## Pictures
 

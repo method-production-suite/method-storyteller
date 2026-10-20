@@ -1077,7 +1077,7 @@ fn all_commands() -> Vec<Command> {
                 s.break_typing();
                 Ok(Outcome::value(json!({
                     "element": hit.element, "start": hit.start, "end": hit.end, "word": word,
-                    "suggestions": crate::spell::suggestions(&word, 6), "number": number + 1, "total": hits.len(),
+                    "suggestions": crate::spell::suggestions(&word, s.spelling.language, 6), "number": number + 1, "total": hits.len(),
                 })))
             },
         },

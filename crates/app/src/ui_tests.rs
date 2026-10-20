@@ -666,3 +666,15 @@ fn a_recovery_copy_is_offered_and_opens_as_unsaved_work() {
     harness.run_steps(2);
     assert!(crate::recovery::waiting(dir.path()).is_empty());
 }
+
+#[test]
+fn the_spelling_menu_switches_between_us_and_uk_english() {
+    let (mut harness, _file) = harness("INT. HUT - DAY\n\nThe colour fades.\n");
+    harness.run_steps(2);
+    assert_eq!(harness.state().prefs.get().general.spelling_language, "en_US", "in memory, US English whatever the machine");
+    assert!(harness.state().editor.misspelled.get(&1).is_some_and(|w| !w.is_empty()), "colour is marked in US English");
+    harness.state_mut().queued.push("prefs.spelling_uk".into());
+    harness.run_steps(3);
+    assert_eq!(harness.state().checked("prefs.spelling_uk"), Some(true));
+    assert!(harness.state().editor.misspelled.get(&1).is_none_or(|w| w.is_empty()), "and right in UK English");
+}

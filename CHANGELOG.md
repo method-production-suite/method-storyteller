@@ -11,6 +11,8 @@ for its own version in Help > What's New, once after an update.
   Format and its production data beside it, with its own icon in the Finder. File > Save New
   Scripts as… still offers plain Open Screenplay Format and Fountain.
 
+- Spell check in US or UK English (Edit > US English Spelling, UK English Spelling); the first
+  run chooses from your region.
 - After the app closes without saving, the next launch offers the unsaved changes: open the
   copy, throw it away, or decide later. Saving, or choosing Don't Save, clears the copy.
 - File > Close (⌘W) closes the script and leaves an empty one; File > Open Recent lists the last

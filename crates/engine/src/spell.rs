@@ -1,5 +1,6 @@
-//! Spell check: the bundled English (US) Hunspell dictionary from SCOWL, read by `spellbook`
-//! (assets/dictionaries, attributed in ATTRIBUTION.md).
+//! Spell check: the bundled English Hunspell dictionaries from SCOWL, US and UK (British, -ise
+//! spellings), read by `spellbook` (assets/dictionaries, attributed in ATTRIBUTION.md). Which one
+//! is the writer's setting (decision 16), [`Personal::language`].
 //!
 //! A word counts as spelled right when the dictionary knows it, when it is a character's name
 //! (from the script's cues), a screenplay term (INT., CONT'D, V.O. …), or a word the writer
@@ -11,8 +12,47 @@ use std::sync::OnceLock;
 
 use storyteller_core::{ElementKind, Script};
 
-const AFF: &str = include_str!("../../../assets/dictionaries/en_US.aff");
-const DIC: &str = include_str!("../../../assets/dictionaries/en_US.dic");
+const US_AFF: &str = include_str!("../../../assets/dictionaries/en_US.aff");
+const US_DIC: &str = include_str!("../../../assets/dictionaries/en_US.dic");
+const UK_AFF: &str = include_str!("../../../assets/dictionaries/en_GB-ise.aff");
+const UK_DIC: &str = include_str!("../../../assets/dictionaries/en_GB-ise.dic");
+
+/// The spelling the check follows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Language {
+    /// American English (`color`, `organize`).
+    #[default]
+    Us,
+    /// British English (`colour`, `organise`).
+    Uk,
+}
+
+impl Language {
+    pub fn id(self) -> &'static str {
+        match self {
+            Language::Us => "en_US",
+            Language::Uk => "en_GB",
+        }
+    }
+
+    pub fn from_id(id: &str) -> Option<Self> {
+        [Language::Us, Language::Uk].into_iter().find(|l| l.id() == id)
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Language::Us => "English (US)",
+            Language::Uk => "English (UK)",
+        }
+    }
+
+    /// The first run's choice, from the system's region (`GB`, `US` …): British spelling for
+    /// the countries that write it, American otherwise.
+    pub fn for_region(region: &str) -> Self {
+        const BRITISH: [&str; 12] = ["GB", "UK", "IE", "AU", "NZ", "ZA", "IN", "SG", "HK", "MT", "JE", "IM"];
+        if BRITISH.contains(&region.trim().to_uppercase().as_str()) { Language::Uk } else { Language::Us }
+    }
+}
 
 /// The endings of possessives and contractions: a word ending in one is right when its stem is.
 const CONTRACTION_ENDINGS: [&str; 5] = ["'s", "'ll", "'d", "'re", "'ve"];
@@ -23,10 +63,14 @@ const SCREENPLAY_TERMS: [&str; 22] = [
     "SMASH", "MATCH", "PRELAP", "MOS", "OMITTED", "B.G",
 ];
 
-/// The English dictionary, parsed once (about a tenth of a second) and shared.
-pub fn dictionary() -> Option<&'static spellbook::Dictionary> {
-    static DICTIONARY: OnceLock<Option<spellbook::Dictionary>> = OnceLock::new();
-    DICTIONARY.get_or_init(|| spellbook::Dictionary::new(AFF, DIC).ok()).as_ref()
+/// A dictionary, parsed the first time it is wanted (about a tenth of a second) and shared.
+pub fn dictionary(language: Language) -> Option<&'static spellbook::Dictionary> {
+    static US: OnceLock<Option<spellbook::Dictionary>> = OnceLock::new();
+    static UK: OnceLock<Option<spellbook::Dictionary>> = OnceLock::new();
+    match language {
+        Language::Us => US.get_or_init(|| spellbook::Dictionary::new(US_AFF, US_DIC).ok()).as_ref(),
+        Language::Uk => UK.get_or_init(|| spellbook::Dictionary::new(UK_AFF, UK_DIC).ok()).as_ref(),
+    }
 }
 
 /// The writer's own dictionary: words added with Learn, spelled right in every script (the app
@@ -35,6 +79,8 @@ pub fn dictionary() -> Option<&'static spellbook::Dictionary> {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Personal {
     pub learned: HashSet<String>,
+    /// US or UK spelling.
+    pub language: Language,
 }
 
 impl Personal {
@@ -160,7 +206,7 @@ pub fn is_right(word: &str, names: &HashSet<String>, personal: &Personal, ignore
     if names.contains(stem) || SCREENPLAY_TERMS.contains(&stem) || personal.knows(&word, ignored) {
         return true;
     }
-    let Some(dictionary) = dictionary() else { return true };
+    let Some(dictionary) = dictionary(personal.language) else { return true };
     let plain = unaccented(&word);
     if dictionary.check(&word) || (plain != word && dictionary.check(&plain)) {
         return true;
@@ -213,8 +259,8 @@ pub fn misspelled(script: &Script, personal: &Personal) -> Vec<Miss> {
 }
 
 /// Up to `limit` suggestions for a misspelled word, in the word's own case.
-pub fn suggestions(word: &str, limit: usize) -> Vec<String> {
-    let Some(dictionary) = dictionary() else { return Vec::new() };
+pub fn suggestions(word: &str, language: Language, limit: usize) -> Vec<String> {
+    let Some(dictionary) = dictionary(language) else { return Vec::new() };
     let mut out = Vec::new();
     dictionary.suggest(&word.replace('’', "'"), &mut out);
     let caps = word.chars().any(char::is_alphabetic) && word == word.to_uppercase();
@@ -257,7 +303,7 @@ mod tests {
         assert!(is_right("else's", &none, &personal) && is_right("there'll", &none, &personal), "contractions of right words");
         assert!(is_right("whoever's", &none, &personal) && is_right("THEM'S", &none, &personal));
         assert!(!is_right("glsas's", &none, &personal), "but not of a misspelling");
-        assert!(suggestions("glsas", 5).iter().any(|s| s == "glass"));
-        assert!(suggestions("GLSAS", 5).iter().any(|s| s == "GLASS"), "suggestions in the word's case");
+        assert!(suggestions("glsas", Language::Us, 5).iter().any(|s| s == "glass"));
+        assert!(suggestions("GLSAS", Language::Us, 5).iter().any(|s| s == "GLASS"), "suggestions in the word's case");
     }
 }

@@ -29,6 +29,29 @@ pub fn set_wake(wake: impl Fn() + Send + 'static) {
     }
 }
 
+/// The system's region, as a two-letter country code (`GB`, `US`), for first-run choices
+/// such as the spelling dictionary. On macOS it is the region set in System Settings; elsewhere
+/// the one the locale variables name (`en_GB.UTF-8`).
+pub fn region() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        // A safe call in the bindings: no `unsafe` here.
+        #[allow(deprecated)] // regionCode needs macOS 13; the app runs from 11.
+        let code = objc2_foundation::NSLocale::currentLocale().countryCode().map(|c| c.to_string());
+        if code.is_some() {
+            return code;
+        }
+    }
+    ["LC_ALL", "LC_MESSAGES", "LANG"].iter().filter_map(|v| std::env::var(v).ok()).find_map(|value| region_of(&value))
+}
+
+/// The region of a locale name: `en_GB.UTF-8` and `en-GB` give `GB`.
+fn region_of(locale: &str) -> Option<String> {
+    let name = locale.split(['.', '@']).next()?;
+    let region = name.split(['_', '-']).nth(1)?;
+    (region.len() == 2 && region.chars().all(|c| c.is_ascii_alphabetic())).then(|| region.to_ascii_uppercase())
+}
+
 /// The files opened since the last call, oldest first.
 pub fn take() -> Vec<PathBuf> {
     OPENED.lock().map(|mut opened| std::mem::take(&mut *opened)).unwrap_or_default()
@@ -128,6 +151,15 @@ mod macos {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_locale_name_gives_its_region() {
+        assert_eq!(region_of("en_GB.UTF-8").as_deref(), Some("GB"));
+        assert_eq!(region_of("en-us").as_deref(), Some("US"));
+        assert_eq!(region_of("de_DE@euro").as_deref(), Some("DE"));
+        assert_eq!(region_of("C"), None);
+        assert_eq!(region_of("en_419"), None);
+    }
 
     #[test]
     fn opened_files_queue_in_order_and_wake_the_app() {
