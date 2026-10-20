@@ -5,12 +5,13 @@ for its own version in Help > What's New, once after an update.
 
 ## Unreleased
 
+## 0.5.0
+
 ### New
 
 - New scripts save as a `.mstory` package: one ZIP file holding the script as Open Screenplay
   Format and its production data beside it, with its own icon in the Finder. File > Save New
   Scripts as… still offers plain Open Screenplay Format and Fountain.
-
 - Scene titles, summaries and colours: right-click a scene in the navigator > Scene Properties….
   The title shows in the navigator, the colour marks the row, and the summary shows on hover.
   They come in from and go back to `.fdx` files.
@@ -20,6 +21,11 @@ for its own version in Help > What's New, once after an update.
   copy, throw it away, or decide later. Saving, or choosing Don't Save, clears the copy.
 - File > Close (⌘W) closes the script and leaves an empty one; File > Open Recent lists the last
   ten scripts.
+
+### Fixed
+
+- Security: the certificate checks used when the app looks for updates are up to date
+  (RUSTSEC-2026-0382 and RUSTSEC-2026-0381).
 
 ### Before you update
 

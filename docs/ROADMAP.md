@@ -134,10 +134,12 @@ says otherwise.
   (decision 19).
 - **v0.3.0:** published 2026-10-20 (tag `v0.3.0` on `53a37c5`): TV acts, and one universal
   Mac app for Apple silicon and Intel. Nothing waiting.
-- **v0.4.0:** TV structure finished (End of Act in step, the multi-camera half-hour, double
-  spacing, new pages and capitals from element settings), bold, italic and underline in the
-  editor, and `SHA256SUMS.minisig`. The release PR goes to MReview; after its merge, the
-  rehearsal on main, then the tag request through MOrg (one yes covers tag and publish).
+- **v0.4.0:** published 2026-10-20 (tag `v0.4.0` on `a40de7c`): TV structure finished, bold,
+  italic and underline, signed checksums.
+- **v0.5.0, the security release:** the update checks' TLS fixes (RUSTSEC-2026-0382 and -0381),
+  with the `.mstory` package, scene properties, US and UK spelling, recovery at launch, Close
+  and Open Recent. Called 0.5.0, not 0.4.1, because a tag must be on main and main already
+  carries those features. Release PR to MReview, rehearsal, then the tag request.
 ---
 
 ## Where we are
