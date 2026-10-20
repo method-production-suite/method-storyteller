@@ -134,8 +134,10 @@ says otherwise.
   (decision 19).
 - **v0.3.0:** published 2026-10-20 (tag `v0.3.0` on `53a37c5`): TV acts, and one universal
   Mac app for Apple silicon and Intel. Nothing waiting.
-- **v0.4.0, next:** adds `SHA256SUMS.minisig` (the checksum list signed with the update key,
-  SUITE-STANDARDS.md §3), which 0.3.0 went without by agreement.
+- **v0.4.0:** TV structure finished (End of Act in step, the multi-camera half-hour, double
+  spacing, new pages and capitals from element settings), bold, italic and underline in the
+  editor, and `SHA256SUMS.minisig`. The release PR goes to MReview; after its merge, the
+  rehearsal on main, then the tag request through MOrg (one yes covers tag and publish).
 ---
 
 ## Where we are

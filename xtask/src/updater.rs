@@ -11,6 +11,9 @@
 //!   manifest in the latest.json static format, after checking the signature against the
 //!   public key the app itself carries (crates/app/src/updates.rs), so a release can never
 //!   publish an update its own apps would refuse.
+//! - `cargo xtask sign-file --file D/SHA256SUMS` writes `D/SHA256SUMS.minisig`, a plain
+//!   minisign signature of the release's checksums with the same key (SUITE-STANDARDS.md §3),
+//!   checked against the app's public key first.
 
 use std::fs::File;
 use std::io::{Cursor, Read};
@@ -76,6 +79,46 @@ pub fn manifest_command(root: &Path, rest: &[String]) -> Result<(), String> {
     std::fs::write(out, manifest).map_err(|e| format!("{out}: {e}"))?;
     println!("update-manifest: wrote {out}");
     Ok(())
+}
+
+/// `cargo xtask sign-file`.
+pub fn sign_file_command(root: &Path, rest: &[String]) -> Result<(), String> {
+    let args = Args::parse(rest)?;
+    let key = std::env::var("UPDATER_PRIVATE_KEY").map_err(|_| "UPDATER_PRIVATE_KEY is not set".to_string())?;
+    let password = std::env::var("UPDATER_PRIVATE_KEY_PASSWORD").unwrap_or_default();
+    let file = Path::new(args.get("file")?);
+    let signature = sign_plain(file, &key, &password, &app_public_key(root)?)?;
+    let out = PathBuf::from(format!("{}.minisig", file.display()));
+    std::fs::write(&out, signature).map_err(|e| format!("{}: {e}", out.display()))?;
+    println!("sign-file: {}", out.display());
+    Ok(())
+}
+
+/// A plain minisign signature (the `.minisig` text) of `file`, with `file:<name>` as its
+/// trusted comment. Refuses a key whose public half is not the app's.
+pub fn sign_plain(file: &Path, key_b64: &str, password: &str, app_pubkey_b64: &str) -> Result<String, String> {
+    let key_box = decode_text(key_b64.trim()).map_err(|e| format!("the update key: {e}"))?;
+    let secret = minisign::SecretKeyBox::from_string(&key_box)
+        .and_then(|b| b.into_secret_key(Some(password.to_string())))
+        .map_err(|e| format!("the update key would not open: {e}"))?;
+    let public = minisign::PublicKey::from_secret_key(&secret).map_err(|e| format!("the update key's public half: {e}"))?;
+    let app = minisign::PublicKeyBox::from_string(&decode_text(app_pubkey_b64)?)
+        .and_then(|b| b.into_public_key())
+        .map_err(|e| format!("the app's public key: {e}"))?;
+    if public.to_base64() != app.to_base64() {
+        return Err("the update key is not the one the app checks with (PUBKEY in crates/app/src/updates.rs)".into());
+    }
+    let name = file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let bytes = std::fs::read(file).map_err(|e| format!("{}: {e}", file.display()))?;
+    let signature = minisign::sign(
+        Some(&public),
+        &secret,
+        Cursor::new(&bytes),
+        Some(&format!("file:{name}")),
+        Some("signature from the Method Storyteller update key"),
+    )
+    .map_err(|e| format!("signing {name}: {e}"))?;
+    Ok(signature.to_string())
 }
 
 /// Packs `app` as the updater archive in `out_dir`.
@@ -196,6 +239,30 @@ fn rfc3339(secs: u64) -> String {
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
     use super::*;
+
+    /// SHA256SUMS signed as a plain .minisig that minisign itself verifies with the app's key.
+    #[test]
+    fn sign_file_writes_a_plain_minisig() {
+        let dir = std::env::temp_dir().join(format!("storyteller-sign-file-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let sums = dir.join("SHA256SUMS");
+        std::fs::write(&sums, "abc  Method-Storyteller-macOS.dmg\n").unwrap();
+        let pair = minisign::KeyPair::generate_encrypted_keypair(Some("pw".into())).unwrap();
+        let secret_b64 = STANDARD.encode(pair.sk.to_box(None).unwrap().to_string());
+        let public_b64 = STANDARD.encode(pair.pk.to_box().unwrap().to_string());
+        let text = sign_plain(&sums, &secret_b64, "pw", &public_b64).unwrap();
+        assert!(text.starts_with("untrusted comment: signature from the Method Storyteller update key"), "{text}");
+        let signature = minisign::SignatureBox::from_string(&text).unwrap();
+        assert_eq!(signature.trusted_comment().unwrap(), "file:SHA256SUMS");
+        minisign::verify(&pair.pk, &signature, Cursor::new(std::fs::read(&sums).unwrap()), true, false, false).unwrap();
+        let changed = b"abd  Method-Storyteller-macOS.dmg\n".to_vec();
+        assert!(minisign::verify(&pair.pk, &signature, Cursor::new(changed), true, false, false).is_err(), "a changed list fails");
+        let stranger = minisign::KeyPair::generate_unencrypted_keypair().unwrap();
+        let stranger_b64 = STANDARD.encode(stranger.pk.to_box().unwrap().to_string());
+        assert!(sign_plain(&sums, &secret_b64, "pw", &stranger_b64).is_err(), "only the app's own key signs");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// A throwaway bundle, a throwaway key in the release secret's shape, and a full trip.
     #[test]

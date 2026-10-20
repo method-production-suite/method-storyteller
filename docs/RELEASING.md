@@ -43,7 +43,8 @@ website and in the README never go stale:
 | `Method-Storyteller-windows-x64-setup.exe` | Windows 10 or later, x64 | `cargo xtask package-windows` (Inno Setup 6) |
 | `Method-Storyteller-linux-amd64.deb` | Debian and Ubuntu, x86_64 | `cargo xtask package-linux` (`dpkg-deb`) |
 | `Method-Storyteller-linux-x86_64.AppImage` | Other Linux, x86_64 | `cargo xtask package-linux --appimagetool <path> --runtime <path>` |
-| `SHA256SUMS` | | the draft job: one line per file of the release (installers, the updater archive and its signature, `latest.json`), checked before the draft is made |
+| `SHA256SUMS` | | the assemble job: one line per file of the release (installers, the updater archive and its signature, `latest.json`), checked before the draft is made |
+| `SHA256SUMS.minisig` | | the sign job: `SHA256SUMS` signed with the update key (`cargo xtask sign-file`), checked against the app's public key first; check it with `minisign -Vm SHA256SUMS -P <the public key>` |
 
 The packaging code is `xtask/src/package.rs`; the files it reads are in `packaging/`:
 `macos/Info.plist` (bundle id `com.methodstoryteller.desktop`, display name "Method
@@ -123,7 +124,8 @@ draft and refuses a release that is already published.
 - Where you can, install the Windows setup and the `.deb` or AppImage and do the same; the
   README's platform table says which were tested.
 - Check the four installer names are version-free and `SHA256SUMS` lists every file of the
-  release (exactly one checksum file, under exactly that name).
+  release (exactly one checksum file, under exactly that name), and that
+  `SHA256SUMS.minisig` verifies it against the app's public key.
 - Check the updater files are there: `Method-Storyteller_<version>_universal.app.tar.gz`, its
   `.sig`, and `latest.json` naming this version with `darwin-aarch64` and `darwin-x86_64`
   entries, both for that one archive. The workflow already refused a signature that does not
@@ -190,6 +192,7 @@ leaving GitHub. A red run means the next release's update would be refused: fix 
 | `check` | contents: read | the tag is `v` plus the version in `Cargo.toml`, points at a commit on `main`, and `docs/releases/<version>.md` is written; with no tag, on `main`, a rehearsal of main's latest commit |
 | `build` (macOS universal, Windows x64, Linux x64) | contents: read | compiles everything first, before any secret reaches the runner (on macOS both slices, joined with `lipo`); then packages each platform with `--no-build`; on macOS signs, notarizes, staples and verifies (every executable must be exactly `x86_64 arm64`), each only when its secrets are there; then, with the update key, packs and signs the updater archive; on Windows signs the app and the installer only with a certificate |
 | `assemble` | contents: read | checks all four installers are there, writes `latest.json` after checking the archive's signature against the app's public key (one universal archive under `darwin-aarch64` and `darwin-x86_64`), writes and checks `SHA256SUMS` (one line per file of the release); runs in a rehearsal too |
+| `sign` | contents: read | builds the release tool, then signs `SHA256SUMS` with the update key as `SHA256SUMS.minisig`; runs in a rehearsal too |
 | `draft` | contents: write (the only job with it) | runs `gh release create --draft` with the notes and the files; skipped in a rehearsal |
 
 Only first-party actions are used, each pinned to the suite's full commit SHA. Each secret

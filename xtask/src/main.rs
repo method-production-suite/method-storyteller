@@ -40,12 +40,13 @@ fn main() -> ExitCode {
             "screens" => screens::run(root()),
         "updater-archive" => updater::archive_command(root(), rest),
         "update-manifest" => updater::manifest_command(root(), rest),
+        "sign-file" => updater::sign_file_command(root(), rest),
             "version" => package::workspace_version().map(|v| println!("{v}")),
             "bundle-macos" => package::parse_options(rest).and_then(|o| package::bundle_macos(&o)),
             "dmg-macos" => package::parse_options(rest).and_then(|o| package::dmg_macos(&o)),
             "package-linux" => package::parse_options(rest).and_then(|o| package::package_linux(&o)),
             "package-windows" => package::parse_options(rest).and_then(|o| package::package_windows(&o)),
-            _ => Err("usage: cargo xtask <layers|assets|privacy|ci|corpus|screens|updater-archive|update-manifest|version|bundle-macos|dmg-macos|package-linux|package-windows>"
+            _ => Err("usage: cargo xtask <layers|assets|privacy|ci|corpus|screens|updater-archive|update-manifest|sign-file|version|bundle-macos|dmg-macos|package-linux|package-windows>"
                 .to_string()),
         };
     match result {
