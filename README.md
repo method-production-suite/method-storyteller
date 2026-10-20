@@ -101,7 +101,7 @@ stderr) and will be removed in a future release.
 | ⌘⌥1 … ⌘⌥7 (Ctrl+Shift on Windows and Linux) | Change the current element to that type |
 | Shift-Enter | Line break inside an action or dialogue paragraph |
 | Backspace at the start | Join with the previous element |
-| ⌘⌥G (Ctrl+Shift+G on Windows and Linux) | Go to a scene (by its number) or a page |
+| ⌘⌥G (Ctrl+Shift+G on Windows and Linux) | Go to a scene (by its number), a page or an act |
 | ⌘F, then Enter / Shift-Enter (⌘G / ⇧⌘G; F3 / Shift+F3 on Windows and Linux) | Find, next and previous; the find bar also replaces one match or all (one Undo) |
 | Edit > Copy Scene | The scene as screenplay text; paste it back here as the same elements, or into any other app. Pasting several paragraphs of screenplay text makes elements |
 | ⌘; | Spelling: step through words not in the dictionary, with suggestions; Change, Ignore (kept with the script) or Learn (yours, in every script). Misspelled words are underlined as you type (View > Check Spelling While Typing) |

@@ -136,11 +136,20 @@ struct RenameDraft {
     focused: bool,
 }
 
-/// The Go To dialog: a scene number or a page.
+/// What the Go To dialog looks for.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum GoToMode {
+    #[default]
+    Scene,
+    Page,
+    Act,
+}
+
+/// The Go To dialog: a scene number, a page or an act.
 #[derive(Default)]
 struct GoToDraft {
     text: String,
-    page: bool,
+    mode: GoToMode,
     error: Option<String>,
     focused: bool,
     /// A tab was clicked: give the number field the keyboard on the next frame (egui drops it at
@@ -1107,6 +1116,18 @@ impl StorytellerApp {
         ui.label(egui::RichText::new("SCENES").small().strong().color(ui.visuals().weak_text_color()));
         ui.add_space(theme::SPACE_1);
         let mut copy_from = None;
+        // Each New Act line heads the scenes after it; an act with no scenes yet still shows.
+        let acts: Vec<(usize, String)> = self
+            .session
+            .script
+            .elements
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.kind == ElementKind::NewAct)
+            .map(|(i, e)| (i, e.text.trim().to_string()))
+            .collect();
+        let mut next_act = 0;
+        let mut act_clicked = None;
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             // A new script's one empty heading is not a scene yet.
             let blank = matches!(self.session.script.elements.as_slice(), [only] if only.text.trim().is_empty());
@@ -1117,7 +1138,35 @@ impl StorytellerApp {
             let text = ui.visuals().text_color();
             let selected_fill = ui.visuals().selection.bg_fill;
             let hover_fill = ui.visuals().widgets.hovered.weak_bg_fill;
+            let strong = ui.visuals().strong_text_color();
+            let act_row = |ui: &mut egui::Ui, automation: &mut Automation, k: usize, name: &str| {
+                let name = if name.is_empty() { "(untitled act)" } else { name };
+                let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), theme::NAV_ROW_HEIGHT), egui::Sense::click());
+                if response.hovered() {
+                    ui.painter().rect_filled(rect, 5.0, hover_fill);
+                }
+                // Small capitals in the strong colour, like the SCENES label above.
+                let font = egui::FontId::proportional(theme::TYPE_SMALL);
+                ui.painter().with_clip_rect(rect).text(
+                    rect.left_center() + egui::vec2(8.0, 0.0),
+                    egui::Align2::LEFT_CENTER,
+                    name.to_uppercase(),
+                    font,
+                    strong,
+                );
+                automation.add(format!("navigator.act.{k}"), "listitem", name.to_string(), &response);
+                response.clicked()
+            };
             for (n, scene) in scenes.iter().enumerate().filter(|_| !blank) {
+                while let Some((at, name)) = acts.get(next_act) {
+                    if *at > scene.element {
+                        break;
+                    }
+                    if act_row(ui, &mut self.automation, next_act, name) {
+                        act_clicked = Some(*at);
+                    }
+                    next_act += 1;
+                }
                 let number = scene.number.as_deref().unwrap_or("");
                 let heading = if scene.heading.trim().is_empty() { "(untitled scene)" } else { scene.heading.as_str() };
                 let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), theme::NAV_ROW_HEIGHT), egui::Sense::click());
@@ -1162,7 +1211,27 @@ impl StorytellerApp {
                     self.focus_next_frame = Some((entry, 0));
                 }
             }
+            for (k, (at, name)) in acts.iter().enumerate().skip(next_act) {
+                if act_row(ui, &mut self.automation, k, name) {
+                    act_clicked = Some(*at);
+                }
+            }
         });
+        if let Some(act) = act_clicked {
+            // Into the act's first scene, as a scene click does; with no scene, onto the act line.
+            let script = &self.session.script;
+            let first_scene = script
+                .elements
+                .iter()
+                .enumerate()
+                .skip(act + 1)
+                .take_while(|(_, e)| e.kind != ElementKind::NewAct)
+                .find(|(_, e)| e.kind == ElementKind::SceneHeading)
+                .map(|(i, _)| i);
+            let entry = first_scene.map_or(act, |heading| scene_entry(script, heading));
+            self.session.caret = Caret { element: entry, offset: 0 };
+            self.focus_next_frame = Some((entry, 0));
+        }
         if let Some(heading) = copy_from {
             let ctx = ui.ctx().clone();
             self.copy_scene(&ctx, Some(heading));
@@ -1433,16 +1502,22 @@ impl StorytellerApp {
         }
         egui::Window::new("Go To").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_TOP, [0.0, 120.0]).show(ctx, |ui| {
             ui.horizontal(|ui| {
-                let scene = ui.selectable_value(&mut draft.page, false, "Scene");
+                let scene = ui.selectable_value(&mut draft.mode, GoToMode::Scene, "Scene");
                 self.automation.add("dialog.go_to.scene", "radio", "Scene", &scene);
-                let page = ui.selectable_value(&mut draft.page, true, "Page");
+                let page = ui.selectable_value(&mut draft.mode, GoToMode::Page, "Page");
                 self.automation.add("dialog.go_to.page", "radio", "Page", &page);
-                if scene.clicked() || page.clicked() {
+                let act = ui.selectable_value(&mut draft.mode, GoToMode::Act, "Act");
+                self.automation.add("dialog.go_to.act", "radio", "Act", &act);
+                if scene.clicked() || page.clicked() || act.clicked() {
                     draft.refocus = true;
                     ui.ctx().request_repaint();
                 }
             });
-            let hint = if draft.page { "Page number" } else { "Scene number, such as 12 or 12A" };
+            let hint = match draft.mode {
+                GoToMode::Scene => "Scene number, such as 12 or 12A",
+                GoToMode::Page => "Page number",
+                GoToMode::Act => "Act, such as 2, TAG or ACT TWO",
+            };
             let response = ui.add(egui::TextEdit::singleline(&mut draft.text).hint_text(hint).desired_width(240.0));
             self.automation.add("dialog.go_to.text", "textbox", "Go to", &response);
             if !draft.focused {
@@ -1474,16 +1549,16 @@ impl StorytellerApp {
             return;
         }
         let text = draft.text.trim().to_string();
-        let target = if draft.page {
-            match text.parse::<u64>() {
+        let target = match draft.mode {
+            GoToMode::Page => match text.parse::<u64>() {
                 Ok(page) => params(&[("page", json!(page))]),
                 Err(_) => {
                     draft.error = Some("Type a page number.".into());
                     return;
                 }
-            }
-        } else {
-            params(&[("scene", json!(text))])
+            },
+            GoToMode::Scene => params(&[("scene", json!(text))]),
+            GoToMode::Act => params(&[("act", json!(text))]),
         };
         match self.registry.run("nav.go_to", &mut self.session, &target) {
             Ok(_) => {
@@ -1678,7 +1753,7 @@ fn scene_entry(script: &storyteller_core::Script, heading: usize) -> usize {
         .iter()
         .enumerate()
         .skip(heading + 1)
-        .take_while(|(_, e)| e.kind != ElementKind::SceneHeading)
+        .take_while(|(_, e)| !matches!(e.kind, ElementKind::SceneHeading | ElementKind::EndOfAct | ElementKind::NewAct))
         .filter(|(_, e)| e.kind.is_printed())
         .map(|(i, e)| (i, e.kind))
         .collect();

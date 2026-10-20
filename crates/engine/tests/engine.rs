@@ -590,3 +590,19 @@ fn a_new_tv_script_is_laid_out_in_acts() {
     let refused = registry.run("file.new_tv", &mut s, &serde_json::from_value(json!({ "shape": "feature" })).unwrap());
     assert!(refused.is_err(), "an unknown shape is refused");
 }
+
+#[test]
+fn go_to_finds_an_act_by_position_or_name() {
+    let registry = Registry::new();
+    let mut s = Session::default();
+    run(&registry, &mut s, "file.new_tv", json!({ "shape": "one_hour" }));
+    let line = |s: &Session| s.script.elements[s.caret.element].text.clone();
+    for (wanted, act) in [("2", "ACT ONE"), ("tag", "TAG"), ("Act Three", "ACT THREE"), ("five", "ACT FIVE"), (" 1 ", "TEASER")] {
+        run(&registry, &mut s, "nav.go_to", json!({ "act": wanted }));
+        assert_eq!(line(&s), act, "{wanted}");
+    }
+    for missing in ["8", "0", "ACT SIX", "intermission"] {
+        let refused = registry.run("nav.go_to", &mut s, &serde_json::from_value(json!({ "act": missing })).unwrap());
+        assert!(refused.is_err(), "{missing} is refused");
+    }
+}
