@@ -766,6 +766,46 @@ impl Script {
         acts.iter().find(|i| name(i) == wanted).or_else(|| acts.iter().find(|i| name(i) == format!("ACT {wanted}"))).copied()
     }
 
+    /// End of Act lines kept in step with their acts (docs/spec.md §3). Each act named the
+    /// usual way (TEASER, ACT TWO, TAG; see [`act_kind`]) has its last End of Act line renamed
+    /// to `END OF <act>` when that line names an act too; a writer's own line, such as END OF
+    /// SHOW, is left alone. `add_end_for`, a New Act line's position, gets an End of Act line
+    /// at the end of its act when it has none. Returns whether anything changed, and where a
+    /// line was added.
+    pub fn keep_acts_in_step(&mut self, add_end_for: Option<usize>) -> (bool, Option<usize>) {
+        let managed = |text: &str| {
+            let line = text.trim().to_uppercase();
+            line.strip_prefix("END OF ").is_some_and(|name| act_kind(name) == Some(ElementKind::NewAct))
+        };
+        let acts = self.acts();
+        let mut changed = false;
+        let mut add_at = None;
+        for (k, &act) in acts.iter().enumerate() {
+            let end = acts.get(k + 1).copied().unwrap_or(self.elements.len());
+            let Some(name) = self.elements.get(act).map(|e| e.text.trim().to_uppercase()) else { continue };
+            if act_kind(&name) != Some(ElementKind::NewAct) {
+                continue;
+            }
+            let want = format!("END OF {name}");
+            let last_end = (act + 1..end).rev().find(|&i| self.elements.get(i).is_some_and(|e| e.kind == ElementKind::EndOfAct));
+            match last_end.and_then(|i| self.elements.get_mut(i)) {
+                Some(line) => {
+                    if managed(&line.text) && line.text != want {
+                        line.text = want;
+                        changed = true;
+                    }
+                }
+                None if add_end_for == Some(act) => add_at = Some((end, want)),
+                None => {}
+            }
+        }
+        let added = add_at.map(|(at, text)| {
+            self.elements.insert(at, Element::new(ElementKind::EndOfAct, text));
+            at
+        });
+        (changed || added.is_some(), added)
+    }
+
     /// A new television script laid out in acts: each act's line, an empty scene heading to
     /// start writing in, and the line that ends the act.
     pub fn tv(shape: TvShape) -> Self {

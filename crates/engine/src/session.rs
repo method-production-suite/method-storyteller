@@ -43,6 +43,9 @@ pub struct Session {
     undo: Vec<Snapshot>,
     redo: Vec<Snapshot>,
     last_edit: Option<EditKind>,
+    /// Counts checkpoints, so a command that edited the script can be told from one that
+    /// did not.
+    edits: u64,
     paginated: Option<Paginated>,
     lengths: Option<Vec<SceneLength>>,
     /// The writer's learned words (see [`crate::spell::Personal`]); the app fills them from its settings.
@@ -72,6 +75,7 @@ impl Session {
             undo: Vec::new(),
             redo: Vec::new(),
             last_edit: None,
+            edits: 0,
             paginated: None,
             lengths: None,
             spelling: crate::spell::Personal::default(),
@@ -89,6 +93,7 @@ impl Session {
         }
         self.redo.clear();
         self.last_edit = Some(kind);
+        self.edits += 1;
         self.dirty = true;
         self.paginated = None;
         self.lengths = None;
@@ -174,6 +179,26 @@ impl Session {
             self.lengths = self.paginated.as_ref().map(|paginated| scene_lengths(script, paginated, layout));
         }
         self.lengths.as_deref().unwrap_or_default()
+    }
+
+    /// How many edits the session has recorded (see [`Session::checkpoint`]).
+    pub fn edits(&self) -> u64 {
+        self.edits
+    }
+
+    /// After an edit: End of Act lines follow their acts' names, and an act whose line the
+    /// caret is on gets its End of Act line when it has none (docs/spec.md §3).
+    pub fn keep_acts_in_step(&mut self) {
+        let on_act = self.current().is_some_and(|e| e.kind == ElementKind::NewAct).then_some(self.caret.element);
+        let (changed, added) = self.script.keep_acts_in_step(on_act);
+        if let Some(at) = added
+            && self.caret.element >= at
+        {
+            self.caret.element += 1;
+        }
+        if changed {
+            self.invalidate_layout();
+        }
     }
 
     /// Drop the cached pagination (after a layout change).

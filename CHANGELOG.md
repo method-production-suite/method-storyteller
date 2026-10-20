@@ -5,6 +5,12 @@ for its own version in Help > What's New, once after an update.
 
 ## Unreleased
 
+### New
+
+- End of Act lines follow their acts: rename ACT TWO and its END OF ACT TWO follows, and a
+  new act gets its End of Act line as you name it. Your own lines, such as END OF SHOW, stay
+  as you wrote them.
+
 ## 0.3.0
 
 ### New

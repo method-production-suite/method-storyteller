@@ -721,8 +721,13 @@ impl StorytellerApp {
                             self.editor.pending_focus = Some((index, caret));
                         }
                     }
+                    let edits = self.session.edits();
                     let _ = storyteller_engine::commands::set_text(&mut self.session, index, &text, true);
                     self.session.caret = Caret { element: index, offset: caret };
+                    // Typing outside the command registry: End of Act lines follow here too.
+                    if self.session.edits() != edits {
+                        self.session.keep_acts_in_step();
+                    }
                     self.session.clamp_caret();
                 }
                 EditAction::Caret { index, offset } => {

@@ -220,7 +220,7 @@ wait for a decision above.
    - New TV Script: Teaser or Cold Open, the acts and Tag laid out, one-hour or half-hour
      [have];
    - acts in the navigator (each act heading its scenes) and in Go To [have];
-   - End of Act lines written and kept in step automatically (decision 18);
+   - End of Act lines written and kept in step automatically (decision 18) [have];
    - a multi-camera sitcom shape: lettered scenes, each on a new page with its characters,
      double-spaced dialogue, action in capitals (decision 17).
 8b. **Bold, italic and underline in the editor** [missing] S (owner, 2026-10-19). The files
