@@ -185,12 +185,71 @@ Production > Reports… opens one window with a report picker, each one also a c
 Each report exports as CSV (comma-separated, UTF-8, a header row) and prints as a PDF table.
 File > Export Plain Text… writes the script as it reads on the page, with no markup.
 
-### 4.4 The Method Schedule export
+### 4.4 The Method Schedule export: script scenes
 
-File > Export for Method Schedule… writes a structured file Method Schedule reads: the title
-page, and every scene with its number, heading parts (INT/EXT, location, time of day), page,
-length in eighths, speaking characters, summary and colour. The format is agreed with the
-Method Schedule session before it is built (decision S4), and versioned from its first release.
+File > Export for Method Schedule… and `method-storyteller export-scenes SCRIPT OUT` write a
+**script scenes file** (`.mscenes`, plain JSON) that Method Schedule reads through its File >
+Import Script: one sheet per scene, with Storyteller's own pages and lengths, so nothing is
+estimated. Agreed with the Method Schedule session on 2026-10-20 (decision S4). The same
+spec is in Method Schedule's `docs/EXCHANGE.md`, section "Script scenes from Storyteller";
+when the two differ, the newer dated entry settles it and both are brought back in line.
+
+**Version 1** (`format` `method-script-scenes`). Frozen when Storyteller first ships the
+writer; from then on, changes are additive only (a new optional field, never one removed,
+renamed or given a new meaning), and a change that would break a reader gets a new `format`
+name. **Readers ignore keys they do not know and read every version number**, so an older
+Method Schedule reads a newer file.
+
+Rules, as in Method Schedule's budget exchange: UTF-8, pretty JSON, keys in the order below,
+one trailing newline. No nulls: an optional value the script does not have is left out.
+Numbers are whole and never negative; dates are `YYYY-MM-DD`.
+
+Top level, in order:
+
+| Key | | What it holds |
+| --- | --- | --- |
+| `format` | always | `"method-script-scenes"` |
+| `version` | always | `1` |
+| `title` | always | The title page's title, `""` when there is none |
+| `episode` | optional | A TV script's episode number or title |
+| `written_by` | optional | The title page's credit |
+| `draft` | optional | The title page's draft text, as written |
+| `generated` | always | The date the file was written |
+| `source_hash` | always | 16 hex digits of a stable digest of the script's content. Opaque: a reader only compares it, to tell that this exact script was already imported |
+| `pages` | always | The script's length in whole pages |
+| `eighths` | always | The script's length in eighths: the sum of the scenes' |
+| `scenes` | always | The scenes, in script order |
+
+Each scene, in order:
+
+| Key | | What it holds |
+| --- | --- | --- |
+| `index` | always | Its position, from 1; keeps script order and matches scenes when numbers repeat |
+| `number` | optional | As printed: `12`, `12A`, or `A` in a multi-camera script |
+| `heading` | always | The heading's full text |
+| `int_ext` | optional | `INT`, `EXT` or `INT/EXT`; left out when the heading has none |
+| `set` | optional | The heading's location part |
+| `time` | optional | Its time of day, such as `NIGHT` |
+| `story_day` | optional | The story day, such as `DAY 3` or `NIGHT 2`, once Storyteller tracks it |
+| `page` | always | The page it starts on, as printed, a string: `12`, or `12A` on a locked page |
+| `eighths` | always | Its length in eighths, at least 1 |
+| `cast` | always | Speaking characters, in first-seen order, extensions such as (V.O.) and (CONT'D) dropped |
+| `nonspeaking` | optional | Characters in the scene who do not speak, in first-seen order, apart from `cast` |
+| `omitted` | optional | `true` for an omitted scene, which then has `cast` `[]` and `eighths` `1` |
+| `title` | optional | The scene's title (scene properties) |
+| `summary` | optional | The scene's summary |
+| `color` | optional | The scene's colour, `#RRGGBB` |
+| `act` | optional | The TV act it is in, such as `ACT ONE` |
+| `tags` | reserved | Production tags, `[{"category", "name"}]`, the shape of Method Schedule's tagged `.fdx` import. Not written in version 1; the name is kept for them |
+
+How Method Schedule reads it, for the record: `number` is the sheet's scene number (`index`
+when there is none, and the import says so); `eighths` the page length; `int_ext`, `set` and
+`time` are taken as sent, and a missing one is split from `heading` as its Fountain import
+does; `summary` goes to the synopsis, with `title` in front as `title: summary`; `act` to the
+Sequence field; `story_day` to Script Day; `nonspeaking` to the cast, not as speaking;
+`episode` to every sheet's Episode; an omitted scene becomes an omitted sheet, struck on the
+board and counting no pages. `color` is kept in the file but not used by version 1 of the
+reader.
 
 ## 5. What `production.json` holds
 
@@ -211,10 +270,10 @@ app keeps its production data.
 | S1 | Skip the letters I and O in scene numbers | No by default, a setting to skip both |
 | S2 | Mark and Clear Revised on ⌘] and ⌘[ | Yes |
 | S3 | A-page lettering past Z, and merged pages | AA to ZZ; merged pages as `7-8` |
-| S4 | The Method Schedule export format | To agree with the Method Schedule session first |
+| S4 | The Method Schedule export format | Agreed with Method Schedule, 2026-10-20: section 4.4 |
 
 All four are reversible. S1 to S3 go to the roadmap's Waiting on the owner as built on the
-recommendation; S4 waits for the schedule session.
+recommendation; S4 was agreed with the schedule session and is marked so too.
 
 ## 7. For the parity check (M7)
 
@@ -233,4 +292,4 @@ for a scene with dual dialogue, and where the revised-page header label sits.
 7. Locked pages on the page (4.1), measured on the corpus.
 8. Locking (4.2).
 9. Reports and plain text (4.3).
-10. The Method Schedule export (4.4), once S4 is agreed.
+10. The Method Schedule export (4.4).
