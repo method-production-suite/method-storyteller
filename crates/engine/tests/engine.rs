@@ -791,3 +791,23 @@ fn the_character_table_counts_speeches_scenes_and_words() {
     let mut s = Session::new(script);
     assert_eq!(run(&registry, &mut s, "character.table", json!({}))["value"].as_array().map(Vec::len), Some(2));
 }
+
+#[test]
+fn number_scenes_keeps_numbers_letters_new_scenes_and_edits_one() {
+    let registry = Registry::new();
+    let mut s = Session::new(storyteller_core::fountain::parse("INT. A - DAY #5#\n\nINT. NEW - DAY\n\nINT. B - DAY #6#\n").unwrap());
+    let numbers = |s: &Session| {
+        s.script.elements.iter().filter(|e| e.kind == K::SceneHeading).map(|e| e.scene_number.clone().unwrap_or_default()).collect::<Vec<_>>()
+    };
+    let out = run(&registry, &mut s, "scene.number", json!({ "keep_existing": true }));
+    assert_eq!(numbers(&s), ["5", "5A", "6"]);
+    assert_eq!(out["message"], "Numbered 1 scene");
+    run(&registry, &mut s, "edit.undo", json!({}));
+    assert_eq!(numbers(&s), ["5", "", "6"], "one Undo");
+    run(&registry, &mut s, "scene.number", json!({ "start": 20 }));
+    assert_eq!(numbers(&s), ["20", "21", "22"]);
+    run(&registry, &mut s, "scene.set_number", json!({ "index": 1, "number": "21a" }));
+    assert_eq!(numbers(&s)[1], "21A");
+    let taken = registry.run("scene.set_number", &mut s, &serde_json::from_value(json!({ "index": 1, "number": "22" })).unwrap());
+    assert!(taken.is_err(), "another scene has 22");
+}

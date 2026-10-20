@@ -1543,15 +1543,67 @@ fn all_commands() -> Vec<Command> {
         },
         Command {
             id: "scene.number",
-            label: "Number Scenes",
-            menu: "Production/Number Scenes",
+            label: "Number Scenes…",
+            menu: "Production/Number Scenes…",
             shortcut: None,
-            params: const { &[param("keep_existing", Bool, false, "Keep numbers that are already set")] },
+            params: const {
+                &[
+                    param("keep_existing", Bool, false, "Keep numbers that are already set, and letter new scenes (12A)"),
+                    param("start", Integer, false, "The first number (default 1)"),
+                    param("from_caret", Bool, false, "Number only from the caret's scene on"),
+                    param("skip_io", Bool, false, "Leave out the letters I and O"),
+                ]
+            },
             enabled: always,
             run: |s, p| {
+                let start = opt_index(p, "start")?.map_or(1, |n| u32::try_from(n).unwrap_or(u32::MAX));
+                let from = if opt_bool(p, "from_caret")?.unwrap_or(false) {
+                    // The caret's scene: its heading, or the first heading after it.
+                    s.script.elements.iter().take(s.caret.element + 1).rposition(|e| e.kind == ElementKind::SceneHeading).unwrap_or(s.caret.element)
+                } else {
+                    0
+                };
+                let options = storyteller_core::model::Numbering {
+                    start,
+                    keep_existing: opt_bool(p, "keep_existing")?.unwrap_or(false),
+                    from,
+                    skip_io: opt_bool(p, "skip_io")?.unwrap_or(false),
+                };
+                let mut numbered = s.script.clone();
+                let changed = numbered.number_with(options);
+                if changed == 0 {
+                    return Ok(Outcome::message("Every scene already has that number".to_string()));
+                }
                 s.checkpoint(EditKind::Other);
-                s.script.number_scenes(opt_bool(p, "keep_existing")?.unwrap_or(false));
-                Ok(Outcome::message(format!("Numbered {} scenes", s.script.scene_indices().len())))
+                s.script = numbered;
+                Ok(Outcome::message(if changed == 1 { "Numbered 1 scene".to_string() } else { format!("Numbered {changed} scenes") }))
+            },
+        },
+        Command {
+            id: "scene.set_number",
+            label: "Edit Scene Number",
+            menu: "",
+            shortcut: None,
+            params: const { &[INDEX, param("number", String, true, "The number, such as 12 or 12A (empty clears it)")] },
+            enabled: always,
+            run: |s, p| {
+                let index = element_index(s, p)?;
+                let heading = s
+                    .script
+                    .elements
+                    .iter()
+                    .take(index + 1)
+                    .rposition(|e| e.kind == ElementKind::SceneHeading)
+                    .ok_or_else(|| CommandError::Invalid { name: "index", reason: "that is not in a scene".into() })?;
+                let number = string(p, "number")?;
+                let mut renumbered = s.script.clone();
+                renumbered.set_scene_number(heading, &number).map_err(|reason| CommandError::Invalid { name: "number", reason })?;
+                if renumbered.elements.get(heading) == s.script.elements.get(heading) {
+                    return Ok(Outcome::done());
+                }
+                s.checkpoint(EditKind::Other);
+                s.script = renumbered;
+                Ok(Outcome::value(json!({ "heading": heading })))
             },
         },
         Command {

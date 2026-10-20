@@ -51,7 +51,8 @@ Production > Number Scenes… opens a dialog:
   Z, then AA, AB.
 - **Remove numbers.**
 - **Show in the left margin**, **Show in the right margin** (both on by default; a script
-  setting, kept in the element settings both formats share).
+  setting, kept in the element settings both formats share). *Not in the first PR: View > Scene
+  Numbers shows both or neither for now.*
 
 Production > Edit Scene Number… sets or clears one scene's number by hand. Two scenes may not
 share a number: the dialog says which scene has it.

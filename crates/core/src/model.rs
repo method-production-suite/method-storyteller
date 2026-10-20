@@ -172,6 +172,63 @@ impl TvShape {
     }
 }
 
+/// How Production > Number Scenes numbers (see [`Script::number_with`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Numbering {
+    /// The first number given (1 by default).
+    pub start: u32,
+    /// Keep the numbers headings have, and letter the new ones.
+    pub keep_existing: bool,
+    /// Number only the headings from this element on (0: all).
+    pub from: usize,
+    /// Leave out the letters I and O, which read as 1 and 0.
+    pub skip_io: bool,
+}
+
+impl Default for Numbering {
+    fn default() -> Self {
+        Numbering { start: 1, keep_existing: false, from: 0, skip_io: false }
+    }
+}
+
+/// The `n`th inserted-scene letter group: A … Z, AA, AB … (I and O left out with `skip_io`).
+pub fn letters(n: usize, skip_io: bool) -> String {
+    let alphabet: Vec<char> = ('A'..='Z').filter(|c| !(skip_io && matches!(c, 'I' | 'O'))).collect();
+    let base = alphabet.len();
+    let mut n = n;
+    let mut out = Vec::new();
+    loop {
+        out.push(alphabet.get(n % base).copied().unwrap_or('A'));
+        if n < base {
+            break;
+        }
+        n = n / base - 1;
+    }
+    out.iter().rev().collect()
+}
+
+/// The `n`th number tried for a scene inserted after `before`. First the next letter (`12`
+/// gives `12A`, `12A` gives `12B`); when that is taken, because the next scene already has it,
+/// a level deeper, so the order holds (`12AA` between `12A` and `12B`).
+fn insert_after(before: &str, n: usize, skip_io: bool) -> String {
+    let digits_end = before.char_indices().rev().find(|(_, c)| c.is_ascii_digit()).map_or(0, |(i, c)| i + c.len_utf8());
+    let (stem, suffix) = before.split_at(digits_end);
+    let lettered = !stem.is_empty() && !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_uppercase());
+    if !lettered {
+        return format!("{before}{}", letters(n, skip_io));
+    }
+    if n == 0 {
+        let place = (0..10_000).find(|&k| letters(k, skip_io) == suffix).unwrap_or(0);
+        return format!("{stem}{}", letters(place + 1, skip_io));
+    }
+    format!("{before}{}", letters(n - 1, skip_io))
+}
+
+/// The first of `candidate(0)`, `candidate(1)` … that `taken` does not hold.
+fn free(taken: &std::collections::HashSet<String>, candidate: impl Fn(usize) -> String) -> String {
+    (0..100_000).map(&candidate).find(|c| !taken.contains(c)).unwrap_or_else(|| candidate(0))
+}
+
 /// A scene's letter: A to Z, then AA, AB …
 pub fn scene_letter(n: usize) -> String {
     let mut n = n;
@@ -956,21 +1013,97 @@ impl Script {
     }
 
     /// Number every scene heading 1, 2, 3… When `keep_existing` is set, headings that
-    /// already have a number keep it.
+    /// already have a number keep it and new ones get letters (see [`Script::number_with`]).
     pub fn number_scenes(&mut self, keep_existing: bool) {
-        let mut next: u32 = 1;
-        for element in &mut self.elements {
-            if element.kind != ElementKind::SceneHeading {
+        self.number_with(Numbering { keep_existing, ..Numbering::default() });
+    }
+
+    /// Numbers the scene headings as `options` says (docs/production-spec.md §3.1); returns how
+    /// many headings changed.
+    ///
+    /// Without `keep_existing`, the headings from `from` on are numbered `start`, `start + 1` …
+    /// With it, numbered headings keep their numbers; an unnumbered one after `12` becomes `12A`,
+    /// then `12B`; one before the first numbered heading (`1`) becomes `A1`, then `B1`. A
+    /// number the script already uses is never given twice: the next letter is tried, then a
+    /// further one (`12AA`).
+    pub fn number_with(&mut self, options: Numbering) -> usize {
+        let headings: Vec<usize> = self.scene_indices();
+        let mut changed = 0;
+        let mut set = |elements: &mut Vec<Element>, at: usize, number: String| {
+            if let Some(element) = elements.get_mut(at)
+                && element.scene_number.as_deref() != Some(number.as_str())
+            {
+                element.scene_number = Some(number);
+                changed += 1;
+            }
+        };
+        if !options.keep_existing || headings.iter().all(|&h| self.elements.get(h).is_none_or(|e| e.scene_number.is_none())) {
+            let mut next = options.start.max(1);
+            for &h in headings.iter().filter(|&&h| h >= options.from) {
+                set(&mut self.elements, h, next.to_string());
+                next = next.saturating_add(1);
+            }
+            return changed;
+        }
+        let mut taken: std::collections::HashSet<String> =
+            headings.iter().filter_map(|&h| self.elements.get(h).and_then(|e| e.scene_number.clone())).collect();
+        let mut previous: Option<String> = None;
+        let mut position = 0;
+        while let Some(&h) = headings.get(position) {
+            if let Some(number) = self.elements.get(h).and_then(|e| e.scene_number.clone()) {
+                previous = Some(number);
+                position += 1;
                 continue;
             }
-            if keep_existing && let Some(existing) = &element.scene_number {
-                if let Ok(value) = existing.trim().parse::<u32>() {
-                    next = value.saturating_add(1);
+            if h < options.from {
+                position += 1;
+                continue;
+            }
+            match &previous {
+                // After a numbered scene: its number with the next letter.
+                Some(before) => {
+                    let number = free(&taken, |n| insert_after(before, n, options.skip_io));
+                    taken.insert(number.clone());
+                    set(&mut self.elements, h, number.clone());
+                    previous = Some(number);
+                    position += 1;
                 }
-                continue;
+                // Before the first numbered scene: letters in front of its number.
+                None => {
+                    let first =
+                        headings.iter().skip(position).find_map(|&k| self.elements.get(k).and_then(|e| e.scene_number.clone())).unwrap_or_default();
+                    let mut letter = 0;
+                    while let Some(&k) = headings.get(position).filter(|&&k| self.elements.get(k).is_some_and(|e| e.scene_number.is_none())) {
+                        let number = free(&taken, |n| format!("{}{first}", letters(letter + n, options.skip_io)));
+                        taken.insert(number.clone());
+                        set(&mut self.elements, k, number);
+                        letter += 1;
+                        position += 1;
+                    }
+                }
             }
-            element.scene_number = Some(next.to_string());
-            next = next.saturating_add(1);
+        }
+        changed
+    }
+
+    /// Sets one scene's number by hand (empty clears it). Refuses a number another scene has,
+    /// naming that scene's position.
+    pub fn set_scene_number(&mut self, heading: usize, number: &str) -> Result<(), String> {
+        let number = number.trim().to_uppercase();
+        if !number.is_empty()
+            && let Some(other) = self
+                .scene_indices()
+                .iter()
+                .position(|&h| h != heading && self.elements.get(h).and_then(|e| e.scene_number.as_deref()) == Some(number.as_str()))
+        {
+            return Err(format!("scene {} already has the number {number}", other + 1));
+        }
+        match self.elements.get_mut(heading).filter(|e| e.kind == ElementKind::SceneHeading) {
+            Some(element) => {
+                element.scene_number = (!number.is_empty()).then_some(number);
+                Ok(())
+            }
+            None => Err("that is not a scene heading".into()),
         }
     }
 

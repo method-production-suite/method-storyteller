@@ -46,6 +46,9 @@ pub struct General {
     /// the system's region (decision 16).
     #[serde(default)]
     pub spelling_language: String,
+    /// Number Scenes leaves out the letters I and O (decision 20, off by default).
+    #[serde(default)]
+    pub skip_io_letters: bool,
 }
 
 impl Default for General {
@@ -59,6 +62,7 @@ impl Default for General {
             sample_seen: false,
             tv_shape: storyteller_core::model::TvShape::default(),
             spelling_language: String::new(),
+            skip_io_letters: false,
         }
     }
 }

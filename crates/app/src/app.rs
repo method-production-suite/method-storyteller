@@ -39,7 +39,7 @@ const GO_TO_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Alt+G" } else { "Cmd
 const FIND_NEXT_KEY: &str = if cfg!(target_os = "macos") { "Cmd+G" } else { "F3" };
 const FIND_PREVIOUS_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Shift+G" } else { "Shift+F3" };
 
-const APP_COMMANDS: [AppCommand; 39] = [
+const APP_COMMANDS: [AppCommand; 40] = [
     AppCommand { id: "app.close", label: "Close", menu: "File/Close", shortcut: Some("Cmd+W") },
     AppCommand { id: "app.title_page", label: "Title Page…", menu: "File/Title Page…", shortcut: Some("Cmd+Shift+T") },
     AppCommand {
@@ -71,6 +71,7 @@ const APP_COMMANDS: [AppCommand; 39] = [
     AppCommand { id: "app.find_previous", label: "Find Previous", menu: "Edit/Find Previous", shortcut: Some(FIND_PREVIOUS_KEY) },
     AppCommand { id: "app.rename_character", label: "Rename Character…", menu: "Production/Rename Character…", shortcut: None },
     AppCommand { id: "app.characters", label: "Characters", menu: "Production/Characters", shortcut: None },
+    AppCommand { id: "app.edit_scene_number", label: "Edit Scene Number…", menu: "Production/Edit Scene Number…", shortcut: None },
     AppCommand { id: "app.go_to", label: "Go To…", menu: "Edit/Go To…", shortcut: Some(GO_TO_KEY) },
     AppCommand { id: "prefs.smart_quotes", label: "Smart Quotes", menu: "Format/Smart Quotes", shortcut: None },
     AppCommand { id: "app.bold", label: "Bold", menu: "Format/Bold", shortcut: Some("Cmd+B") },
@@ -134,6 +135,23 @@ enum Pending {
 
 struct TitleDraft {
     fields: Vec<(String, String)>,
+}
+
+/// Production > Number Scenes….
+struct NumberingDraft {
+    start: String,
+    keep_existing: bool,
+    from_caret: bool,
+    skip_io: bool,
+    error: Option<String>,
+}
+
+/// Production > Edit Scene Number….
+struct SceneNumberDraft {
+    heading: usize,
+    number: String,
+    error: Option<String>,
+    focused: bool,
 }
 
 /// The Scene Properties dialog: a scene's title, summary and colour.
@@ -217,6 +235,8 @@ pub struct StorytellerApp {
     scene_dialog: Option<SceneDraft>,
     /// Production > Characters: the character table is open.
     characters: bool,
+    numbering: Option<NumberingDraft>,
+    scene_number: Option<SceneNumberDraft>,
     find: Option<find_bar::FindBar>,
     spelling: Option<spelling::SpellDialog>,
     spell_cache: spelling::SpellCache,
@@ -334,6 +354,8 @@ impl StorytellerApp {
             rename: None,
             scene_dialog: None,
             characters: false,
+            numbering: None,
+            scene_number: None,
             find: None,
             spelling: None,
             spell_cache: spelling::SpellCache::default(),
@@ -560,6 +582,26 @@ impl StorytellerApp {
             // File > Close: the script closes and an empty one takes its place (decision 15).
             "app.close" => self.guard_unsaved(ctx, Pending::New),
             "app.characters" => self.characters = !self.characters,
+            "scene.number" => {
+                let numbered = self.session.script.scene_indices().iter().any(|&h| self.session.element(h).is_some_and(|e| e.scene_number.is_some()));
+                self.numbering = Some(NumberingDraft {
+                    start: "1".into(),
+                    keep_existing: numbered,
+                    from_caret: false,
+                    skip_io: self.prefs.get().general.skip_io_letters,
+                    error: None,
+                });
+            }
+            "app.edit_scene_number" => {
+                let caret = self.session.caret.element;
+                match self.session.script.elements.iter().take(caret + 1).rposition(|e| e.kind == ElementKind::SceneHeading) {
+                    Some(heading) => {
+                        let number = self.session.element(heading).and_then(|e| e.scene_number.clone()).unwrap_or_default();
+                        self.scene_number = Some(SceneNumberDraft { heading, number, error: None, focused: false });
+                    }
+                    None => self.status = "Put the caret in a scene to edit its number.".into(),
+                }
+            }
             "app.clear_recent" => {
                 self.prefs.update(|p| p.general.recent.clear());
                 self.status = "Cleared the list of recent scripts.".into();
@@ -1723,6 +1765,127 @@ impl StorytellerApp {
         }
     }
 
+    /// Production > Number Scenes…: start number, keep existing (letters for new scenes), from
+    /// the caret's scene on, and whether I and O are left out.
+    fn numbering_dialog(&mut self, ctx: &egui::Context) {
+        let Some(draft) = &mut self.numbering else { return };
+        let mut ok = false;
+        let mut close = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+        egui::Window::new("Number Scenes").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_TOP, [0.0, 120.0]).show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Start at");
+                let start = ui.add_enabled(!draft.keep_existing, egui::TextEdit::singleline(&mut draft.start).desired_width(60.0));
+                self.automation.add("dialog.numbering.start", "textbox", "Start at", &start);
+            });
+            let keep = ui.checkbox(&mut draft.keep_existing, "Keep existing numbers (new scenes get letters, such as 12A)");
+            self.automation.add("dialog.numbering.keep", "checkbox", "Keep existing numbers", &keep);
+            let from = ui.checkbox(&mut draft.from_caret, "From the current scene on");
+            self.automation.add("dialog.numbering.from_caret", "checkbox", "From the current scene on", &from);
+            let skip = ui.checkbox(&mut draft.skip_io, "Leave out the letters I and O");
+            self.automation.add("dialog.numbering.skip_io", "checkbox", "Leave out the letters I and O", &skip);
+            if let Some(error) = &draft.error {
+                ui.colored_label(ui.visuals().error_fg_color, error);
+            }
+            ui.add_space(theme::SPACE_2);
+            ui.horizontal(|ui| {
+                let number = ui.button("Number");
+                self.automation.add("dialog.numbering.ok", "button", "Number", &number);
+                let cancel = ui.button("Cancel");
+                self.automation.add("dialog.numbering.cancel", "button", "Cancel", &cancel);
+                ok |= number.clicked();
+                close |= cancel.clicked();
+            });
+        });
+        if close {
+            self.numbering = None;
+            self.refocus();
+            return;
+        }
+        if !ok {
+            return;
+        }
+        let Some(start) = draft.start.trim().parse::<u64>().ok().filter(|n| *n >= 1) else {
+            draft.error = Some("Start at a whole number, 1 or more.".into());
+            return;
+        };
+        let target = params(&[
+            ("keep_existing", json!(draft.keep_existing)),
+            ("start", json!(start)),
+            ("from_caret", json!(draft.from_caret)),
+            ("skip_io", json!(draft.skip_io)),
+        ]);
+        let skip_io = draft.skip_io;
+        self.prefs.update(|p| p.general.skip_io_letters = skip_io);
+        match self.registry.run("scene.number", &mut self.session, &target) {
+            Ok(outcome) => {
+                self.numbering = None;
+                if let Some(message) = outcome.message {
+                    self.status = message;
+                }
+                self.refocus();
+                ctx.request_repaint();
+            }
+            Err(error) => {
+                if let Some(draft) = &mut self.numbering {
+                    draft.error = Some(error.to_string());
+                }
+            }
+        }
+    }
+
+    /// Production > Edit Scene Number…: the caret's scene's number, by hand.
+    fn scene_number_dialog(&mut self, ctx: &egui::Context) {
+        let Some(draft) = &mut self.scene_number else { return };
+        let heading = self.session.element(draft.heading).map(|e| e.text.clone()).unwrap_or_default();
+        let mut ok = false;
+        let mut close = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+        egui::Window::new("Edit Scene Number").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_TOP, [0.0, 120.0]).show(ctx, |ui| {
+            ui.label(egui::RichText::new(heading.as_str()).strong());
+            let number = ui.add(egui::TextEdit::singleline(&mut draft.number).hint_text("Such as 12 or 12A; empty for none").desired_width(200.0));
+            self.automation.add("dialog.scene_number.number", "textbox", "Number", &number);
+            if !draft.focused {
+                number.request_focus();
+                draft.focused = true;
+            }
+            ok |= number.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            if let Some(error) = &draft.error {
+                ui.colored_label(ui.visuals().error_fg_color, error);
+            }
+            ui.horizontal(|ui| {
+                let save = ui.button("OK");
+                self.automation.add("dialog.scene_number.ok", "button", "OK", &save);
+                let cancel = ui.button("Cancel");
+                self.automation.add("dialog.scene_number.cancel", "button", "Cancel", &cancel);
+                ok |= save.clicked();
+                close |= cancel.clicked();
+            });
+        });
+        if close {
+            self.scene_number = None;
+            self.refocus();
+            return;
+        }
+        if !ok {
+            return;
+        }
+        let target = params(&[("index", json!(draft.heading)), ("number", json!(draft.number))]);
+        match self.registry.run("scene.set_number", &mut self.session, &target) {
+            Ok(_) => {
+                self.scene_number = None;
+                self.refocus();
+                ctx.request_repaint();
+            }
+            Err(error) => {
+                if let Some(draft) = &mut self.scene_number {
+                    draft.error = Some(match error {
+                        storyteller_engine::CommandError::Invalid { reason, .. } => capitalise(&reason),
+                        other => other.to_string(),
+                    });
+                }
+            }
+        }
+    }
+
     /// Opens Scene Properties for the scene headed at `heading`.
     fn open_scene_dialog(&mut self, heading: usize) {
         let meta = self.session.script.elements.get(heading).map(|e| e.scene.clone()).unwrap_or_default();
@@ -2082,6 +2245,8 @@ impl StorytellerApp {
         self.rename_dialog(&ctx);
         self.scene_properties_dialog(&ctx);
         self.characters_window(&ctx);
+        self.numbering_dialog(&ctx);
+        self.scene_number_dialog(&ctx);
         self.help_windows(&ctx);
         self.unsaved_prompt(&ctx);
         self.recovery_prompt(&ctx);

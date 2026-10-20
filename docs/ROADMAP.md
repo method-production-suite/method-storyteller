@@ -254,8 +254,8 @@ wait for a decision above.
    Screenplay Format, and a production data file. Open and save, File > Save As, the Finder's
    document type and icon. Comes first in M5.
 9. **M5, production I** L. Spec: [production-spec.md](production-spec.md), section 3, with its
-   order of PRs. Full scene numbering (A-suffix inserts, prefix schemes, left and
-   right), omit and unomit, revision sets (name, mark, colour), revision mode, mark and clear,
+   order of PRs. Done: scene numbering (letter inserts, start, from the caret, I and O, edit one
+   number). Next: left and right margins, omit and unomit, revision sets (name, mark, colour), revision mode, mark and clear,
    deleted-text markers, revisions drawn in the editor and the PDF, the revised-pages header,
    revised-pages-only and range PDFs, clean copies. Kept in the `.mstory` package (decision 1).
 10. **M6, production II and reports** L. Spec: [production-spec.md](production-spec.md),
