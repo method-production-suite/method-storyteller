@@ -7,3 +7,5 @@
 #   then who approved it, when, and for which release; releases may ship it.
 # Remove a line once the version is 14 days old.
 muda 0.21.2   # owner-approved override, the owner, 2026-10-19, release v0.2.0 (craft-quit, at its pinned craft-libs revision, requires ^0.21.2; 14 days old on 2026-10-22, and 0.21.1 is young too)
+rustls-webpki 0.103.16   # security fix RUSTSEC-2026-0382 (rustls-webpki below 0.103.16), the updater's TLS; listed 2026-10-20, 14 days old on 2026-11-03
+webpki-roots 1.0.10   # security fix RUSTSEC-2026-0381 (webpki-roots below 1.0.10, the distrusted emSign roots), the updater's TLS; listed 2026-10-20, 14 days old on 2026-11-03
