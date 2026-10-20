@@ -39,7 +39,8 @@ const GO_TO_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Alt+G" } else { "Cmd
 const FIND_NEXT_KEY: &str = if cfg!(target_os = "macos") { "Cmd+G" } else { "F3" };
 const FIND_PREVIOUS_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Shift+G" } else { "Shift+F3" };
 
-const APP_COMMANDS: [AppCommand; 35] = [
+const APP_COMMANDS: [AppCommand; 36] = [
+    AppCommand { id: "app.close", label: "Close", menu: "File/Close", shortcut: Some("Cmd+W") },
     AppCommand { id: "app.title_page", label: "Title Page…", menu: "File/Title Page…", shortcut: Some("Cmd+Shift+T") },
     AppCommand {
         id: "prefs.new_mstory",
@@ -214,6 +215,22 @@ struct MenuEntry {
     label: String,
     shortcut: Option<&'static str>,
     enabled: bool,
+}
+
+/// File > Open Recent: the submenu's place among the File entries, and its items' id prefix
+/// (`app.open_recent.0` is the most recent script).
+const OPEN_RECENT: &str = "app.open_recent";
+const RECENT_PREFIX: &str = "app.open_recent.";
+
+/// A recent script's menu label: its file name, and its folder after a dash, so two
+/// `Pilot.mstory` files stay apart.
+fn recent_label(path: &str) -> String {
+    let path = Path::new(path);
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.display().to_string());
+    match path.parent().and_then(|p| p.file_name()) {
+        Some(folder) => format!("{name} – {}", folder.to_string_lossy()),
+        None => name,
+    }
 }
 
 impl StorytellerApp {
@@ -483,6 +500,21 @@ impl StorytellerApp {
                 self.prefs.update(|p| p.view.scene_numbers = show);
             }
             "edit.copy_scene" => self.copy_scene(ctx, None),
+            // File > Close: the script closes and an empty one takes its place (decision 15).
+            "app.close" => self.guard_unsaved(ctx, Pending::New),
+            "app.clear_recent" => {
+                self.prefs.update(|p| p.general.recent.clear());
+                self.status = "Cleared the list of recent scripts.".into();
+            }
+            recent if recent.starts_with(RECENT_PREFIX) => {
+                let path = recent
+                    .strip_prefix(RECENT_PREFIX)
+                    .and_then(|n| n.parse::<usize>().ok())
+                    .and_then(|n| self.prefs.get().general.recent.get(n).cloned());
+                if let Some(path) = path {
+                    self.guard_unsaved(ctx, Pending::Open(Some(PathBuf::from(path))));
+                }
+            }
             _ => {
                 self.run(id, Map::new());
                 self.refocus();
@@ -966,7 +998,17 @@ impl StorytellerApp {
             let enabled = command.id != "help.check_updates" || self.updates.unavailable().is_none();
             items.push(MenuEntry { id: command.id.to_string(), label: command.label.to_string(), shortcut: command.shortcut, enabled });
         }
+        // Open Recent, a submenu, straight after Open….
+        if let Some(open) = items.iter().position(|e| e.id == "file.open") {
+            let enabled = !self.prefs.get().general.recent.is_empty();
+            items.insert(open + 1, MenuEntry { id: OPEN_RECENT.into(), label: "Open Recent".into(), shortcut: None, enabled });
+        }
         items
+    }
+
+    /// File > Open Recent's items: (command id, label), most recent first.
+    fn recent_items(&self) -> Vec<(String, String)> {
+        self.prefs.get().general.recent.iter().enumerate().map(|(n, path)| (format!("{RECENT_PREFIX}{n}"), recent_label(path))).collect()
     }
 
     /// The checked state of a toggle command, or `None` for an ordinary one.
@@ -1047,6 +1089,7 @@ impl StorytellerApp {
                     native.sync(&entry.id, entry.enabled, checked);
                 }
             }
+            native.set_recent(&self.recent_items());
             self.native = Some(native);
         }
     }
@@ -1069,8 +1112,32 @@ impl StorytellerApp {
         egui::MenuBar::new().ui(ui, |ui| {
             for menu in MENUS {
                 let items = self.menu_entries(menu);
+                let recent = self.recent_items();
                 let response = ui.menu_button(menu, |ui| {
                     for MenuEntry { id, label, shortcut, enabled } in &items {
+                        if id == OPEN_RECENT {
+                            let submenu = ui.add_enabled_ui(*enabled, |ui| {
+                                ui.menu_button(label.as_str(), |ui| {
+                                    for (id, label) in &recent {
+                                        let item = ui.button(label.as_str());
+                                        self.automation.add(format!("menu.item.{id}"), "menuitem", label.clone(), &item);
+                                        if item.clicked() {
+                                            clicked = Some(id.clone());
+                                            ui.close();
+                                        }
+                                    }
+                                    ui.separator();
+                                    let clear = ui.button("Clear Menu");
+                                    self.automation.add("menu.item.app.clear_recent", "menuitem", "Clear Menu", &clear);
+                                    if clear.clicked() {
+                                        clicked = Some("app.clear_recent".into());
+                                        ui.close();
+                                    }
+                                })
+                            });
+                            self.automation.add(format!("menu.item.{id}"), "menu", label.clone(), &submenu.inner.response);
+                            continue;
+                        }
                         let mut button = egui::Button::new(label.as_str());
                         if let Some(shortcut) = shortcut.or(text_field_key(id)).and_then(parse_shortcut) {
                             button = button.shortcut_text(ui.ctx().format_shortcut(&shortcut));

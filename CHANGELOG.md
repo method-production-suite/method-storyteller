@@ -11,9 +11,14 @@ for its own version in Help > What's New, once after an update.
   Format and its production data beside it, with its own icon in the Finder. File > Save New
   Scripts as… still offers plain Open Screenplay Format and Fountain.
 
+- File > Close (⌘W) closes the script and leaves an empty one; File > Open Recent lists the last
+  ten scripts.
+
 ### Before you update
 
 - Scripts saved as `.mstory` by this version open only in this version and later.
+- If new scripts were set to save as Open Screenplay Format, they now save as `.mstory`
+  packages. File > Save New Scripts as Open Screenplay Format sets it back.
 
 ## 0.4.0
 

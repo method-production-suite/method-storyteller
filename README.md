@@ -105,6 +105,7 @@ stderr) and will be removed in a future release.
 | ⌘⌥G (Ctrl+Shift+G on Windows and Linux) | Go to a scene (by its number), a page or an act |
 | ⌘F, then Enter / Shift-Enter (⌘G / ⇧⌘G; F3 / Shift+F3 on Windows and Linux) | Find, next and previous; the find bar also replaces one match or all (one Undo) |
 | Edit > Copy Scene | The scene as screenplay text; paste it back here as the same elements, or into any other app. Pasting several paragraphs of screenplay text makes elements |
+| ⌘W | Close the script (File > Close); an empty one takes its place. File > Open Recent brings it back |
 | ⌘B, ⌘I, ⌘U | Bold, italic or underline the selection, or the word the caret is in; again to take it off |
 | ⌘; | Spelling: step through words not in the dictionary, with suggestions; Change, Ignore (kept with the script) or Learn (yours, in every script). Misspelled words are underlined as you type (View > Check Spelling While Typing) |
 

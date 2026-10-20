@@ -269,7 +269,7 @@ signed `.app.tar.gz`), the OSF and Fountain study, and the design pass. Each is 
 - **Stored autocomplete lists** [missing] M. Lists kept in the document, learned as you type,
   editable; the extension-on-Tab option.
 - **Scene CONTINUED** [missing] S. Off by default; measured only if a corpus file turns it on.
-- **File > Open Recent and Close** [missing] S. Open Recent needs a menu built at run time (the
+- **File > Open Recent and Close** [have] S. Open Recent needs a menu built at run time (the
   menu is fixed today); Close (⌘W) closes the script and leaves an empty one (decision 15).
 - **Recovery copies at launch** [missing] S. The app writes a recovery copy as the writer works
   but never offers it after a crash. Offer it at launch, ahead of the first-launch sample.

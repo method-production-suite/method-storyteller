@@ -32,7 +32,12 @@ thread_local! {
 pub struct NativeMenu {
     items: Vec<(String, Item, bool, bool)>,
     events: Receiver<String>,
+    /// File > Open Recent, rebuilt when the list changes, and the items it shows.
+    recent: Option<(Submenu, Vec<(String, String)>)>,
 }
+
+/// The id of the entry that stands for the Open Recent submenu.
+const OPEN_RECENT: &str = "app.open_recent";
 
 /// `Cmd+Shift+S`, `Cmd+1`, `Cmd+Equals` as a muda accelerator.
 pub fn accelerator(text: &str) -> Option<Accelerator> {
@@ -117,10 +122,17 @@ impl NativeMenu {
 
         let mut items = Vec::new();
         let mut help = None;
+        let mut recent = None;
         for (title, entries) in menus {
             let submenu = Submenu::new(*title, true);
             for entry in entries {
                 if entry.id == "app.quit" {
+                    continue;
+                }
+                if entry.id == OPEN_RECENT {
+                    let open_recent = Submenu::new(&entry.label, true);
+                    submenu.append(&open_recent)?;
+                    recent = Some((open_recent, Vec::new()));
                     continue;
                 }
                 let shortcut = entry.shortcut.as_deref().and_then(accelerator);
@@ -166,7 +178,31 @@ impl NativeMenu {
             }
         }));
         MENU.set(Some(bar));
-        Ok(NativeMenu { items, events })
+        let mut menu = NativeMenu { items, events, recent };
+        // Filled by the first `set_recent`, so it is never left empty-looking by mistake.
+        if let Some((_, shown)) = menu.recent.as_mut() {
+            shown.push((String::new(), String::new()));
+        }
+        Ok(menu)
+    }
+
+    /// Shows `items` (command id, label) in File > Open Recent, then Clear Menu, rebuilding the
+    /// submenu only when the list changed.
+    pub fn set_recent(&mut self, items: &[(String, String)]) {
+        let Some((submenu, shown)) = self.recent.as_mut() else { return };
+        if shown.as_slice() == items {
+            return;
+        }
+        for _ in 0..submenu.items().len() {
+            let _ = submenu.remove_at(0);
+        }
+        for (id, label) in items {
+            let _ = submenu.append(&MenuItem::with_id(id.as_str(), label, true, None));
+        }
+        let _ = submenu.append(&PredefinedMenuItem::separator());
+        let _ = submenu.append(&MenuItem::with_id("app.clear_recent", "Clear Menu", !items.is_empty(), None));
+        submenu.set_enabled(!items.is_empty());
+        *shown = items.to_vec();
     }
 
     /// Command ids chosen since the last call.
