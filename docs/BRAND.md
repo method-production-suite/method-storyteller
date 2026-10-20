@@ -10,8 +10,9 @@ neutrals and type, the mark and name drawn the same way, and a rose accent that 
 - Never shorten it to initials. Initials are ambiguous, and a name exists so the product
   isn't mistaken for anything else. On second mention, "the app" or "it" is fine.
 - The command is `method-storyteller`, in code style (`mst` still works as a deprecated alias). The
-  desktop app's executable is `method-storyteller-app`. Scripts are ordinary `.fountain`,
-  `.osf`, `.fdx` and `.fadein` files, with no format of our own.
+  desktop app's executable is `method-storyteller-app`. New scripts are `.mstory`
+  packages, the app's own: a ZIP file holding the script as Open Screenplay Format. Scripts
+  are also ordinary `.fountain`, `.osf`, `.fdx` and `.fadein` files.
 - The wordmark is set in lowercase (`method storyteller`). That's artwork, not spelling:
   in text, write Method Storyteller.
 - Credit "the Method Storyteller contributors". The copyright line is "Method Production
@@ -113,7 +114,7 @@ pixels it is full bleed and draws the 16-unit drawing.
 
 ### Document icons
 
-A `.osf`, `.fountain` or `.fdx` file gets a white sheet with its top corner turned, the
+A `.mstory`, `.osf`, `.fountain` or `.fdx` file gets a white sheet with its top corner turned, the
 mark in rose, and the extension below it in the family's drawn letters (`f` and `x` are
 new for this and follow the same rules). Below 64 pixels the letters can't be read, so the
 sheet carries the 16-unit mark alone.
