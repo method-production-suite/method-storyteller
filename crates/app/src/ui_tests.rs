@@ -603,3 +603,33 @@ fn format_bold_styles_the_selection_and_keeps_it_selected() {
     harness.run_steps(4);
     assert_eq!(harness.state().session.script.elements[1].text, "She **runs** _home_.");
 }
+
+#[test]
+fn close_leaves_an_empty_script_and_open_recent_brings_it_back() {
+    let (mut harness, file) = harness(SCRIPT);
+    let path = file.path().display().to_string();
+    harness.state_mut().prefs.update(|p| p.push_recent(&path));
+    harness.run_steps(2);
+    let labels: Vec<String> = harness.state().menu_entries("File").into_iter().map(|e| e.label).collect();
+    let open = labels.iter().position(|l| l == "Open…").unwrap();
+    assert_eq!(labels.get(open + 1).map(String::as_str), Some("Open Recent"), "{labels:?}");
+    assert!(labels.iter().any(|l| l == "Close"));
+
+    harness.state_mut().queued.push("app.close".into());
+    harness.run_steps(3);
+    assert!(harness.state().session.path.is_none(), "the script is closed");
+    assert!(harness.state().session.script.elements.iter().all(|e| e.text.is_empty()), "and an empty one is open");
+
+    let recent = harness.state().recent_items();
+    assert_eq!(recent.first().map(|(id, _)| id.as_str()), Some("app.open_recent.0"));
+    let name = file.path().file_name().unwrap().to_string_lossy().into_owned();
+    assert!(recent[0].1.starts_with(&name), "{:?} names the file", recent[0].1);
+    harness.state_mut().queued.push("app.open_recent.0".into());
+    harness.run_steps(3);
+    assert_eq!(harness.state().session.path.as_deref(), Some(file.path()), "Open Recent opens it again");
+
+    harness.state_mut().queued.push("app.clear_recent".into());
+    harness.run_steps(2);
+    assert!(harness.state().recent_items().is_empty());
+    assert!(!harness.state().menu_entries("File").into_iter().find(|e| e.label == "Open Recent").unwrap().enabled, "an empty list is greyed out");
+}

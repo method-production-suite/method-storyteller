@@ -241,7 +241,9 @@ Limits: inputs over 32 MiB or 200 000 elements are refused with a message, not a
 
 - One window: menu bar, a scene navigator on the left (toggle), the script page view in the middle
   (a white page column with real margins), a status bar (element type, page x of y, scene).
-- File: New, New TV Script…, Open…, Save, Save As…, Import FDX…, Export FDX…, Export PDF…, Title
+- File: New, New TV Script…, Open…, Open Recent (the last ten scripts by name and folder, then
+  Clear Menu; greyed out when empty), Close (⌘W: the script closes, asking first about unsaved
+  changes, and an empty one takes its place, decision 15), Save, Save As…, Import FDX…, Export FDX…, Export PDF…, Title
   Page…, Quit. New TV Script asks one-hour (Teaser, Acts One to Five, Tag) or half-hour (Cold
   Open, Acts One to Three, Tag) or a multi-camera half-hour (Cold Open, Acts One and Two, Tag),
   offering the writer's last choice first, and lays the acts out: each act's line, an empty
