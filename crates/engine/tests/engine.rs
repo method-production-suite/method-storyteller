@@ -777,7 +777,7 @@ fn scene_properties_set_in_one_undo_and_fountain_says_it_drops_them() {
 #[test]
 fn the_character_table_counts_speeches_scenes_and_words() {
     let script = storyteller_core::fountain::parse(
-        "INT. HUT - DAY\n\nNORA\nIt held.\n\nSAM (O.S.)\nDid it?\n\nNORA (CONT'D)\n(quietly)\nFor now, yes.\n\nEXT. RIDGE - DAWN #4#\n\nSAM\nGo.\n",
+        "INT. HUT - DAY\n\nNORA\nIt held.\n\nOWEN (O.S.)\nDid it?\n\nNORA (CONT'D)\n(quietly)\nFor now, yes.\n\nEXT. RIDGE - DAWN #4#\n\nOWEN\nGo.\n",
     )
     .unwrap();
     let table = storyteller_engine::commands::character_table(&script);

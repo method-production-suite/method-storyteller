@@ -721,7 +721,7 @@ fn scene_properties_title_and_colour_the_navigator_row() {
 
 #[test]
 fn the_character_table_opens_and_a_name_goes_to_the_first_line() {
-    let (mut harness, _file) = harness("INT. HUT - DAY\n\nRain.\n\nNORA\nIt held.\n\nSAM\nDid it?\n");
+    let (mut harness, _file) = harness("INT. HUT - DAY\n\nRain.\n\nNORA\nIt held.\n\nOWEN\nDid it?\n");
     harness.state_mut().queued.push("app.characters".into());
     harness.run_steps(3);
     assert!(harness.state().characters);

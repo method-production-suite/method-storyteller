@@ -115,7 +115,7 @@ fn multi_cam() -> Script {
     use storyteller_core::model::TvShape;
     let mut script = Script::tv(TvShape::MultiCam);
     let written = fountain::parse(
-        "INT. FIELD STATION - NIGHT\n\nNora tunes the radio.\n\nNORA\nAnything?\n\nSAM\nStatic.\n\nNORA (O.S.)\nKeep trying.\n\nEXT. RIDGE - DAWN\n\nWind.\n",
+        "INT. FIELD STATION - NIGHT\n\nNora tunes the radio.\n\nNORA\nAnything?\n\nOWEN\nStatic.\n\nNORA (O.S.)\nKeep trying.\n\nEXT. RIDGE - DAWN\n\nWind.\n",
     )
     .unwrap();
     // Into the cold open, in place of its empty heading.
