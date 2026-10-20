@@ -228,10 +228,10 @@ wait for a decision above.
    - End of Act lines written and kept in step automatically (decision 18) [have];
    - a multi-camera sitcom shape: lettered scenes, each on a new page with its characters,
      double-spaced dialogue, action in capitals (decision 17) [have].
-8b. **Bold, italic and underline in the editor** [missing] S (owner, 2026-10-19). The files
-   already keep them (Fountain markup, `.fdx` and OSF runs); the editor shows the markup as typed.
-   Format > Bold, Italic and Underline (⌘B, ⌘I, ⌘U) on a selection, and the editor drawing the
-   styles.
+8b. **Bold, italic and underline in the editor** [have] S (owner, 2026-10-19). Format > Bold,
+   Italic and Underline (⌘B, ⌘I, ⌘U) on a selection or the caret's word, and the editor drawing
+   the styles with the markup faint. Hiding the markers altogether waits for the editor's own
+   text drawing (with capitals by display, below).
 8c. **The `.mstory` package** [missing] M (decision 1). One ZIP file: the script as Open
    Screenplay Format, and a production data file. Open and save, File > Save As, the Finder's
    document type and icon. Comes first in M5.

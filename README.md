@@ -70,8 +70,7 @@ Status: early alpha. The first release, 0.2.0, came out on 2026-10-19. See
 | Linux (x86_64) | `.deb`, AppImage | No (as usual for both) | Weekly full build |
 
 The app updates itself on a Mac; on Windows and Linux, download each new version.
-Not there yet: printing, revision mode, side-by-side editing of dual dialogue, and formatting
-markup still shows as typed in the editor.
+Not there yet: printing, revision mode and side-by-side editing of dual dialogue.
 
 ## Run it
 
@@ -105,6 +104,7 @@ stderr) and will be removed in a future release.
 | ⌘⌥G (Ctrl+Shift+G on Windows and Linux) | Go to a scene (by its number), a page or an act |
 | ⌘F, then Enter / Shift-Enter (⌘G / ⇧⌘G; F3 / Shift+F3 on Windows and Linux) | Find, next and previous; the find bar also replaces one match or all (one Undo) |
 | Edit > Copy Scene | The scene as screenplay text; paste it back here as the same elements, or into any other app. Pasting several paragraphs of screenplay text makes elements |
+| ⌘B, ⌘I, ⌘U | Bold, italic or underline the selection, or the word the caret is in; again to take it off |
 | ⌘; | Spelling: step through words not in the dictionary, with suggestions; Change, Ignore (kept with the script) or Learn (yours, in every script). Misspelled words are underlined as you type (View > Check Spelling While Typing) |
 
 The status bar always shows what Tab and Enter will do next.

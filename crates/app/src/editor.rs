@@ -19,6 +19,10 @@ use crate::automation::Automation;
 
 /// Font family name for Courier Prime.
 pub const COURIER: &str = "courier_prime";
+/// Its bold, italic and bold italic faces, for styled text.
+const COURIER_BOLD: &str = "courier_prime_bold";
+const COURIER_ITALIC: &str = "courier_prime_italic";
+const COURIER_BOLD_ITALIC: &str = "courier_prime_bold_italic";
 /// Pixels per inch at 100 % zoom.
 const PX_PER_INCH: f32 = 96.0;
 /// Space between sheets in page view, in rows.
@@ -26,8 +30,15 @@ const SHEET_GAP_ROWS: f32 = 1.5;
 
 pub fn install_fonts(ctx: &egui::Context) {
     let mut fonts = FontDefinitions::default();
-    fonts.font_data.insert(COURIER.into(), Arc::new(FontData::from_static(storyteller_pdf::COURIER_PRIME_REGULAR)));
-    fonts.families.insert(FontFamily::Name(COURIER.into()), vec![COURIER.into()]);
+    for (name, data) in [
+        (COURIER, storyteller_pdf::COURIER_PRIME_REGULAR),
+        (COURIER_BOLD, storyteller_pdf::COURIER_PRIME_BOLD),
+        (COURIER_ITALIC, storyteller_pdf::COURIER_PRIME_ITALIC),
+        (COURIER_BOLD_ITALIC, storyteller_pdf::COURIER_PRIME_BOLD_ITALIC),
+    ] {
+        fonts.font_data.insert(name.into(), Arc::new(FontData::from_static(data)));
+        fonts.families.insert(FontFamily::Name(name.into()), vec![name.into()]);
+    }
     ctx.set_fonts(fonts);
 }
 
@@ -273,7 +284,7 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                         let marked = editor.highlight.filter(|h| h.0 == index).map(|h| (h.1, h.2));
                         let misspelled = editor.misspelled.get(&index).cloned().unwrap_or_default();
                         let mut layouter = move |ui: &Ui, buffer: &dyn egui::TextBuffer, wrap_width: f32| {
-                            let mut job = marked_job(buffer.as_str(), marked, &misspelled, &job_font, color, wrap_width);
+                            let mut job = marked_job(buffer.as_str(), marked, &misspelled, &job_font, (color, faint), wrap_width);
                             job.halign = text_align;
                             for section in &mut job.sections {
                                 section.format.line_height = Some(row_height);
@@ -611,24 +622,28 @@ fn picker_popup(ui: &Ui, editor: &EditorState, automation: &mut Automation, inde
     });
 }
 
-/// One element's text laid out: the current find match (or spelling word) on a rose wash, and
-/// misspelled words with a thin red underline. Ranges are bytes; any that no longer fit the text
-/// (it changed this frame) are skipped.
+/// One element's text laid out: bold, italic and underlined text in Courier Prime's own faces,
+/// with the markup that says so (and notes) drawn faint; the current find match (or spelling
+/// word) on a rose wash; and misspelled words with a thin red underline. Ranges are bytes; any
+/// that no longer fit the text (it changed this frame) are skipped.
 fn marked_job(
     text: &str,
     marked: Option<(usize, usize)>,
     misspelled: &[(usize, usize)],
     font: &FontId,
-    color: Color32,
+    (color, faint): (Color32, Color32),
     wrap_width: f32,
 ) -> LayoutJob {
     let fits = |&(start, end): &(usize, usize)| start < end && end <= text.len() && text.is_char_boundary(start) && text.is_char_boundary(end);
     let marked = marked.filter(fits);
     let misspelled: Vec<(usize, usize)> = misspelled.iter().copied().filter(fits).collect();
-    if marked.is_none() && misspelled.is_empty() {
+    let spans = storyteller_core::inline::spans(text);
+    let plain = spans.iter().all(|s| s.kind == storyteller_core::inline::SpanKind::Text(Default::default()));
+    if marked.is_none() && misspelled.is_empty() && plain {
         return LayoutJob::simple(text.to_owned(), font.clone(), color, wrap_width);
     }
     let mut cuts: Vec<usize> = vec![0, text.len()];
+    cuts.extend(spans.iter().flat_map(|s| [s.start, s.end]));
     cuts.extend(marked.iter().flat_map(|&(s, e)| [s, e]));
     cuts.extend(misspelled.iter().flat_map(|&(s, e)| [s, e]));
     cuts.sort_unstable();
@@ -639,6 +654,24 @@ fn marked_job(
         let Some(part) = text.get(start..end) else { continue };
         let inside = |&(s, e): &(usize, usize)| s <= start && end <= e;
         let mut format = egui::TextFormat { font_id: font.clone(), color, ..Default::default() };
+        match spans.iter().find(|s| s.start <= start && end <= s.end).map(|s| s.kind) {
+            Some(storyteller_core::inline::SpanKind::Text(style)) => {
+                let face = match (style.bold, style.italic) {
+                    (true, true) => Some(COURIER_BOLD_ITALIC),
+                    (true, false) => Some(COURIER_BOLD),
+                    (false, true) => Some(COURIER_ITALIC),
+                    (false, false) => None,
+                };
+                if let Some(face) = face {
+                    format.font_id = FontId::new(font.size, FontFamily::Name(face.into()));
+                }
+                if style.underline {
+                    format.underline = Stroke::new(1.0, color);
+                }
+            }
+            Some(_) => format.color = faint,
+            None => {}
+        }
         if marked.as_ref().is_some_and(inside) {
             format.background = crate::theme::FIND_MARK;
         }

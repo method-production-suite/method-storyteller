@@ -680,3 +680,19 @@ fn a_new_scene_in_a_multi_camera_script_gets_its_letter() {
     run(&registry, &mut s, "element.insert", json!({ "index": 2, "kind": "action", "text": "Nora waits." }));
     assert_eq!(s.script.elements[3].text, "NORA WAITS.", "action in capitals");
 }
+
+#[test]
+fn format_style_turns_bold_on_and_off_in_one_undo_each() {
+    let registry = Registry::new();
+    let mut s = Session::new(storyteller_core::fountain::parse("INT. HUT - DAY\n\nShe runs home.\n").unwrap());
+    let out = run(&registry, &mut s, "format.style", json!({ "index": 1, "start": 4, "end": 8, "style": "bold" }));
+    assert_eq!(s.script.elements[1].text, "She **runs** home.");
+    assert_eq!((out["value"]["start"].as_u64(), out["value"]["end"].as_u64()), (Some(6), Some(10)), "the same words, inside the markers");
+    run(&registry, &mut s, "format.style", json!({ "index": 1, "start": 6, "end": 10, "style": "bold" }));
+    assert_eq!(s.script.elements[1].text, "She runs home.");
+    run(&registry, &mut s, "edit.undo", json!({}));
+    assert_eq!(s.script.elements[1].text, "She **runs** home.");
+    let refused =
+        registry.run("format.style", &mut s, &serde_json::from_value(json!({ "index": 1, "start": 0, "end": 3, "style": "loud" })).unwrap());
+    assert!(refused.is_err(), "an unknown style is refused");
+}
