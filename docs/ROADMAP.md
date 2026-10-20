@@ -127,10 +127,10 @@ says otherwise.
 - **v0.2.0, the first release:** published 2026-10-19 (tag `v0.2.0` on `33cfb16`, the owner's
   override for muda 0.21.2's last three days). Nothing waiting; signing stays as it is
   (decision 19).
-- **v0.3.0:** TV acts, and universal Mac builds, Apple silicon and Intel in one app (the
-  owner, 2026-10-19, for every suite app at its next release). Launcher 0.1.2, which accepts
-  universal apps, is out. The release PR goes to MReview; after its merge, the rehearsal on
-  main, then the tag request to the owner through MOrg (one yes covers tag and publish).
+- **v0.3.0:** published 2026-10-20 (tag `v0.3.0` on `53a37c5`): TV acts, and one universal
+  Mac app for Apple silicon and Intel. Nothing waiting.
+- **v0.4.0, next:** adds `SHA256SUMS.minisig` (the checksum list signed with the update key,
+  SUITE-STANDARDS.md §3), which 0.3.0 went without by agreement.
 ---
 
 ## Where we are
@@ -222,7 +222,8 @@ wait for a decision above.
    - acts in the navigator (each act heading its scenes) and in Go To [have];
    - End of Act lines written and kept in step automatically (decision 18) [have];
    - a multi-camera sitcom shape: lettered scenes, each on a new page with its characters,
-     double-spaced dialogue, action in capitals (decision 17).
+     double-spaced dialogue, action in capitals (decision 17). Done: the page honours an
+     element's double spacing, new page and capitals, from the script's settings.
 8b. **Bold, italic and underline in the editor** [missing] S (owner, 2026-10-19). The files
    already keep them (Fountain markup, `.fdx` and OSF runs); the editor shows the markup as typed.
    Format > Bold, Italic and Underline (⌘B, ⌘I, ⌘U) on a selection, and the editor drawing the

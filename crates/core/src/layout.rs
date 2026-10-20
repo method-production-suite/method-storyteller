@@ -44,11 +44,30 @@ pub struct ElementStyle {
     pub align: Align,
     /// Blank lines before the element (dropped at the top of a page).
     pub space_before: u16,
+    /// Rows from one line of the element to the next: 1 single-spaced, 2 double-spaced (as a
+    /// multi-camera script's dialogue is).
+    #[serde(default = "one")]
+    pub spacing: u16,
+    /// Every element of this type starts a new page (a multi-camera script's scenes).
+    #[serde(default)]
+    pub new_page: bool,
+    /// Printed in capitals, however it was typed.
+    #[serde(default)]
+    pub caps: bool,
+}
+
+fn one() -> u16 {
+    1
 }
 
 impl ElementStyle {
-    const fn new(left: u16, width: u16, align: Align, space_before: u16) -> Self {
-        ElementStyle { left, width, align, space_before }
+    pub const fn new(left: u16, width: u16, align: Align, space_before: u16) -> Self {
+        ElementStyle { left, width, align, space_before, spacing: 1, new_page: false, caps: false }
+    }
+
+    /// The same style, printed in capitals.
+    pub const fn in_caps(self) -> Self {
+        ElementStyle { caps: true, ..self }
     }
 }
 
@@ -114,14 +133,14 @@ impl Default for Layout {
             contd: "(CONT'D)".into(),
             auto_contd: true,
             // Widths are characters per line (see `chars_per_line`), not columns.
-            scene_heading: ElementStyle::new(15, 61, Align::Left, 2),
+            scene_heading: ElementStyle::new(15, 61, Align::Left, 2).in_caps(),
             action: ElementStyle::new(15, 61, Align::Left, 1),
-            character: ElementStyle::new(35, 38, Align::Left, 1),
+            character: ElementStyle::new(35, 38, Align::Left, 1).in_caps(),
             // The first line hangs one column left of the rest (Final Draft's -0.10" first indent).
             parenthetical: ElementStyle::new(29, 25, Align::Left, 0),
             dialogue: ElementStyle::new(25, 35, Align::Left, 0),
-            transition: ElementStyle::new(55, 16, Align::Right, 1),
-            shot: ElementStyle::new(15, 61, Align::Left, 2),
+            transition: ElementStyle::new(55, 16, Align::Right, 1).in_caps(),
+            shot: ElementStyle::new(15, 61, Align::Left, 2).in_caps(),
             centered: ElementStyle::new(15, 61, Align::Center, 1),
             lyrics: ElementStyle::new(25, 35, Align::Left, 1),
             dual_left: DualColumn {
@@ -136,8 +155,8 @@ impl Default for Layout {
             },
             // Act lines: centred capitals; End of Act sits two lines below the act's last scene.
             custom: vec![
-                ("New Act".to_string(), ElementStyle::new(15, 61, Align::Center, 1)),
-                ("End of Act".to_string(), ElementStyle::new(15, 61, Align::Center, 2)),
+                ("New Act".to_string(), ElementStyle::new(15, 61, Align::Center, 1).in_caps()),
+                ("End of Act".to_string(), ElementStyle::new(15, 61, Align::Center, 2).in_caps()),
             ],
         }
     }

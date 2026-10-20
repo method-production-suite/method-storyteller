@@ -337,7 +337,9 @@ pub fn set_text(session: &mut Session, index: usize, text: &str, typing: bool) -
         return Err(CommandError::Invalid { name: "index", reason: "no such element".into() });
     };
     let mut text = if element.kind.is_single_line() { text.replace(['\n', '\r'], " ") } else { text.replace('\r', "") };
-    if element.kind.is_caps() {
+    // Capitals for the kinds that always take them, and for a type the script's settings print
+    // in capitals (a multi-camera script's action).
+    if element.kind.is_caps() || session.layout.style(element.kind).caps {
         text = text.to_uppercase();
     }
     if element.text == text {

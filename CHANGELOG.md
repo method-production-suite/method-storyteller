@@ -7,6 +7,10 @@ for its own version in Help > What's New, once after an update.
 
 ### New
 
+- Scripts that set an element to double spacing, to start each one on a new page, or to print in
+  capitals now look that way on the page and in the PDF, and typing in a capitals element gives
+  capitals.
+
 - End of Act lines follow their acts: rename ACT TWO and its END OF ACT TWO follows, and a
   new act gets its End of Act line as you name it. Your own lines, such as END OF SHOW, stay
   as you wrote them.

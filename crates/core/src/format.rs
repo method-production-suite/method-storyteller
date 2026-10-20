@@ -747,6 +747,12 @@ pub fn apply(format: &Format, layout: &mut Layout) {
             if let Some(align) = element.align {
                 style.align = align;
             }
+            // Single or double: one and a half rounds to double, as a whole row is the unit.
+            if let Some(spacing) = element.spacing.filter(|s| (50..=300).contains(s)) {
+                style.spacing = if spacing > 100 { 2 } else { 1 };
+            }
+            style.new_page = element.new_page;
+            style.caps = element.all_caps;
         };
         let target = match element.name.to_ascii_lowercase().as_str() {
             "scene heading" => Some(&mut layout.scene_heading),
