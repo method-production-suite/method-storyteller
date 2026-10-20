@@ -696,3 +696,26 @@ fn format_style_turns_bold_on_and_off_in_one_undo_each() {
         registry.run("format.style", &mut s, &serde_json::from_value(json!({ "index": 1, "start": 0, "end": 3, "style": "loud" })).unwrap());
     assert!(refused.is_err(), "an unknown style is refused");
 }
+
+#[test]
+fn a_script_saves_as_a_package_and_opens_again_the_same() {
+    use storyteller_engine::files::{self, FileFormat};
+    let registry = Registry::new();
+    let dir = tempfile::tempdir().unwrap();
+    let text = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/field-station.fountain")).unwrap();
+    let mut s = Session::new(storyteller_core::fountain::parse(&text).unwrap());
+    let path = dir.path().join("Field Station.mstory");
+    run(&registry, &mut s, "file.save_as", json!({ "path": path.display().to_string() }));
+    assert!(!s.dirty);
+    assert_eq!(s.format, FileFormat::Mstory);
+    let bytes = std::fs::read(&path).unwrap();
+    assert!(storyteller_engine::container::is_package(&bytes), "one ZIP file holding script.osf");
+    let (script, format) = files::open(&path).unwrap();
+    assert_eq!(format, FileFormat::Mstory);
+    let osf = |script: &storyteller_core::Script| storyteller_core::osf::write(script);
+    assert_eq!(osf(&script), osf(&s.script), "the script inside is the Open Screenplay Format document");
+    // Saving it again keeps the production data and gives the same bytes.
+    files::save(&script, &path, FileFormat::Mstory, &s.layout).unwrap();
+    assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    assert_eq!(FileFormat::from_path(std::path::Path::new("a.MSTORY")), FileFormat::Mstory);
+}

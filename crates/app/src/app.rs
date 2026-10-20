@@ -39,8 +39,14 @@ const GO_TO_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Alt+G" } else { "Cmd
 const FIND_NEXT_KEY: &str = if cfg!(target_os = "macos") { "Cmd+G" } else { "F3" };
 const FIND_PREVIOUS_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Shift+G" } else { "Shift+F3" };
 
-const APP_COMMANDS: [AppCommand; 34] = [
+const APP_COMMANDS: [AppCommand; 35] = [
     AppCommand { id: "app.title_page", label: "Title Page…", menu: "File/Title Page…", shortcut: Some("Cmd+Shift+T") },
+    AppCommand {
+        id: "prefs.new_mstory",
+        label: "Save New Scripts as Method Storyteller Packages",
+        menu: "File/Save New Scripts as Method Storyteller Packages",
+        shortcut: None,
+    },
     AppCommand { id: "prefs.new_fountain", label: "Save New Scripts as Fountain", menu: "File/Save New Scripts as Fountain", shortcut: None },
     AppCommand {
         id: "prefs.new_osf",
@@ -422,6 +428,10 @@ impl StorytellerApp {
             "prefs.smart_quotes" => {
                 self.prefs.update(|p| p.general.smart_quotes = !p.general.smart_quotes);
             }
+            "prefs.new_mstory" => {
+                self.prefs.update(|p| p.general.new_script_format = "mstory".into());
+                self.status = "New scripts will be saved as Method Storyteller packages (.mstory).".into();
+            }
             "prefs.new_fountain" => {
                 self.prefs.update(|p| p.general.new_script_format = "fountain".into());
                 self.status = "New scripts will be saved as Fountain (.fountain).".into();
@@ -639,8 +649,9 @@ impl StorytellerApp {
                 self.editor.pending_focus = Some((caret.element, 0));
             }
             Pending::Open(path) => {
-                let path = path
-                    .or_else(|| rfd::FileDialog::new().add_filter("Screenplay", &["fountain", "spmd", "txt", "osf", "fadein", "fdx"]).pick_file());
+                let path = path.or_else(|| {
+                    rfd::FileDialog::new().add_filter("Screenplay", &["mstory", "fountain", "spmd", "txt", "osf", "fadein", "fdx"]).pick_file()
+                });
                 if let Some(path) = path {
                     self.open_path(&path);
                 }
@@ -684,12 +695,11 @@ impl StorytellerApp {
                     format!("{stem}.{preferred}")
                 });
                 // The working format the writer chose comes first; the others stay one click away.
-                let fountain = ("Fountain", "fountain");
-                let osf = ("Open Screenplay Format", "osf");
-                let (first, second) = if preferred == "osf" { (osf, fountain) } else { (fountain, osf) };
-                rfd::FileDialog::new()
-                    .add_filter(first.0, &[first.1])
-                    .add_filter(second.0, &[second.1])
+                let mut formats = vec![("Method Storyteller Package", "mstory"), ("Open Screenplay Format", "osf"), ("Fountain", "fountain")];
+                formats.sort_by_key(|(_, ext)| *ext != preferred);
+                formats
+                    .into_iter()
+                    .fold(rfd::FileDialog::new(), |dialog, (name, ext)| dialog.add_filter(name, &[ext]))
                     .add_filter("Open Screenplay Format, in a ZIP archive", &["fadein"])
                     .add_filter("FDX", &["fdx"])
                     .set_file_name(name)
@@ -739,7 +749,11 @@ impl StorytellerApp {
 
     /// The extension new scripts are saved with: the writer's choice of working format.
     fn preferred_extension(&self) -> &'static str {
-        if self.prefs.get().general.new_script_format == "osf" { "osf" } else { "fountain" }
+        match self.prefs.get().general.new_script_format.as_str() {
+            "osf" => "osf",
+            "fountain" => "fountain",
+            _ => "mstory",
+        }
     }
 
     fn export(&mut self, format: FileFormat) {
@@ -754,7 +768,7 @@ impl StorytellerApp {
                 FileFormat::Pdf => "file.export_pdf",
                 FileFormat::Fdx => "file.export_fdx",
                 FileFormat::Fountain => "file.export_fountain",
-                FileFormat::Osf | FileFormat::FadeIn => "file.export_osf",
+                FileFormat::Osf | FileFormat::FadeIn | FileFormat::Mstory => "file.export_osf",
             };
             let mut params = Map::new();
             params.insert("path".into(), json!(path.display().to_string()));
@@ -961,8 +975,9 @@ impl StorytellerApp {
             "view.navigator" => Some(self.prefs.get().view.navigator),
             "view.page_view" => Some(self.prefs.get().view.page_view),
             "view.scene_numbers" => Some(self.session.layout.show_scene_numbers),
-            "prefs.new_fountain" => Some(self.prefs.get().general.new_script_format != "osf"),
-            "prefs.new_osf" => Some(self.prefs.get().general.new_script_format == "osf"),
+            "prefs.new_mstory" => Some(self.preferred_extension() == "mstory"),
+            "prefs.new_fountain" => Some(self.preferred_extension() == "fountain"),
+            "prefs.new_osf" => Some(self.preferred_extension() == "osf"),
             "prefs.smart_quotes" => Some(self.prefs.get().general.smart_quotes),
             "prefs.check_spelling" => Some(self.prefs.get().view.check_spelling),
             "prefs.check_updates_automatically" => Some(self.updates.automatic()),

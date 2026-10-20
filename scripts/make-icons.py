@@ -12,7 +12,7 @@ Writes to packaging/icons/:
     icon.icns                        macOS, every size from 16 to 1024
     icon.ico                         Windows, 16 to 256
     document-<ext>.icns, .ico, -512.png
-                                     the document icons for .osf, .fountain and .fdx
+                                     the document icons for .osf, .fountain, .fdx and .mstory
 
 The app icon is the mark in white on a rose rounded square, the script's lines and the
 cursor showing the rose through, as Method Budget's and Method Schedule's icons are drawn
@@ -47,7 +47,7 @@ spec.loader.exec_module(brand)
 SQUARE_RADIUS = 14.3 / 64
 INSET = 100 / 1024
 SMALL = 32  # this size and under draw the 16-unit drawing, full bleed
-DOCUMENTS = ["osf", "fountain", "fdx"]
+DOCUMENTS = ["osf", "fountain", "fdx", "mstory"]
 SHEET = "#FFFFFF"
 SHEET_RULE = "#DEDBD3"
 FOLD = "#EFEDE7"
