@@ -139,7 +139,7 @@ fn a_multi_camera_script_is_lettered_and_set_out_its_own_way() {
     let letters: Vec<_> = script.elements.iter().filter(|e| e.kind == K::SceneHeading).map(|e| e.scene_number.clone().unwrap()).collect();
     assert_eq!(letters, ["A", "B", "C", "D", "E"], "a new scene gets its letter, the rest move on");
     let heading = script.elements.iter().position(|e| e.text == "INT. FIELD STATION - NIGHT").unwrap();
-    assert_eq!(script.scene_cast(heading), ["NORA", "SAM"], "in order of speaking, once each, without extensions");
+    assert_eq!(script.scene_cast(heading), ["NORA", "OWEN"], "in order of speaking, once each, without extensions");
 
     let pages = paginate(&script, &Layout::for_script(&script));
     use storyteller_core::paginate::LineRole;
@@ -150,7 +150,7 @@ fn a_multi_camera_script_is_lettered_and_set_out_its_own_way() {
     let first = pages.pages.iter().find(|p| p.lines.iter().any(|l| l.text() == "INT. FIELD STATION - NIGHT")).unwrap();
     let body: Vec<_> = first.lines.iter().filter(|l| !matches!(l.role, LineRole::PageNumber | LineRole::SceneNumber)).collect();
     let at = body.iter().position(|l| l.text() == "INT. FIELD STATION - NIGHT").unwrap();
-    assert_eq!((body[at + 1].role, body[at + 1].text()), (LineRole::Cast, "(NORA, SAM)".to_string()), "the cast under the heading");
+    assert_eq!((body[at + 1].role, body[at + 1].text()), (LineRole::Cast, "(NORA, OWEN)".to_string()), "the cast under the heading");
     assert_eq!(body[at + 1].row, body[at].row + 1);
     assert!(first.lines.iter().any(|l| l.role == LineRole::SceneNumber && l.text() == "A"), "the letter in the margin");
     assert!(body.iter().any(|l| l.text() == "NORA TUNES THE RADIO."), "action in capitals");

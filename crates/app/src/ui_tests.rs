@@ -725,7 +725,7 @@ fn the_character_table_opens_and_a_name_goes_to_the_first_line() {
     harness.state_mut().queued.push("app.characters".into());
     harness.run_steps(3);
     assert!(harness.state().characters);
-    harness.get_by_label("SAM").click();
+    harness.get_by_label("OWEN").click();
     harness.run_steps(4);
-    assert_eq!(harness.state().session.caret.element, 4, "SAM's cue");
+    assert_eq!(harness.state().session.caret.element, 4, "OWEN's cue");
 }
