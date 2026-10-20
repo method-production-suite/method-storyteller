@@ -236,8 +236,17 @@ Limits: inputs over 32 MiB or 200 000 elements are refused with a message, not a
   (a white page column with real margins), a status bar (element type, page x of y, scene).
 - File: New, New TV Script…, Open…, Save, Save As…, Import FDX…, Export FDX…, Export PDF…, Title
   Page…, Quit. New TV Script asks one-hour (Teaser, Acts One to Five, Tag) or half-hour (Cold
-  Open, Acts One to Three, Tag), offering the writer's last choice first, and lays the acts out:
-  each act's line, an empty scene heading with the caret in the first, and its END OF line.
+  Open, Acts One to Three, Tag) or a multi-camera half-hour (Cold Open, Acts One and Two, Tag),
+  offering the writer's last choice first, and lays the acts out: each act's line, an empty
+  scene heading with the caret in the first, and its END OF line. A multi-camera script letters
+  its scenes (A to Z, then AA; a script is lettered when every scene number it has is letters,
+  and after each edit its headings are lettered again in order, so a new or moved scene takes
+  its place), lists each scene's speaking characters under the heading on the page,
+  `(NORA, SAM)`, in the order they first speak, starts each scene on a new page, prints action in
+  capitals and double-spaces dialogue. Those three are element settings, so `.fdx` and OSF keep
+  them; Fountain keeps the letters (`#A#`) but not the settings. Typing into a capitals type
+  stores capitals, as for a scene heading; keeping the writer's own casing and showing capitals
+  only on screen and page waits for the editor to draw a capitals type itself.
   Unsaved changes prompt on close (craft-quit on macOS).
 - Edit: Undo, Redo, Cut, Copy, Paste, Select All (the paragraph the caret is in), Find…, Go To….
   Cut, Copy, Paste and Select All carry no menu shortcut on purpose: ⌘X, ⌘C, ⌘V and ⌘A go

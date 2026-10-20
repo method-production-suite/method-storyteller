@@ -676,12 +676,19 @@ fn all_commands() -> Vec<Command> {
             label: "New TV Script…",
             menu: "File/New TV Script…",
             shortcut: None,
-            params: const { &[param("shape", String, false, "one_hour (Teaser, Acts One to Five, Tag) or half_hour (Cold Open, Acts One to Three, Tag)")] },
+            params: const {
+                &[param(
+                    "shape",
+                    String,
+                    false,
+                    "one_hour (Teaser, Acts One to Five, Tag), half_hour (Cold Open, Acts One to Three, Tag) or multi_cam (Cold Open, Acts One and Two, Tag; lettered scenes)",
+                )]
+            },
             enabled: always,
             run: |s, p| {
                 let shape = match opt_string(p, "shape")? {
                     Some(id) => storyteller_core::model::TvShape::from_id(&id)
-                        .ok_or_else(|| CommandError::Invalid { name: "shape", reason: "one_hour or half_hour".into() })?,
+                        .ok_or_else(|| CommandError::Invalid { name: "shape", reason: "one_hour, half_hour or multi_cam".into() })?,
                     None => storyteller_core::model::TvShape::default(),
                 };
                 *s = Session::new(Script::tv(shape));
@@ -1179,6 +1186,9 @@ fn all_commands() -> Vec<Command> {
                 let kind = kind(p, "kind")?;
                 let mut element = Element::new(kind, opt_string(p, "text")?.unwrap_or_default());
                 element.normalize();
+                if s.layout.style(kind).caps {
+                    element.text = element.text.to_uppercase();
+                }
                 s.checkpoint(EditKind::Other);
                 let len = element.text.len();
                 insert(s, after + 1, element)?;

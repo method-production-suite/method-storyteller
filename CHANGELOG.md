@@ -7,6 +7,10 @@ for its own version in Help > What's New, once after an update.
 
 ### New
 
+- File > New TV Script offers a multi-camera half-hour: Cold Open, Acts One and Two, Tag, with
+  lettered scenes (a new scene takes its letter), each scene on a new page with its speaking
+  characters under the heading, dialogue double-spaced and action in capitals.
+
 - Scripts that set an element to double spacing, to start each one on a new page, or to print in
   capitals now look that way on the page and in the PDF, and typing in a capitals element gives
   capitals.

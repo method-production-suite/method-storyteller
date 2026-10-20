@@ -153,6 +153,9 @@ pub enum TvShape {
     OneHour,
     /// Cold Open, Acts One to Three, Tag.
     HalfHour,
+    /// A multi-camera half hour: Cold Open, Acts One and Two, Tag, its scenes lettered, each
+    /// on a new page with its characters, dialogue double-spaced and action in capitals.
+    MultiCam,
 }
 
 impl TvShape {
@@ -160,12 +163,43 @@ impl TvShape {
         match self {
             TvShape::OneHour => "one_hour",
             TvShape::HalfHour => "half_hour",
+            TvShape::MultiCam => "multi_cam",
         }
     }
 
     pub fn from_id(id: &str) -> Option<Self> {
-        [TvShape::OneHour, TvShape::HalfHour].into_iter().find(|shape| shape.id() == id)
+        [TvShape::OneHour, TvShape::HalfHour, TvShape::MultiCam].into_iter().find(|shape| shape.id() == id)
     }
+}
+
+/// A scene's letter: A to Z, then AA, AB …
+pub fn scene_letter(n: usize) -> String {
+    let mut n = n;
+    let mut letters = Vec::new();
+    loop {
+        letters.push(char::from(b'A' + u8::try_from(n % 26).unwrap_or(0)));
+        if n < 26 {
+            break;
+        }
+        n = n / 26 - 1;
+    }
+    letters.iter().rev().collect()
+}
+
+/// A multi-camera script's element settings: the defaults, with each scene on a new page,
+/// action in capitals and dialogue double-spaced.
+pub fn multi_cam_format() -> crate::format::Format {
+    // The defaults as our own Open Screenplay Format styles carry them, every setting filled in.
+    let mut format = crate::osf::parse(&crate::osf::write(&Script::default())).map(|s| s.format).unwrap_or_default();
+    for element in &mut format.elements {
+        match element.name.as_str() {
+            "Scene Heading" => element.new_page = true,
+            "Action" => element.all_caps = true,
+            "Dialogue" => element.spacing = Some(200),
+            _ => {}
+        }
+    }
+    format
 }
 
 /// One script paragraph.
@@ -812,14 +846,66 @@ impl Script {
         let acts: &[&str] = match shape {
             TvShape::OneHour => &["TEASER", "ACT ONE", "ACT TWO", "ACT THREE", "ACT FOUR", "ACT FIVE", "TAG"],
             TvShape::HalfHour => &["COLD OPEN", "ACT ONE", "ACT TWO", "ACT THREE", "TAG"],
+            TvShape::MultiCam => &["COLD OPEN", "ACT ONE", "ACT TWO", "TAG"],
         };
         let mut elements = Vec::with_capacity(acts.len() * 3);
-        for act in acts {
+        for (n, act) in acts.iter().enumerate() {
             elements.push(Element::new(ElementKind::NewAct, *act));
-            elements.push(Element::new(ElementKind::SceneHeading, ""));
+            let mut heading = Element::new(ElementKind::SceneHeading, "");
+            if shape == TvShape::MultiCam {
+                heading.scene_number = Some(scene_letter(n));
+            }
+            elements.push(heading);
             elements.push(Element::new(ElementKind::EndOfAct, format!("END OF {act}")));
         }
-        Script { elements, ..Script::default() }
+        let mut script = Script { elements, ..Script::default() };
+        if shape == TvShape::MultiCam {
+            script.format = multi_cam_format();
+        }
+        script
+    }
+
+    /// Whether the scenes are lettered (A, B … Z, AA), as a multi-camera script's are: some
+    /// heading has a number, and every number is letters only.
+    pub fn is_lettered(&self) -> bool {
+        let mut numbers = self.elements.iter().filter(|e| e.kind == ElementKind::SceneHeading).filter_map(|e| e.scene_number.as_deref()).peekable();
+        numbers.peek().is_some() && numbers.all(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_uppercase()))
+    }
+
+    /// In a lettered script, every scene heading lettered in order (a new scene gets its
+    /// letter, a moved one its new one). Returns whether anything changed.
+    pub fn keep_letters_in_step(&mut self) -> bool {
+        if !self.is_lettered() {
+            return false;
+        }
+        let mut changed = false;
+        for (n, heading) in self.elements.iter_mut().filter(|e| e.kind == ElementKind::SceneHeading).enumerate() {
+            let letter = scene_letter(n);
+            if heading.scene_number.as_deref() != Some(letter.as_str()) {
+                heading.scene_number = Some(letter);
+                changed = true;
+            }
+        }
+        changed
+    }
+
+    /// The characters who speak in the scene headed at `heading`, in the order they first
+    /// speak, as a multi-camera script lists them under the heading.
+    pub fn scene_cast(&self, heading: usize) -> Vec<String> {
+        let mut cast: Vec<String> = Vec::new();
+        for element in self.elements.iter().skip(heading + 1) {
+            match element.kind {
+                ElementKind::SceneHeading | ElementKind::NewAct => break,
+                ElementKind::Character => {
+                    let name = crate::inline::plain(character_name(&element.text)).trim().to_uppercase();
+                    if !name.is_empty() && !cast.contains(&name) {
+                        cast.push(name);
+                    }
+                }
+                _ => {}
+            }
+        }
+        cast
     }
 
     /// Normalize every element (see [`Element::normalize`]).

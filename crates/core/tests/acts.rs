@@ -103,3 +103,67 @@ fn each_act_starts_a_new_page() {
     assert_eq!(page_of("TAG"), 3);
     assert_eq!(pages.page_count(), 3);
 }
+
+#[test]
+fn scene_letters_run_a_to_z_then_double() {
+    use storyteller_core::model::scene_letter;
+    assert_eq!([0, 1, 25, 26, 27, 51, 52].map(scene_letter), ["A", "B", "Z", "AA", "AB", "AZ", "BA"]);
+}
+
+/// A multi-camera script with two scenes written.
+fn multi_cam() -> Script {
+    use storyteller_core::model::TvShape;
+    let mut script = Script::tv(TvShape::MultiCam);
+    let written = fountain::parse(
+        "INT. FIELD STATION - NIGHT\n\nNora tunes the radio.\n\nNORA\nAnything?\n\nSAM\nStatic.\n\nNORA (O.S.)\nKeep trying.\n\nEXT. RIDGE - DAWN\n\nWind.\n",
+    )
+    .unwrap();
+    // Into the cold open, in place of its empty heading.
+    script.elements.splice(1..2, written.elements);
+    script.keep_letters_in_step();
+    script
+}
+
+#[test]
+fn a_multi_camera_script_is_lettered_and_set_out_its_own_way() {
+    use storyteller_core::model::TvShape;
+    let fresh = Script::tv(TvShape::MultiCam);
+    let acts: Vec<&str> = fresh.elements.iter().filter(|e| e.kind == K::NewAct).map(|e| e.text.as_str()).collect();
+    assert_eq!(acts, ["COLD OPEN", "ACT ONE", "ACT TWO", "TAG"]);
+    assert!(fresh.is_lettered());
+    let layout = Layout::for_script(&fresh);
+    assert!(layout.scene_heading.new_page && layout.action.caps && layout.dialogue.spacing == 2);
+    assert_eq!(Layout::for_script(&Script::tv(TvShape::HalfHour)), Layout::default(), "the other shapes keep the defaults");
+
+    let script = multi_cam();
+    let letters: Vec<_> = script.elements.iter().filter(|e| e.kind == K::SceneHeading).map(|e| e.scene_number.clone().unwrap()).collect();
+    assert_eq!(letters, ["A", "B", "C", "D", "E"], "a new scene gets its letter, the rest move on");
+    let heading = script.elements.iter().position(|e| e.text == "INT. FIELD STATION - NIGHT").unwrap();
+    assert_eq!(script.scene_cast(heading), ["NORA", "SAM"], "in order of speaking, once each, without extensions");
+
+    let pages = paginate(&script, &Layout::for_script(&script));
+    use storyteller_core::paginate::LineRole;
+    let page_of = |text: &str| {
+        pages.pages.iter().find(|p| p.lines.iter().any(|l| l.text() == text)).map(|p| p.number).unwrap_or_else(|| panic!("{text} is printed"))
+    };
+    assert_ne!(page_of("INT. FIELD STATION - NIGHT"), page_of("EXT. RIDGE - DAWN"), "each scene on its own page");
+    let first = pages.pages.iter().find(|p| p.lines.iter().any(|l| l.text() == "INT. FIELD STATION - NIGHT")).unwrap();
+    let body: Vec<_> = first.lines.iter().filter(|l| !matches!(l.role, LineRole::PageNumber | LineRole::SceneNumber)).collect();
+    let at = body.iter().position(|l| l.text() == "INT. FIELD STATION - NIGHT").unwrap();
+    assert_eq!((body[at + 1].role, body[at + 1].text()), (LineRole::Cast, "(NORA, SAM)".to_string()), "the cast under the heading");
+    assert_eq!(body[at + 1].row, body[at].row + 1);
+    assert!(first.lines.iter().any(|l| l.role == LineRole::SceneNumber && l.text() == "A"), "the letter in the margin");
+    assert!(body.iter().any(|l| l.text() == "NORA TUNES THE RADIO."), "action in capitals");
+}
+
+#[test]
+fn a_multi_camera_script_keeps_its_letters_and_settings_in_fdx_and_osf() {
+    let script = multi_cam();
+    let layout = Layout::for_script(&script);
+    for (name, back) in [("fdx", fdx::parse(&fdx::write(&script)).unwrap()), ("osf", osf::parse(&osf::write(&script)).unwrap())] {
+        assert!(back.is_lettered(), "{name}");
+        let letters = |s: &Script| s.elements.iter().filter_map(|e| e.scene_number.clone()).collect::<Vec<_>>();
+        assert_eq!(letters(&back), letters(&script), "{name}");
+        assert_eq!(Layout::for_script(&back), layout, "{name}");
+    }
+}

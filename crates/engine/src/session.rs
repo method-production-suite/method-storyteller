@@ -186,11 +186,14 @@ impl Session {
         self.edits
     }
 
-    /// After an edit: End of Act lines follow their acts' names, and an act whose line the
-    /// caret is on gets its End of Act line when it has none (docs/spec.md §3).
+    /// After an edit: End of Act lines follow their acts' names, an act whose line the caret
+    /// is on gets its End of Act line when it has none, and a lettered script's scenes keep
+    /// their letters in order (docs/spec.md §3).
     pub fn keep_acts_in_step(&mut self) {
         let on_act = self.current().is_some_and(|e| e.kind == ElementKind::NewAct).then_some(self.caret.element);
-        let (changed, added) = self.script.keep_acts_in_step(on_act);
+        let (acts_changed, added) = self.script.keep_acts_in_step(on_act);
+        // A lettered script's scenes keep their letters in order.
+        let changed = self.script.keep_letters_in_step() || acts_changed;
         if let Some(at) = added
             && self.caret.element >= at
         {

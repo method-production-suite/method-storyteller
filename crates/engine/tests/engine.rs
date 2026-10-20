@@ -662,3 +662,21 @@ fn a_type_the_script_prints_in_capitals_is_typed_in_capitals() {
     run(&registry, &mut s, "element.set_text", json!({ "index": 1, "text": "Nora runs.", "typing": true }));
     assert_eq!(s.script.elements[1].text, "NORA RUNS.");
 }
+
+#[test]
+fn a_new_scene_in_a_multi_camera_script_gets_its_letter() {
+    let registry = Registry::new();
+    let mut s = Session::default();
+    run(&registry, &mut s, "file.new_tv", json!({ "shape": "multi_cam" }));
+    assert!(s.layout.dialogue.spacing == 2 && s.layout.scene_heading.new_page && s.layout.action.caps);
+    let letters = |s: &Session| {
+        s.script.elements.iter().filter(|e| e.kind == K::SceneHeading).map(|e| e.scene_number.clone().unwrap_or_default()).collect::<Vec<_>>()
+    };
+    assert_eq!(letters(&s), ["A", "B", "C", "D"]);
+    // A second scene in the cold open: it becomes B, and the rest move on.
+    run(&registry, &mut s, "element.insert", json!({ "index": 1, "kind": "scene_heading", "text": "INT. HUT - NIGHT" }));
+    assert_eq!(letters(&s), ["A", "B", "C", "D", "E"]);
+    assert_eq!(s.script.elements[2].scene_number.as_deref(), Some("B"));
+    run(&registry, &mut s, "element.insert", json!({ "index": 2, "kind": "action", "text": "Nora waits." }));
+    assert_eq!(s.script.elements[3].text, "NORA WAITS.", "action in capitals");
+}

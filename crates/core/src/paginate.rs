@@ -24,6 +24,8 @@ pub enum LineRole {
     PageNumber,
     SceneNumber,
     Title,
+    /// The characters of a lettered scene, listed under its heading: `(NORA, SAM)`.
+    Cast,
 }
 
 /// One printed line at an absolute cell position.
@@ -91,12 +93,14 @@ struct Block {
     lines: Vec<Line>,
     /// Text may be re-split at sentence boundaries.
     splittable: bool,
+    /// The last lines are the scene's cast list, not the element's own text.
+    cast_lines: usize,
 }
 
 impl Block {
     fn new(element: usize, kind: ElementKind, style: ElementStyle, source: Vec<StyledChar>, splittable: bool) -> Self {
         let lines = layout_lines(&source, style, kind == ElementKind::Parenthetical);
-        Block { element, kind, style, space_before: style.space_before, source, lines, splittable }
+        Block { element, kind, style, space_before: style.space_before, source, lines, splittable, cast_lines: 0 }
     }
 
     fn with_source(&self, source: Vec<StyledChar>) -> Self {
@@ -304,6 +308,8 @@ fn speech_at(script: &Script, start: usize, layout: &Layout, column: Option<&cra
 
 fn groups(script: &Script, layout: &Layout) -> Vec<Group> {
     let mut groups = Vec::new();
+    // A lettered (multi-camera) script lists each scene's characters under its heading.
+    let lettered = script.is_lettered();
     let mut index = 0;
     while let Some(element) = script.elements.get(index) {
         match element.kind {
@@ -337,7 +343,13 @@ fn groups(script: &Script, layout: &Layout) -> Vec<Group> {
                 if kind == ElementKind::NewAct || style.new_page {
                     groups.push(Group::Break);
                 }
-                if let Some(block) = block_for(script, index, layout, style) {
+                if let Some(mut block) = block_for(script, index, layout, style) {
+                    let cast = if lettered && kind == ElementKind::SceneHeading { script.scene_cast(index) } else { Vec::new() };
+                    if !cast.is_empty() {
+                        let list = layout_lines(&wrap::unstyled(&format!("({})", cast.join(", "))), layout.action, false);
+                        block.cast_lines = list.len();
+                        block.lines.extend(list);
+                    }
                     groups.push(Group::Block(block));
                 }
                 index += 1;
@@ -476,11 +488,13 @@ impl<'a> PageBuilder<'a> {
     }
 
     fn place_block(&mut self, block: &Block, script: &Script, element_pages: &mut [u32], page: u32) {
+        let cast_from = block.lines.len().saturating_sub(block.cast_lines);
         for (index, line) in block.lines.iter().enumerate() {
             if index > 0 {
                 self.used = self.used.saturating_add(block.style.spacing.max(1).saturating_sub(1));
             }
-            self.push_line(line.col, &line.chars, LineRole::Element(block.kind), Some(block.element), 0);
+            let role = if index >= cast_from { LineRole::Cast } else { LineRole::Element(block.kind) };
+            self.push_line(line.col, &line.chars, role, Some(block.element), 0);
             if index == 0 && block.kind == ElementKind::SceneHeading && self.layout.show_scene_numbers {
                 self.scene_numbers(block.element, script);
             }
