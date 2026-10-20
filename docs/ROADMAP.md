@@ -89,6 +89,14 @@ says otherwise.
    writer's own (END OF SHOW) is left alone.
 19. **Signing.** **Decided by the owner, 2026-10-19:** Windows installers stay unsigned for now
    (revisit before V1); the macOS signing identity stays as it is.
+20. **Scene number letters I and O** ([production-spec.md](production-spec.md), S1). **Built on
+   the recommendation: skip neither by default**, with a setting to skip both, until the parity
+   check shows current practice. Reversible.
+21. **Mark and Clear Revised on ⌘] and ⌘[** (S2). **Built on the recommendation: yes**; nothing
+   in the app takes those keys. Reversible.
+22. **A-page lettering past Z, and merged locked pages** (S3). **Built on the recommendation:
+   AA to ZZ, and a merged page numbered `7-8`**; the parity check settles anything a saved file
+   shows differently. Reversible.
 12. **Rank for `.osf` in the Finder.** **Decided by the owner, 2026-10-18: Default**, like
    `.fountain` and `.fdx`: open formats, so the app claims none of them as their owner.
 
@@ -123,7 +131,8 @@ says otherwise.
   presets), any break threshold the PDFs leave ambiguous, the undocumented Tab and Shift-Tab
   keys, revision output details, and the outline elements of older versions. Prepared files
   and a click list come before the session.
-- **The design pass (D).** Look at the offscreen pictures of the icon, the editor and every panel
+- **The design pass (D).** Look at the contact sheet ([design-pass.md](design-pass.md), section 3)
+  once it is drawn, or for now the offscreen pictures of the icon, the editor and every panel
   in light and dark, and say what feels off. Nothing needs the app open on your screen.
 - **Private corpus.** New `.fdx` and PDF pairs exported together (same day, same draft) widen
   the ground truth. The harness never prints script text; the files stay on one machine.
@@ -240,14 +249,17 @@ wait for a decision above.
 8c. **The `.mstory` package** [have] M (decision 1). One ZIP file: the script as Open
    Screenplay Format, and a production data file. Open and save, File > Save As, the Finder's
    document type and icon. Comes first in M5.
-9. **M5, production I** L. Full scene numbering (A-suffix inserts, prefix schemes, left and
+9. **M5, production I** L. Spec: [production-spec.md](production-spec.md), section 3, with its
+   order of PRs. Full scene numbering (A-suffix inserts, prefix schemes, left and
    right), omit and unomit, revision sets (name, mark, colour), revision mode, mark and clear,
    deleted-text markers, revisions drawn in the editor and the PDF, the revised-pages header,
    revised-pages-only and range PDFs, clean copies. Kept in the `.mstory` package (decision 1).
-10. **M6, production II and reports** L. Locked pages as imported, then lock pages, A-pages, lock
+10. **M6, production II and reports** L. Spec: [production-spec.md](production-spec.md),
+   section 4. Locked pages as imported, then lock pages, A-pages, lock
    and unlock; scene, location, character and cast reports with CSV; plain-text export; the
    structured export Method Schedule reads.
-11. **D, the design pass** M (new, owner 2026-10-18). Matched to the family (Method Budget's and
+11. **D, the design pass** M (new, owner 2026-10-18). What is done and what is left:
+   [design-pass.md](design-pass.md). Matched to the family (Method Budget's and
     Method Schedule's BRAND.md), every step pictured offscreen in light and dark:
     - the final mark and wordmark (replacing the provisional ones in docs/brand and site/);
     - the app icon at every macOS size, plus Windows and Linux, and a document icon for
