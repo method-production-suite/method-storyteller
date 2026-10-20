@@ -91,8 +91,40 @@ fn bundle_dir(platform: &str) -> PathBuf {
     target_dir().join("bundle").join(platform)
 }
 
+/// The universal Mac target: both slices built, then joined with `lipo -create` into
+/// `target/universal-apple-darwin/release/` (SUITE-STANDARDS.md §3).
+pub const UNIVERSAL: &str = "universal-apple-darwin";
+/// The two slices of [`UNIVERSAL`].
+pub const MAC_SLICES: [&str; 2] = ["aarch64-apple-darwin", "x86_64-apple-darwin"];
+
 /// Builds the app in release mode (unless `--no-build`) and returns its binary.
 fn build_app(options: &Options) -> Result<PathBuf, String> {
+    if options.target.as_deref() == Some(UNIVERSAL) {
+        if !options.no_build {
+            let mut args = vec!["build", "--release", "--locked", "--package", APP_PACKAGE, "--bin", APP_BIN];
+            for slice in MAC_SLICES {
+                args.extend(["--target", slice]);
+            }
+            crate::cargo(&args)?;
+        }
+        let slices: Vec<PathBuf> = MAC_SLICES.iter().map(|t| target_dir().join(t).join("release").join(APP_BIN)).collect();
+        let out_dir = target_dir().join(UNIVERSAL).join("release");
+        let binary = out_dir.join(APP_BIN);
+        // With --no-build, a binary joined earlier (the release workflow joins it before any
+        // secret) is used as it is.
+        if !options.no_build || !binary.is_file() {
+            for slice in &slices {
+                if !slice.is_file() {
+                    return Err(format!("{} not found; build it first", slice.display()));
+                }
+            }
+            std::fs::create_dir_all(&out_dir).map_err(|e| format!("{}: {e}", out_dir.display()))?;
+            let mut args: Vec<&std::ffi::OsStr> = vec![os("-create"), os("-output"), binary.as_os_str()];
+            args.extend(slices.iter().map(|s| s.as_os_str()));
+            run("lipo", &args)?;
+        }
+        return Ok(binary);
+    }
     if !options.no_build {
         let mut args = vec!["build", "--release", "--locked", "--package", APP_PACKAGE, "--bin", APP_BIN];
         if let Some(target) = &options.target {

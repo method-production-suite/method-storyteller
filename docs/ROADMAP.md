@@ -127,9 +127,10 @@ says otherwise.
 - **v0.2.0, the first release:** published 2026-10-19 (tag `v0.2.0` on `33cfb16`, the owner's
   override for muda 0.21.2's last three days). Nothing waiting; signing stays as it is
   (decision 19).
-- **v0.3.0:** universal Mac builds, Apple silicon and Intel in one app (the owner, 2026-10-19,
-  for every suite app at its next release). Built into the 0.3.0 release PR with the
-  method-update bump; the go-ahead for the tag comes with that PR.
+- **v0.3.0:** TV acts, and universal Mac builds, Apple silicon and Intel in one app (the
+  owner, 2026-10-19, for every suite app at its next release). Launcher 0.1.2, which accepts
+  universal apps, is out. The release PR goes to MReview; after its merge, the rehearsal on
+  main, then the tag request to the owner through MOrg (one yes covers tag and publish).
 ---
 
 ## Where we are
