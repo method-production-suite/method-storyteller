@@ -127,6 +127,9 @@ says otherwise.
 - **v0.2.0, the first release:** published 2026-10-19 (tag `v0.2.0` on `33cfb16`, the owner's
   override for muda 0.21.2's last three days). Nothing waiting; signing stays as it is
   (decision 19).
+- **v0.3.0:** universal Mac builds, Apple silicon and Intel in one app (the owner, 2026-10-19,
+  for every suite app at its next release). Built into the 0.3.0 release PR with the
+  method-update bump; the go-ahead for the tag comes with that PR.
 ---
 
 ## Where we are
@@ -215,7 +218,7 @@ wait for a decision above.
      read and written as `.fdx` New Act and End of Act, OSF styles, and centred Fountain lines;
    - New TV Script: Teaser or Cold Open, the acts and Tag laid out, one-hour or half-hour
      [have];
-   - acts in the navigator (each act heading its scenes) and in Go To;
+   - acts in the navigator (each act heading its scenes) and in Go To [have];
    - End of Act lines written and kept in step automatically (decision 18);
    - a multi-camera sitcom shape: lettered scenes, each on a new page with its characters,
      double-spaced dialogue, action in capitals (decision 17).

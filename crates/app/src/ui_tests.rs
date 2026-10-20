@@ -46,7 +46,7 @@ fn go_to_explains_a_missing_page_and_closes_on_escape() {
     let (mut harness, _file) = harness(SCRIPT);
     open_go_to(&mut harness);
     if let Some(draft) = harness.state_mut().go_to.as_mut() {
-        draft.page = true;
+        draft.mode = super::GoToMode::Page;
         draft.text = "99".into();
     }
     harness.get_by_label("Go").click();
@@ -508,4 +508,44 @@ fn new_tv_script_asks_the_shape_and_remembers_it() {
     harness.key_press(egui::Key::Escape);
     harness.run_steps(2);
     assert!(harness.state().new_tv.is_none(), "Escape closes it");
+}
+
+#[test]
+fn acts_head_their_scenes_in_the_navigator_and_go_to_finds_them() {
+    let script = "> TEASER <\n\nINT. HUT - NIGHT\n\nRain.\n\n> END OF TEASER <\n\n> ACT ONE <\n\nEXT. RIDGE - DAWN\n\nWind.\n\n> END OF ACT ONE <\n\n> TAG <\n";
+    let (mut harness, _file) = harness(script);
+    harness.state_mut().prefs.update(|p| p.view.navigator = true);
+    harness.run_steps(3);
+    let rect = |harness: &Harness<'static, StorytellerApp>, id: &str| {
+        harness.state().automation.find(id).map(|w| w.rect).unwrap_or_else(|| panic!("{id} is on screen"))
+    };
+    // Each act sits above its scenes; the TAG, with none yet, still shows at the end.
+    assert!(rect(&harness, "navigator.act.0").bottom() <= rect(&harness, "navigator.scene.0").top());
+    assert!(rect(&harness, "navigator.scene.0").bottom() <= rect(&harness, "navigator.act.1").top());
+    assert!(rect(&harness, "navigator.act.1").bottom() <= rect(&harness, "navigator.scene.1").top());
+    assert!(rect(&harness, "navigator.scene.1").bottom() <= rect(&harness, "navigator.act.2").top());
+    let click = |harness: &mut Harness<'static, StorytellerApp>, id: &str| {
+        let pos = rect(harness, id).center();
+        let press = |pressed| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE };
+        harness.input_mut().events.extend([egui::Event::PointerMoved(pos), press(true)]);
+        harness.step();
+        harness.input_mut().events.push(press(false));
+        harness.run_steps(4);
+        let s = &harness.state().session;
+        s.script.elements[s.caret.element].text.clone()
+    };
+    assert_eq!(click(&mut harness, "navigator.act.1"), "Wind.", "an act click goes into its first scene's action");
+    assert_eq!(click(&mut harness, "navigator.act.2"), "TAG", "an act with no scene: its own line");
+
+    open_go_to(&mut harness);
+    if let Some(draft) = harness.state_mut().go_to.as_mut() {
+        draft.mode = super::GoToMode::Act;
+        draft.text = "teaser".into();
+    }
+    harness.run_steps(2);
+    harness.get_by_label("Go").click();
+    harness.run_steps(3);
+    assert!(harness.state().go_to.is_none(), "the dialog closes on success");
+    let s = &harness.state().session;
+    assert_eq!(s.script.elements[s.caret.element].text, "TEASER");
 }

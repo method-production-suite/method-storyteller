@@ -825,11 +825,18 @@ fn all_commands() -> Vec<Command> {
                 &[
                     param("scene", String, false, "Scene number as printed (12, 12A), or its position when scenes are unnumbered"),
                     param("page", Integer, false, "Page number"),
+                    param("act", String, false, "Act: its position counted from 1, or its name (TAG, ACT TWO, two)"),
                 ]
             },
             enabled: always,
             run: |s, p| {
-                let index = go_to(s, opt_string(p, "scene")?, opt_index(p, "page")?)?;
+                let index = match opt_string(p, "act")? {
+                    Some(act) => s
+                        .script
+                        .find_act(&act)
+                        .ok_or_else(|| CommandError::Invalid { name: "act", reason: format!("there is no act {}", act.trim()) })?,
+                    None => go_to(s, opt_string(p, "scene")?, opt_index(p, "page")?)?,
+                };
                 s.caret = Caret { element: index, offset: 0 };
                 s.break_typing();
                 Ok(Outcome::value(json!({ "element": index })))

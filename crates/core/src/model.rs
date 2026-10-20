@@ -748,6 +748,24 @@ impl Script {
         Script { elements: vec![Element::new(ElementKind::SceneHeading, "")], ..Script::default() }
     }
 
+    /// The positions of the script's New Act lines, in order.
+    pub fn acts(&self) -> Vec<usize> {
+        self.elements.iter().enumerate().filter(|(_, e)| e.kind == ElementKind::NewAct).map(|(i, _)| i).collect()
+    }
+
+    /// The act an element `wanted` names: its position counted from 1 (`2`), or its name
+    /// (`TAG`, `act two`, or just `two` for ACT TWO), in any case.
+    pub fn find_act(&self, wanted: &str) -> Option<usize> {
+        let acts = self.acts();
+        let wanted = wanted.trim();
+        if let Ok(n) = wanted.parse::<usize>() {
+            return n.checked_sub(1).and_then(|n| acts.get(n).copied());
+        }
+        let wanted = wanted.to_uppercase();
+        let name = |i: &usize| self.elements.get(*i).map(|e| e.text.trim().to_uppercase()).unwrap_or_default();
+        acts.iter().find(|i| name(i) == wanted).or_else(|| acts.iter().find(|i| name(i) == format!("ACT {wanted}"))).copied()
+    }
+
     /// A new television script laid out in acts: each act's line, an empty scene heading to
     /// start writing in, and the line that ends the act.
     pub fn tv(shape: TvShape) -> Self {

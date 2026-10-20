@@ -10,6 +10,8 @@ for its own version in Help > What's New, once after an update.
 - Television acts: New Act (TEASER, COLD OPEN, ACT ONE, TAG) and End of Act lines, in capitals
   and centred, each act on a new page. In the element picker as B and E, and in Format.
 - File > New TV Script: a one-hour or half-hour script laid out in acts, ready to write.
+- Acts in the scene navigator, each above its scenes; a click goes into the act's first scene.
+  Go To finds an act by its number or its name (2, TAG, ACT TWO).
 
 ### Before you update
 
