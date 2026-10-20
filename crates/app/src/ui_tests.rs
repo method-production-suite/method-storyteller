@@ -638,6 +638,7 @@ fn close_leaves_an_empty_script_and_open_recent_brings_it_back() {
 fn a_recovery_copy_is_offered_and_opens_as_unsaved_work() {
     let (mut harness, _file) = harness(SCRIPT);
     let dir = tempfile::tempdir().unwrap();
+    let names = |dir: &std::path::Path| crate::recovery::waiting(dir).iter().map(|p| crate::recovery::name_of(p)).collect::<Vec<_>>();
     crate::recovery::write(dir.path(), "Pilot", b"INT. LOST - NIGHT\n\nThe unsaved line.\n").unwrap();
     harness.state_mut().recovery_dir = Some(dir.path().to_path_buf());
     assert!(harness.state_mut().find_recovery());
@@ -648,18 +649,30 @@ fn a_recovery_copy_is_offered_and_opens_as_unsaved_work() {
     assert!(state.recovered.is_none(), "answered");
     assert!(state.session.dirty && state.session.path.is_none(), "unsaved work, to be saved somewhere");
     assert!(state.session.script.elements.iter().any(|e| e.text == "The unsaved line."));
-    assert!(crate::recovery::waiting(dir.path()).is_empty(), "the copy is taken up");
+    assert_eq!(names(dir.path()), ["Pilot"], "the copy stays until the work is saved or thrown away");
+    assert_eq!(state.recovery_name, "Pilot", "and this script's copies go on under its name");
 
-    // Don't Save throws the open script's copy away too.
-    crate::recovery::write(dir.path(), "Untitled", b"INT. A - DAY\n").unwrap();
+    // Don't Save throws the recovered work's copy away, and nothing else.
+    crate::recovery::write(dir.path(), "Untitled", b"INT. WAITING - DAY\n").unwrap();
     harness.state_mut().queued.push("file.new".into());
     harness.run_steps(4);
     harness.get_by_label("Don't Save").click();
     harness.run_steps(4);
-    assert!(crate::recovery::waiting(dir.path()).is_empty(), "nothing left to offer next time");
+    assert_eq!(names(dir.path()), ["Untitled"], "the other waiting copy is untouched");
+    assert_eq!(harness.state().recovery_name, "Untitled 2", "a new script never writes over a waiting copy");
+
+    // Later leaves the copy, and the open script's own copies cannot take its name.
+    assert!(harness.state_mut().find_recovery());
+    harness.run_steps(2);
+    harness.get_by_label("Later").click();
+    harness.run_steps(2);
+    assert!(harness.state().recovered.is_none());
+    harness.state_mut().queued.push("file.new".into());
+    harness.run_steps(3);
+    assert_ne!(harness.state().recovery_name, "Untitled");
+    assert_eq!(names(dir.path()), ["Untitled"], "still there for the next launch");
 
     // Throw It Away.
-    crate::recovery::write(dir.path(), "Pilot", b"INT. B - DAY\n").unwrap();
     assert!(harness.state_mut().find_recovery());
     harness.run_steps(2);
     harness.get_by_label("Throw It Away").click();
