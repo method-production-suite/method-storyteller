@@ -260,8 +260,11 @@ Limits: inputs over 32 MiB or 200 000 elements are refused with a message, not a
   Unsaved changes prompt on close (craft-quit on macOS). While a script has unsaved changes, a
   copy goes into the app's Recovery folder every minute, as Fountain, under the script's name;
   saving or Don't Save takes it away. A copy still there at the next launch is offered first,
-  ahead of the first-launch sample: Open the Copy (an unsaved script, to save with Save As),
-  Throw It Away, or Later.
+  ahead of the first-launch sample: Open the Copy (an unsaved script, to save with Save As; the
+  copy stays, and the script's copies go on under its name, until it is saved or thrown away),
+  Throw It Away, or Later (the copy waits for the next launch). A script's copies never take the
+  name of one still waiting: a new Untitled script writes `Untitled 2` beside a waiting
+  `Untitled`.
 - Edit: Undo, Redo, Cut, Copy, Paste, Select All (the paragraph the caret is in), Find…, Go To….
   Cut, Copy, Paste and Select All carry no menu shortcut on purpose: ⌘X, ⌘C, ⌘V and ⌘A go
   straight to the text being edited, and the menu items do the same.

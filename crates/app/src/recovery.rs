@@ -28,6 +28,15 @@ pub fn forget(dir: &Path, stem: &str) {
     let _ = std::fs::remove_file(copy_path(dir, stem));
 }
 
+/// A name for a script's copy that no copy waiting in `dir` has: `stem`, or `stem 2`, `stem 3` …
+/// so a new script's copies never write over one still waiting to be answered.
+pub fn free_name(dir: &Path, stem: &str) -> String {
+    if !copy_path(dir, stem).exists() {
+        return stem.to_string();
+    }
+    (2..).map(|n| format!("{stem} {n}")).find(|name| !copy_path(dir, name).exists()).unwrap_or_else(|| stem.to_string())
+}
+
 /// The copies waiting in `dir`, newest first.
 pub fn waiting(dir: &Path) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
@@ -55,8 +64,11 @@ mod tests {
         let found = waiting(&folder);
         assert_eq!(found.len(), 1);
         assert_eq!(name_of(&found[0]), "Pilot");
+        assert_eq!(free_name(&folder, "Pilot"), "Pilot 2", "the waiting copy's name is taken");
+        assert_eq!(free_name(&folder, "Untitled"), "Untitled");
         forget(&folder, "Pilot");
         assert!(waiting(&folder).is_empty());
+        assert_eq!(free_name(&folder, "Pilot"), "Pilot");
         forget(&folder, "Pilot");
     }
 }
