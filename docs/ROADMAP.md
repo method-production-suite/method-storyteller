@@ -97,6 +97,10 @@ says otherwise.
 22. **A-page lettering past Z, and merged locked pages** (S3). **Built on the recommendation:
    AA to ZZ, and a merged page numbered `7-8`**; the parity check settles anything a saved file
    shows differently. Reversible.
+23. **The Method Schedule export format** (S4). **Agreed with the Method Schedule session,
+   2026-10-20:** a script scenes file (`.mscenes`, JSON, `method-script-scenes` version 1),
+   specified in [production-spec.md](production-spec.md) section 4.4 and in Method Schedule's
+   EXCHANGE.md. Built on that agreement; reversible until the writer ships.
 12. **Rank for `.osf` in the Finder.** **Decided by the owner, 2026-10-18: Default**, like
    `.fountain` and `.fdx`: open formats, so the app claims none of them as their owner.
 
