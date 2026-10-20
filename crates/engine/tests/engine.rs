@@ -719,3 +719,33 @@ fn a_script_saves_as_a_package_and_opens_again_the_same() {
     assert_eq!(std::fs::read(&path).unwrap(), bytes);
     assert_eq!(FileFormat::from_path(std::path::Path::new("a.MSTORY")), FileFormat::Mstory);
 }
+
+#[test]
+fn spelling_follows_the_writers_english() {
+    use storyteller_engine::spell::{Language, Personal, is_right};
+    let none = std::collections::HashSet::new();
+    let us = Personal { language: Language::Us, ..Default::default() };
+    let uk = Personal { language: Language::Uk, ..Default::default() };
+    for (word, in_us, in_uk) in [
+        ("color", true, false),
+        ("colour", false, true),
+        ("organise", false, true),
+        ("organize", true, false),
+        ("theater", true, false),
+        ("theatre", false, true),
+        ("script", true, true),
+    ] {
+        assert_eq!(is_right(word, &none, &us, &none), in_us, "{word} in US English");
+        assert_eq!(is_right(word, &none, &uk, &none), in_uk, "{word} in UK English");
+    }
+    assert!(
+        storyteller_engine::spell::suggestions("colur", Language::Uk, 6).iter().any(|s| s == "colour"),
+        "{:?}",
+        storyteller_engine::spell::suggestions("colur", Language::Uk, 6)
+    );
+    assert_eq!(Language::for_region("GB"), Language::Uk);
+    assert_eq!(Language::for_region("au"), Language::Uk);
+    assert_eq!(Language::for_region("US"), Language::Us);
+    assert_eq!(Language::for_region("DE"), Language::Us);
+    assert_eq!(Language::from_id("en_GB"), Some(Language::Uk));
+}

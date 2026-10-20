@@ -278,7 +278,7 @@ signed `.app.tar.gz`), the OSF and Fountain study, and the design pass. Each is 
 - **Capitals by display** [missing] S. Typing into a capitals type (a multi-camera script's
   action) stores capitals today; keep the writer's casing and show capitals on screen and page
   instead, once the editor draws a capitals type itself (MReview's note on #82).
-- **UK English dictionary** [missing] S (decision 16). US and UK English, a setting, the first
+- **UK English dictionary** [have] S (decision 16). US and UK English, a setting, the first
   run choosing from the system's region.
 
 ---

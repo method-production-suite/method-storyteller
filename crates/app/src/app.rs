@@ -39,7 +39,7 @@ const GO_TO_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Alt+G" } else { "Cmd
 const FIND_NEXT_KEY: &str = if cfg!(target_os = "macos") { "Cmd+G" } else { "F3" };
 const FIND_PREVIOUS_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Shift+G" } else { "Shift+F3" };
 
-const APP_COMMANDS: [AppCommand; 36] = [
+const APP_COMMANDS: [AppCommand; 38] = [
     AppCommand { id: "app.close", label: "Close", menu: "File/Close", shortcut: Some("Cmd+W") },
     AppCommand { id: "app.title_page", label: "Title Page…", menu: "File/Title Page…", shortcut: Some("Cmd+Shift+T") },
     AppCommand {
@@ -64,6 +64,8 @@ const APP_COMMANDS: [AppCommand; 36] = [
     AppCommand { id: "app.select_all", label: "Select All", menu: "Edit/Select All", shortcut: None },
     AppCommand { id: "app.spelling", label: "Spelling…", menu: "Edit/Spelling…", shortcut: Some("Cmd+Semicolon") },
     AppCommand { id: "prefs.check_spelling", label: "Check Spelling While Typing", menu: "View/Check Spelling While Typing", shortcut: None },
+    AppCommand { id: "prefs.spelling_us", label: "US English Spelling", menu: "Edit/US English Spelling", shortcut: None },
+    AppCommand { id: "prefs.spelling_uk", label: "UK English Spelling", menu: "Edit/UK English Spelling", shortcut: None },
     AppCommand { id: "app.find", label: "Find…", menu: "Edit/Find…", shortcut: Some("Cmd+F") },
     AppCommand { id: "app.find_next", label: "Find Next", menu: "Edit/Find Next", shortcut: Some(FIND_NEXT_KEY) },
     AppCommand { id: "app.find_previous", label: "Find Previous", menu: "Edit/Find Previous", shortcut: Some(FIND_PREVIOUS_KEY) },
@@ -259,6 +261,14 @@ impl StorytellerApp {
         let in_memory = matches!(settings, Location::Memory);
         let (prefs, report) = SettingsStore::<Prefs>::open(settings);
         let prefs_automatic = prefs.get().updates.check_automatically;
+        // The first run picks the spelling dictionary from the system's region (decision 16);
+        // settings in memory (tests) stay with US English, whatever the machine's region.
+        let mut prefs = prefs;
+        if prefs.get().general.spelling_language.is_empty() {
+            let region = if in_memory { None } else { storyteller_macos_open::region() };
+            let language = region.map_or(storyteller_engine::spell::Language::Us, |r| storyteller_engine::spell::Language::for_region(&r));
+            prefs.update(|p| p.general.spelling_language = language.id().into());
+        }
         let registry = Registry::new();
         let mut shortcuts = Vec::new();
         for command in registry.iter() {
@@ -453,6 +463,12 @@ impl StorytellerApp {
             }
             "prefs.smart_quotes" => {
                 self.prefs.update(|p| p.general.smart_quotes = !p.general.smart_quotes);
+            }
+            "prefs.spelling_us" | "prefs.spelling_uk" => {
+                let language =
+                    if id == "prefs.spelling_uk" { storyteller_engine::spell::Language::Uk } else { storyteller_engine::spell::Language::Us };
+                self.prefs.update(|p| p.general.spelling_language = language.id().into());
+                self.status = format!("Spelling is checked in {}.", language.label());
             }
             "prefs.new_mstory" => {
                 self.prefs.update(|p| p.general.new_script_format = "mstory".into());
@@ -1095,6 +1111,8 @@ impl StorytellerApp {
             "prefs.new_fountain" => Some(self.preferred_extension() == "fountain"),
             "prefs.new_osf" => Some(self.preferred_extension() == "osf"),
             "prefs.smart_quotes" => Some(self.prefs.get().general.smart_quotes),
+            "prefs.spelling_us" => Some(self.prefs.get().general.spelling_language != "en_GB"),
+            "prefs.spelling_uk" => Some(self.prefs.get().general.spelling_language == "en_GB"),
             "prefs.check_spelling" => Some(self.prefs.get().view.check_spelling),
             "prefs.check_updates_automatically" => Some(self.updates.automatic()),
             _ => None,

@@ -1,0 +1,6 @@
+File: en_GB-ise.dic
+Work: en_GB-ise Hunspell dictionary 2020.12.07 (British English, -ise spellings), derived from SCOWL (Spell Checker Oriented Word Lists)
+Author: Kevin Atkinson and the contributors named in README_en_GB-ise.txt
+Source: https://downloads.sourceforge.net/project/wordlist/speller/2020.12.07/hunspell-en_GB-ise-2020.12.07.zip (sha256 2ced4b2ec9d188c3b540dbb75b5143f65b990daf17437758726ff1fab5f01ad3), project http://wordlist.aspell.net
+License: SCOWL's permissive notice, Ispell's BSD licence and the other notices, all in assets/dictionaries/README_en_GB-ise.txt, which is distributed verbatim
+Modifications: none

@@ -42,6 +42,10 @@ pub struct General {
     pub sample_seen: bool,
     /// The shape File > New TV Script offers first: the writer's last choice.
     pub tv_shape: storyteller_core::model::TvShape,
+    /// The spelling dictionary, `en_US` or `en_GB`; empty until the first run chooses one from
+    /// the system's region (decision 16).
+    #[serde(default)]
+    pub spelling_language: String,
 }
 
 impl Default for General {
@@ -54,6 +58,7 @@ impl Default for General {
             learned_words: Vec::new(),
             sample_seen: false,
             tv_shape: storyteller_core::model::TvShape::default(),
+            spelling_language: String::new(),
         }
     }
 }

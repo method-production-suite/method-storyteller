@@ -24,7 +24,7 @@ pub(super) struct SpellCache {
     cues: Option<u64>,
     /// What the cached answers also depended on: how many words are learned (they only grow),
     /// and the ignored list itself, hashed (another script can hold as many different words).
-    words: (usize, u64),
+    words: (usize, u64, storyteller_engine::spell::Language),
     /// The script's ignored words in lower case, built with the rest of the cache.
     ignored: HashSet<String>,
 }
@@ -52,6 +52,8 @@ impl StorytellerApp {
     /// The writer's learned words, kept the same in settings and the session, whichever learned
     /// a word (the dialog, or `spell.learn` over the control channel).
     fn sync_learned(&mut self) {
+        let language = storyteller_engine::spell::Language::from_id(&self.prefs.get().general.spelling_language).unwrap_or_default();
+        self.session.spelling.language = language;
         let saved = &self.prefs.get().general.learned_words;
         let session = &self.session.spelling.learned;
         if saved.len() == session.len() && saved.iter().all(|w| session.contains(w)) {
@@ -81,7 +83,7 @@ impl StorytellerApp {
         let cues = cues.finish();
         let mut ignored = std::collections::hash_map::DefaultHasher::new();
         script.spelling_ignored.hash(&mut ignored);
-        let words = (self.session.spelling.learned.len(), ignored.finish());
+        let words = (self.session.spelling.learned.len(), ignored.finish(), self.session.spelling.language);
         let cache = &mut self.spell_cache;
         if cache.cues != Some(cues) || cache.words != words {
             *cache = SpellCache {
