@@ -21,9 +21,10 @@ or from [methodstoryteller.com](https://methodstoryteller.com).
   Character, location and time-of-day autocomplete.
 - **Industry pagination.** Courier Prime 12 pt, standard margins, 54 lines a page, `(MORE)` and
   `(CONT'D)` at page breaks, scene headings that never strand at the bottom of a page.
-- **Open formats, your choice.** New scripts are Open Screenplay Format (structured XML that keeps
-  production detail); Fountain (plain text, diff-friendly) is fully supported and one choice away
-  (File > Save New Scripts as…). Opens and saves `.fdx`, and Open Screenplay Format in a ZIP
+- **Open formats, your choice.** New scripts are a `.mstory` package: one ZIP file holding the
+  script as Open Screenplay Format (structured XML that keeps production detail) and its
+  production data beside it. Plain Open Screenplay Format and Fountain (plain text,
+  diff-friendly) are fully supported and one choice away (File > Save New Scripts as…). Opens and saves `.fdx`, and Open Screenplay Format in a ZIP
   archive; exports PDF.
 - **Television structure.** File > New TV Script lays out a one-hour, half-hour or
   multi-camera script in acts (a multi-camera one with lettered scenes, each scene's characters
@@ -53,8 +54,8 @@ or from [methodstoryteller.com](https://methodstoryteller.com).
 
 - Free, and open source under MIT OR Apache-2.0.
 - No account, and it works offline.
-- Your script is an Open Screenplay Format file: open, structured XML that keeps production
-  detail. Prefer plain text? Choose [Fountain](https://fountain.io/syntax) (File > Save New
+- Your script is a `.mstory` package: a ZIP file any unzip tool opens, holding the script as
+  Open Screenplay Format, open structured XML that keeps production detail. Prefer plain text? Choose [Fountain](https://fountain.io/syntax) (File > Save New
   Scripts as Fountain), which any text editor opens, now and in 20 years.
 
 ## Status

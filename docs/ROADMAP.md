@@ -234,7 +234,7 @@ wait for a decision above.
    Italic and Underline (⌘B, ⌘I, ⌘U) on a selection or the caret's word, and the editor drawing
    the styles with the markup faint. Hiding the markers altogether waits for the editor's own
    text drawing (with capitals by display, below).
-8c. **The `.mstory` package** [missing] M (decision 1). One ZIP file: the script as Open
+8c. **The `.mstory` package** [have] M (decision 1). One ZIP file: the script as Open
    Screenplay Format, and a production data file. Open and save, File > Save As, the Finder's
    document type and icon. Comes first in M5.
 9. **M5, production I** L. Full scene numbering (A-suffix inserts, prefix schemes, left and

@@ -48,7 +48,7 @@ impl Default for General {
     fn default() -> Self {
         General {
             recent: Vec::new(),
-            new_script_format: "osf".into(),
+            new_script_format: "mstory".into(),
             smart_quotes: true,
             last_seen_version: String::new(),
             learned_words: Vec::new(),
@@ -92,17 +92,23 @@ impl Default for View {
 
 impl Settings for Prefs {
     const APP_ID: &'static str = APP_ID;
-    const SCHEMA_VERSION: u32 = 2;
+    const SCHEMA_VERSION: u32 = 3;
 
     /// 1 → 2: Open Screenplay Format became the standard for new scripts. Before, `fountain`
     /// was written as the default by every first launch, so it moves to `osf` once; a writer
     /// who wants Fountain chooses it again (File > Save New Scripts as Fountain).
+    ///
+    /// 2 → 3: the `.mstory` package became the standard for new scripts (decision 14), the
+    /// same way: `osf`, written as the default before, moves to `mstory` once; Fountain, which
+    /// was always a choice, stays.
     fn migrate(from: u32, doc: &mut DocumentMut) -> Result<(), MigrateError> {
-        if from < 2
-            && let Some(general) = doc.get_mut("general").and_then(|g| g.as_table_like_mut())
-            && general.get("new_script_format").and_then(|v| v.as_str()) == Some("fountain")
-        {
-            general.insert("new_script_format", "osf".into());
+        if let Some(general) = doc.get_mut("general").and_then(|g| g.as_table_like_mut()) {
+            if from < 2 && general.get("new_script_format").and_then(|v| v.as_str()) == Some("fountain") {
+                general.insert("new_script_format", "osf".into());
+            }
+            if from < 3 && general.get("new_script_format").and_then(|v| v.as_str()) == Some("osf") {
+                general.insert("new_script_format", "mstory".into());
+            }
         }
         Ok(())
     }
@@ -187,12 +193,19 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("config.toml"), "schema_version = 1\n\n[general]\nnew_script_format = \"fountain\"\n").unwrap();
         let (mut store, _) = craft_settings::SettingsStore::<Prefs>::open(craft_settings::Location::Dir(dir.path().to_path_buf()));
-        assert_eq!(store.get().general.new_script_format, "osf");
+        assert_eq!(store.get().general.new_script_format, "mstory", "through OSF to the package");
         store.update(|p| p.general.new_script_format = "fountain".into());
         store.flush().unwrap();
         let (again, _) = craft_settings::SettingsStore::<Prefs>::open(craft_settings::Location::Dir(dir.path().to_path_buf()));
-        assert_eq!(again.get().general.new_script_format, "fountain", "a choice made at version 2 is kept");
-        assert_eq!(Prefs::default().general.new_script_format, "osf");
+        assert_eq!(again.get().general.new_script_format, "fountain", "a choice made at version 3 is kept");
+        assert_eq!(Prefs::default().general.new_script_format, "mstory");
+        // Version 2's OSF default moves to the package; its Fountain choice stays.
+        for (before, after) in [("osf", "mstory"), ("fountain", "fountain")] {
+            let dir = tempfile::tempdir().unwrap();
+            std::fs::write(dir.path().join("config.toml"), format!("schema_version = 2\n\n[general]\nnew_script_format = \"{before}\"\n")).unwrap();
+            let (store, _) = craft_settings::SettingsStore::<Prefs>::open(craft_settings::Location::Dir(dir.path().to_path_buf()));
+            assert_eq!(store.get().general.new_script_format, after, "{before}");
+        }
     }
 
     fn legacy(base: &Path) -> PathBuf {

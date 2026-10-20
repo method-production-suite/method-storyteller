@@ -10,6 +10,25 @@
 	     whichever app's declaration of their type the system uses. -->
 	<key>CFBundleDocumentTypes</key>
 	<array>
+		<!-- The app's own package: it defines the type, so it is the owner. -->
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Method Storyteller Package</string>
+			<key>CFBundleTypeRole</key>
+			<string>Owner</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>CFBundleTypeIconFile</key>
+			<string>document-mstory</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.methodstoryteller.mstory</string>
+			</array>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>mstory</string>
+			</array>
+		</dict>
 		<dict>
 			<key>CFBundleTypeName</key>
 			<string>Open Screenplay Format</string>
@@ -81,6 +100,30 @@
 	<string>Copyright (c) 2026 Method Production Suite Team and the Method Storyteller contributors. MIT OR Apache-2.0.</string>
 	<key>NSSupportsAutomaticGraphicsSwitching</key>
 	<true/>
+	<!-- Exported: the package is this app's own format. -->
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.methodstoryteller.mstory</string>
+			<key>UTTypeDescription</key>
+			<string>Method Storyteller Package</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+				<string>public.content</string>
+			</array>
+			<key>UTTypeIconFile</key>
+			<string>document-mstory</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>mstory</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
 	<!-- Imported, not exported: the app reads and writes these formats but does not define them. -->
 	<key>UTImportedTypeDeclarations</key>
 	<array>

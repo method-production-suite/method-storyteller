@@ -5,6 +5,16 @@ for its own version in Help > What's New, once after an update.
 
 ## Unreleased
 
+### New
+
+- New scripts save as a `.mstory` package: one ZIP file holding the script as Open Screenplay
+  Format and its production data beside it, with its own icon in the Finder. File > Save New
+  Scripts as… still offers plain Open Screenplay Format and Fountain.
+
+### Before you update
+
+- Scripts saved as `.mstory` by this version open only in this version and later.
+
 ## 0.4.0
 
 ### New

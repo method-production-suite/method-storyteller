@@ -20,6 +20,9 @@ pub enum FileFormat {
     Osf,
     /// Open Screenplay Format in a ZIP archive (`.fadein`).
     FadeIn,
+    /// Method Storyteller's own package (`.mstory`): one ZIP file holding the script as Open
+    /// Screenplay Format and the production data beside it (decision 1).
+    Mstory,
     Pdf,
 }
 
@@ -30,6 +33,7 @@ impl FileFormat {
             Some("fdx") => FileFormat::Fdx,
             Some("osf") => FileFormat::Osf,
             Some("fadein") => FileFormat::FadeIn,
+            Some("mstory") => FileFormat::Mstory,
             Some("pdf") => FileFormat::Pdf,
             _ => FileFormat::Fountain,
         }
@@ -41,6 +45,7 @@ impl FileFormat {
             FileFormat::Fdx => "fdx",
             FileFormat::Osf => "osf",
             FileFormat::FadeIn => "fadein",
+            FileFormat::Mstory => "mstory",
             FileFormat::Pdf => "pdf",
         }
     }
@@ -114,23 +119,27 @@ pub fn open(path: &Path) -> Result<(Script, FileFormat), FileError> {
     // Read one byte past the limit so oversize files are refused rather than truncated.
     file.take(MAX_INPUT_BYTES as u64 + 1).read_to_end(&mut bytes).map_err(read_error)?;
     if container::is_zip(&bytes) {
-        let (document, others) = container::read_document(&bytes).map_err(FileError::Archive)?;
+        // A package holds script.osf; a .fadein archive, document.xml.
+        let (package, (document, others)) = match container::read_package(&bytes) {
+            Ok(found) => (true, found),
+            Err(_) => (false, container::read_document(&bytes).map_err(FileError::Archive)?),
+        };
         let mut script = osf::parse(decode_text(&document)?)?;
         if let Some(osf) = script.osf.as_mut() {
             osf.archive_entries = others;
         }
-        return Ok((script, FileFormat::FadeIn));
+        return Ok((script, if package { FileFormat::Mstory } else { FileFormat::FadeIn }));
     }
     let text = decode_text(&bytes)?;
     let format = sniff(text).unwrap_or_else(|| FileFormat::from_path(path));
     let script = match format {
         FileFormat::Pdf => return Err(FileError::CannotOpenPdf),
         FileFormat::Fdx => fdx::parse(text)?,
-        FileFormat::Osf | FileFormat::FadeIn => osf::parse(text)?,
+        FileFormat::Osf | FileFormat::FadeIn | FileFormat::Mstory => osf::parse(text)?,
         FileFormat::Fountain => fountain::parse(text)?,
     };
-    // A plain-XML document is .osf even if it was named .fadein.
-    let format = if format == FileFormat::FadeIn { FileFormat::Osf } else { format };
+    // A plain-XML document is .osf even if it was named .fadein or .mstory.
+    let format = if matches!(format, FileFormat::FadeIn | FileFormat::Mstory) { FileFormat::Osf } else { format };
     Ok((script, format))
 }
 
@@ -161,6 +170,12 @@ pub fn encode(script: &Script, format: FileFormat, layout: &Layout) -> Result<Ve
             // Other members of the archive the script came in go back unchanged.
             let others = script.osf.as_ref().map(|d| d.archive_entries.as_slice()).unwrap_or_default();
             container::write_document(osf::write(script).as_bytes(), others).map_err(|source| FileError::Write { path: "archive".into(), source })?
+        }
+        FileFormat::Mstory => {
+            // The package's other members (its production data, and anything a later version
+            // added) go back unchanged.
+            let others = script.osf.as_ref().map(|d| d.archive_entries.as_slice()).unwrap_or_default();
+            container::write_package(osf::write(script).as_bytes(), others).map_err(|source| FileError::Write { path: "package".into(), source })?
         }
         FileFormat::Pdf => storyteller_pdf::export(script, layout, &storyteller_pdf::PdfOptions { creator: crate::app_version() })?,
     })
@@ -225,7 +240,7 @@ pub fn save_warnings(script: &Script, format: FileFormat) -> Vec<String> {
                 ));
             }
         }
-        FileFormat::Fdx | FileFormat::Pdf => {}
+        FileFormat::Fdx | FileFormat::Pdf | FileFormat::Mstory => {}
     }
     warnings
 }
