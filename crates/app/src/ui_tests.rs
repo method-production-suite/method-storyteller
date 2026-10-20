@@ -576,3 +576,30 @@ fn new_tv_script_offers_a_multi_camera_half_hour() {
     assert_eq!(session.layout.dialogue.spacing, 2, "double-spaced dialogue");
     assert_eq!(harness.state().prefs.get().general.tv_shape, storyteller_core::model::TvShape::MultiCam);
 }
+
+#[test]
+fn format_bold_styles_the_selection_and_keeps_it_selected() {
+    let (mut harness, _file) = harness("INT. HUT - DAY\n\nShe runs home.\n");
+    harness.state_mut().editor.pending_focus = Some((1, 0));
+    harness.run_steps(3);
+    // Select "runs" in the text field, as a drag would.
+    let id = egui::Id::new(("storyteller.element", 1));
+    let mut state = egui::text_edit::TextEditState::load(&harness.ctx, id).unwrap_or_default();
+    state.cursor.set_char_range(Some(egui::text::CCursorRange::two(egui::text::CCursor::new(4), egui::text::CCursor::new(8))));
+    state.store(&harness.ctx, id);
+    harness.run_steps(2);
+    harness.state_mut().queued.push("app.bold".into());
+    harness.run_steps(4);
+    assert_eq!(harness.state().session.script.elements[1].text, "She **runs** home.");
+    let selected = harness.state().editor.selection.map(|(i, r)| (i, usize::from(r.primary.index).min(r.secondary.index.into())));
+    assert_eq!(selected, Some((1, 6)), "the word stays selected, inside the markers");
+    // With no selection, the word the caret is in.
+    let mut state = egui::text_edit::TextEditState::load(&harness.ctx, id).unwrap_or_default();
+    let at = egui::text::CCursor::new("She **runs** ho".chars().count());
+    state.cursor.set_char_range(Some(egui::text::CCursorRange::one(at)));
+    state.store(&harness.ctx, id);
+    harness.run_steps(2);
+    harness.state_mut().queued.push("app.underline".into());
+    harness.run_steps(4);
+    assert_eq!(harness.state().session.script.elements[1].text, "She **runs** _home_.");
+}

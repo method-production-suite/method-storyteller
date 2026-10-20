@@ -1169,6 +1169,44 @@ fn all_commands() -> Vec<Command> {
             },
         },
         Command {
+            id: "format.style",
+            label: "Bold, Italic or Underline",
+            menu: "",
+            shortcut: None,
+            params: const {
+                &[
+                    INDEX,
+                    param("start", Integer, true, "Byte offset where the text to style starts"),
+                    param("end", Integer, true, "Byte offset where it ends"),
+                    param("style", String, true, "bold, italic or underline"),
+                ]
+            },
+            enabled: always,
+            run: |s, p| {
+                let index = element_index(s, p)?;
+                let which = storyteller_core::inline::StyleKind::from_id(&string(p, "style")?)
+                    .ok_or_else(|| CommandError::Invalid { name: "style", reason: "bold, italic or underline".into() })?;
+                let (start, end) = (opt_index(p, "start")?.unwrap_or(0), opt_index(p, "end")?.unwrap_or(0));
+                let text = s
+                    .script
+                    .elements
+                    .get(index)
+                    .map(|e| e.text.clone())
+                    .ok_or(CommandError::Invalid { name: "index", reason: "no such element".into() })?;
+                let (styled, from, to) =
+                    storyteller_core::inline::toggle_style(&text, start.min(end), end.max(start), which).ok_or_else(|| CommandError::Invalid {
+                        name: "start",
+                        reason: "that text can't take the style here: select words with a space or punctuation either side".into(),
+                    })?;
+                s.checkpoint(EditKind::Other);
+                if let Some(element) = s.script.elements.get_mut(index) {
+                    element.text = styled;
+                }
+                s.caret = Caret { element: index, offset: to };
+                Ok(Outcome::value(json!({ "start": from, "end": to })))
+            },
+        },
+        Command {
             id: "element.insert",
             label: "Insert Element",
             menu: "",

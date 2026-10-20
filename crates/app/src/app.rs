@@ -39,7 +39,7 @@ const GO_TO_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Alt+G" } else { "Cmd
 const FIND_NEXT_KEY: &str = if cfg!(target_os = "macos") { "Cmd+G" } else { "F3" };
 const FIND_PREVIOUS_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Shift+G" } else { "Shift+F3" };
 
-const APP_COMMANDS: [AppCommand; 31] = [
+const APP_COMMANDS: [AppCommand; 34] = [
     AppCommand { id: "app.title_page", label: "Title Page…", menu: "File/Title Page…", shortcut: Some("Cmd+Shift+T") },
     AppCommand { id: "prefs.new_fountain", label: "Save New Scripts as Fountain", menu: "File/Save New Scripts as Fountain", shortcut: None },
     AppCommand {
@@ -63,6 +63,9 @@ const APP_COMMANDS: [AppCommand; 31] = [
     AppCommand { id: "app.rename_character", label: "Rename Character…", menu: "Production/Rename Character…", shortcut: None },
     AppCommand { id: "app.go_to", label: "Go To…", menu: "Edit/Go To…", shortcut: Some(GO_TO_KEY) },
     AppCommand { id: "prefs.smart_quotes", label: "Smart Quotes", menu: "Format/Smart Quotes", shortcut: None },
+    AppCommand { id: "app.bold", label: "Bold", menu: "Format/Bold", shortcut: Some("Cmd+B") },
+    AppCommand { id: "app.italic", label: "Italic", menu: "Format/Italic", shortcut: Some("Cmd+I") },
+    AppCommand { id: "app.underline", label: "Underline", menu: "Format/Underline", shortcut: Some("Cmd+U") },
     AppCommand { id: "view.navigator", label: "Scene Navigator", menu: "View/Scene Navigator", shortcut: Some("Cmd+Shift+N") },
     AppCommand { id: "view.page_view", label: "Page View", menu: "View/Page View", shortcut: Some("Cmd+Shift+P") },
     AppCommand { id: "view.zoom_in", label: "Zoom In", menu: "View/Zoom In", shortcut: Some("Cmd+Equals") },
@@ -378,6 +381,9 @@ impl StorytellerApp {
                 ctx.send_viewport_cmd(ViewportCommand::RequestPaste);
             }
             "app.select_all" => self.select_all(ctx),
+            "app.bold" => self.style_selection(ctx, "bold"),
+            "app.italic" => self.style_selection(ctx, "italic"),
+            "app.underline" => self.style_selection(ctx, "underline"),
             "app.rename_character" => {
                 let names: Vec<String> = storyteller_engine::commands::character_names(&self.session.script).into_iter().map(|(n, _)| n).collect();
                 // The cue the caret is in, if any, else the character with the most speeches.
@@ -535,6 +541,60 @@ impl StorytellerApp {
         }
         ctx.memory_mut(|m| m.request_focus(id));
         id
+    }
+
+    /// Format > Bold, Italic and Underline: on the selection in the caret's paragraph, or on the
+    /// word the caret is in; off again when all of it has the style already. The text stays
+    /// selected.
+    fn style_selection(&mut self, ctx: &egui::Context, style: &str) {
+        self.session.clamp_caret();
+        let index = self.session.caret.element;
+        let Some(text) = self.session.element(index).map(|e| e.text.clone()) else { return };
+        let chars: Vec<char> = text.chars().collect();
+        let (mut from, mut to) = match self.editor.selection.filter(|(i, _)| *i == index) {
+            Some((_, range)) => {
+                let (a, b): (usize, usize) = (range.primary.index.into(), range.secondary.index.into());
+                (a.min(b), a.max(b))
+            }
+            None => {
+                let at = crate::editor::byte_to_char(&text, self.session.caret.offset);
+                (at, at)
+            }
+        };
+        if from == to {
+            // The word the caret is in.
+            let word = |c: &char| c.is_alphanumeric() || matches!(c, '\'' | '’' | '-');
+            while from > 0 && chars.get(from - 1).is_some_and(word) {
+                from -= 1;
+            }
+            while chars.get(to).is_some_and(word) {
+                to += 1;
+            }
+        }
+        if from == to {
+            self.status = "Select the words to style first.".into();
+            self.refocus();
+            return;
+        }
+        let (start, end) = (crate::editor::char_to_byte(&text, from), crate::editor::char_to_byte(&text, to));
+        let target = params(&[("index", json!(index)), ("start", json!(start)), ("end", json!(end)), ("style", json!(style))]);
+        match self.registry.run("format.style", &mut self.session, &target) {
+            Ok(outcome) => {
+                let text = self.session.element(index).map(|e| e.text.clone()).unwrap_or_default();
+                let byte = |key: &str| outcome.value.get(key).and_then(Value::as_u64).and_then(|v| usize::try_from(v).ok()).unwrap_or(0);
+                let (a, b) = (crate::editor::byte_to_char(&text, byte("start")), crate::editor::byte_to_char(&text, byte("end")));
+                self.editor.selection = Some((index, egui::text::CCursorRange::two(egui::text::CCursor::new(a), egui::text::CCursor::new(b))));
+                self.focus_caret_field(ctx);
+                ctx.request_repaint();
+            }
+            Err(error) => {
+                self.status = match error {
+                    storyteller_engine::CommandError::Invalid { reason, .. } => capitalise(&reason),
+                    other => other.to_string(),
+                };
+                self.refocus();
+            }
+        }
     }
 
     /// Edit > Select All: the whole of the paragraph the caret is in, as ⌘A selects it.

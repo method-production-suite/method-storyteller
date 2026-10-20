@@ -7,6 +7,9 @@ for its own version in Help > What's New, once after an update.
 
 ### New
 
+- Bold, italic and underline: Format > Bold (⌘B), Italic (⌘I) and Underline (⌘U) on the
+  selection or the word the caret is in, and the editor shows the styles, with the markup faint.
+
 - File > New TV Script offers a multi-camera half-hour: Cold Open, Acts One and Two, Tag, with
   lettered scenes (a new scene takes its letter), each scene on a new page with its speaking
   characters under the heading, dialogue double-spaced and action in capitals.

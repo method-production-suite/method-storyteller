@@ -85,6 +85,13 @@ engine (`flow.rs`) holds every rule, so they can become a preference later.
   step).
 - Scene headings, character cues and transitions display and save in capitals.
 - The status bar always shows what Tab and Enter will do next.
+- Bold, italic and underline (Format > Bold ⌘B, Italic ⌘I, Underline ⌘U; command
+  `format.style`) act on the selection in the caret's paragraph, or on the word the caret is
+  in, and take the style off when all of it has it already. The text keeps Fountain's markup
+  (`**bold**`, `*italic*`, `_underline_`); the editor draws the styled text in Courier Prime's
+  bold and italic faces with the markers and `[[notes]]` faint, and the selection stays on the
+  same words. A style the markup cannot say (bold straight after italic, with no space or
+  punctuation between) is refused with a note in the status bar, never written wrong.
 - Smart quotes (Format > Smart Quotes, on by default) curl `"` and `'` as they are typed in action,
   dialogue, parentheticals and lyrics; capitalised elements (headings, cues, transitions) keep
   straight ones. A leading apostrophe (`'90s`, `'til`) curls the right way.
