@@ -7,6 +7,8 @@
 
 mod corpus;
 mod package;
+#[cfg(test)]
+mod release_workflow;
 mod screens;
 mod updater;
 

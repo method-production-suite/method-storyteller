@@ -33,7 +33,9 @@
 #                      Method-Storyteller_<version>_universal.app.tar.gz, its .sig, and
 #                      latest.json, which installed apps read (`cargo xtask updater-archive`
 #                      and `update-manifest`, xtask/src/updater.rs).
-# Every compile happens before any secret reaches the runner.
+# Every compile happens before any secret reaches the runner, and no step runs cargo once
+# its job has met a secret: those steps run the xtask binary built first (tested by xtask's
+# release_workflow test).
 #
 # Least privilege: only the draft job writes. First-party actions only, pinned to the suite's
 # full commit SHAs; no caches (release builds start clean). The two AppImage tools are
@@ -74,13 +76,14 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           INPUT_TAG: ${{ github.event.inputs.tag }}
+          REF: ${{ github.ref }}
           REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           # A rehearsal: run by hand on main with no tag. It builds, signs and checks main's
           # latest commit exactly as a release would, with its notes, and drafts nothing.
           if [ "$EVENT" = workflow_dispatch ] && [ -z "$INPUT_TAG" ]; then
-            if [ "$REF_NAME" != main ]; then
+            if [ "$REF" != refs/heads/main ]; then
               echo "::error::A rehearsal runs on main."
               exit 1
             fi
@@ -262,7 +265,8 @@ jobs:
           set -euo pipefail
           sign=()
           if [ "${MACOS_SIGN:-no}" = yes ]; then sign=(--sign "$APPLE_SIGNING_IDENTITY"); fi
-          cargo xtask bundle-macos --target universal-apple-darwin --no-build ${sign[@]+"${sign[@]}"}
+          # The xtask binary built before any secret, run directly: never cargo beside a key.
+          target/debug/xtask bundle-macos --target universal-apple-darwin --no-build ${sign[@]+"${sign[@]}"}
 
       - name: Notarize and staple the app (macOS)
         if: runner.os == 'macOS' && env.MACOS_NOTARIZE == 'yes'
@@ -284,7 +288,7 @@ jobs:
           set -euo pipefail
           sign=()
           if [ "${MACOS_SIGN:-no}" = yes ]; then sign=(--sign "$APPLE_SIGNING_IDENTITY"); fi
-          cargo xtask dmg-macos ${sign[@]+"${sign[@]}"}
+          target/debug/xtask dmg-macos ${sign[@]+"${sign[@]}"}
 
       - name: Notarize and staple the disk image (macOS)
         if: runner.os == 'macOS' && env.MACOS_NOTARIZE == 'yes'
@@ -372,7 +376,8 @@ jobs:
 
       - name: Build the installer (Windows)
         if: runner.os == 'Windows'
-        run: cargo xtask package-windows --no-build
+        # The xtask binary built before any secret, run directly: never cargo beside a key.
+        run: target/debug/xtask package-windows --no-build
 
       - name: Sign the installer (Windows)
         if: runner.os == 'Windows' && env.HAS_WIN_SIGNING == 'true'
@@ -402,7 +407,7 @@ jobs:
           curl --fail --location --silent --show-error --output "$tools/runtime" "$APPIMAGE_RUNTIME_URL"
           printf '%s  %s\n' "$APPIMAGETOOL_SHA256" "$tools/appimagetool" "$APPIMAGE_RUNTIME_SHA256" "$tools/runtime" | sha256sum --check --strict
           chmod +x "$tools/appimagetool"
-          cargo xtask package-linux --no-build --appimagetool "$tools/appimagetool" --runtime "$tools/runtime"
+          target/debug/xtask package-linux --no-build --appimagetool "$tools/appimagetool" --runtime "$tools/runtime"
           dpkg-deb --info target/bundle/linux/Method-Storyteller-linux-amd64.deb
           dpkg-deb --contents target/bundle/linux/Method-Storyteller-linux-amd64.deb
 
@@ -428,7 +433,7 @@ jobs:
           name: bundles-${{ matrix.name }}
           path: dist/*
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 1
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: runner.os == 'macOS'
@@ -436,7 +441,7 @@ jobs:
           name: meta-${{ matrix.name }}
           path: meta/*
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 1
 
   assemble:
     name: release files
@@ -507,7 +512,7 @@ jobs:
           name: release-files
           path: dist/*
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 1
 
   draft:
     name: draft release
