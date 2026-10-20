@@ -633,3 +633,36 @@ fn close_leaves_an_empty_script_and_open_recent_brings_it_back() {
     assert!(harness.state().recent_items().is_empty());
     assert!(!harness.state().menu_entries("File").into_iter().find(|e| e.label == "Open Recent").unwrap().enabled, "an empty list is greyed out");
 }
+
+#[test]
+fn a_recovery_copy_is_offered_and_opens_as_unsaved_work() {
+    let (mut harness, _file) = harness(SCRIPT);
+    let dir = tempfile::tempdir().unwrap();
+    crate::recovery::write(dir.path(), "Pilot", b"INT. LOST - NIGHT\n\nThe unsaved line.\n").unwrap();
+    harness.state_mut().recovery_dir = Some(dir.path().to_path_buf());
+    assert!(harness.state_mut().find_recovery());
+    harness.run_steps(2);
+    harness.get_by_label("Open the Copy").click();
+    harness.run_steps(3);
+    let state = harness.state();
+    assert!(state.recovered.is_none(), "answered");
+    assert!(state.session.dirty && state.session.path.is_none(), "unsaved work, to be saved somewhere");
+    assert!(state.session.script.elements.iter().any(|e| e.text == "The unsaved line."));
+    assert!(crate::recovery::waiting(dir.path()).is_empty(), "the copy is taken up");
+
+    // Don't Save throws the open script's copy away too.
+    crate::recovery::write(dir.path(), "Untitled", b"INT. A - DAY\n").unwrap();
+    harness.state_mut().queued.push("file.new".into());
+    harness.run_steps(4);
+    harness.get_by_label("Don't Save").click();
+    harness.run_steps(4);
+    assert!(crate::recovery::waiting(dir.path()).is_empty(), "nothing left to offer next time");
+
+    // Throw It Away.
+    crate::recovery::write(dir.path(), "Pilot", b"INT. B - DAY\n").unwrap();
+    assert!(harness.state_mut().find_recovery());
+    harness.run_steps(2);
+    harness.get_by_label("Throw It Away").click();
+    harness.run_steps(2);
+    assert!(crate::recovery::waiting(dir.path()).is_empty());
+}

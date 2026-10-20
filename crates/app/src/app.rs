@@ -178,6 +178,10 @@ pub struct StorytellerApp {
     queued: Vec<String>,
     prompt: Option<Pending>,
     discard_confirmed: bool,
+    /// Where recovery copies go (`None` with settings in memory, as in tests, unless set).
+    recovery_dir: Option<PathBuf>,
+    /// A recovery copy found at launch, waiting for the writer's answer.
+    recovered: Option<PathBuf>,
     title_dialog: Option<TitleDraft>,
     go_to: Option<GoToDraft>,
     /// File > New TV Script: the shape chosen so far.
@@ -283,6 +287,8 @@ impl StorytellerApp {
             queued: Vec::new(),
             prompt: None,
             discard_confirmed: false,
+            recovery_dir: if in_memory { None } else { craft_settings::paths::data_dir(APP_ID).map(|d| d.join(RECOVERY_DIR)) },
+            recovered: None,
             title_dialog: None,
             go_to: None,
             new_tv: None,
@@ -327,6 +333,9 @@ impl StorytellerApp {
         if first_launch {
             app.prefs.update(|p| p.general.sample_seen = true);
         }
+        // Unsaved work from a launch that ended without saving comes first: offered, and the
+        // sample stays away so the question is the first thing seen.
+        let first_launch = !app.find_recovery() && first_launch;
         match sample::launch_choice(file, from_finder, first_launch, has_recent, flags.open_sample) {
             sample::LaunchOpen::File(path) => app.open_path(&path),
             sample::LaunchOpen::Sample => app.open_sample(),
@@ -718,6 +727,7 @@ impl StorytellerApp {
 
     /// Save, asking for a path when there is none (or `as_new`). Returns whether it saved.
     fn save(&mut self, as_new: bool) -> bool {
+        let old_stem = Some(self.recovery_stem());
         let path = match (&self.session.path, as_new) {
             (Some(path), false) => Some(path.clone()),
             _ => {
@@ -749,6 +759,11 @@ impl StorytellerApp {
         }
         let saved = self.error.is_none() && !self.session.dirty;
         if saved {
+            // Saved under its (possibly new) name: an earlier copy under the old name goes too.
+            if let (Some(dir), Some(old)) = (&self.recovery_dir, &old_stem) {
+                crate::recovery::forget(dir, old);
+            }
+            self.forget_recovery();
             let shown = path.display().to_string();
             self.prefs.update(|p| p.push_recent(&shown));
         }
@@ -967,14 +982,73 @@ impl StorytellerApp {
             return;
         }
         self.last_autosave = Instant::now();
-        let Some(dir) = craft_settings::paths::data_dir(APP_ID).map(|d| d.join(RECOVERY_DIR)) else { return };
-        if std::fs::create_dir_all(&dir).is_err() {
+        let Some(dir) = self.recovery_dir.clone() else { return };
+        if let Ok(bytes) = files::encode(&self.session.script, FileFormat::Fountain, &self.session.layout) {
+            let _ = crate::recovery::write(&dir, &self.recovery_stem(), &bytes);
+        }
+    }
+
+    /// Looks for a recovery copy to offer; whether there is one.
+    fn find_recovery(&mut self) -> bool {
+        self.recovered = self.recovery_dir.as_deref().and_then(|dir| crate::recovery::waiting(dir).into_iter().next());
+        self.recovered.is_some()
+    }
+
+    /// The name the open script's recovery copy goes under.
+    fn recovery_stem(&self) -> String {
+        self.session.path.as_ref().and_then(|p| p.file_stem()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "Untitled".into())
+    }
+
+    /// The open script's changes are saved or deliberately thrown away: its copy goes.
+    fn forget_recovery(&self) {
+        if let Some(dir) = &self.recovery_dir {
+            crate::recovery::forget(dir, &self.recovery_stem());
+        }
+    }
+
+    /// At launch, a recovery copy left by a launch that ended without saving: open it as an
+    /// unsaved script, throw it away, or leave it for later.
+    fn recovery_prompt(&mut self, ctx: &egui::Context) {
+        let Some(copy) = self.recovered.clone() else { return };
+        if self.prompt.is_some() {
             return;
         }
-        let stem =
-            self.session.path.as_ref().and_then(|p| p.file_stem()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "Untitled".into());
-        if let Ok(bytes) = files::encode(&self.session.script, FileFormat::Fountain, &self.session.layout) {
-            let _ = craft_atomic::atomic_write(&dir.join(format!("{stem}.recovery.fountain")), &bytes);
+        let name = crate::recovery::name_of(&copy);
+        let mut answer = None;
+        egui::Modal::new(egui::Id::new("storyteller.recovery")).frame(theme::modal_frame(&ctx.global_style())).show(ctx, |ui| {
+            ui.heading("Recover unsaved changes?");
+            ui.label(format!("Method Storyteller closed without saving the changes to “{name}”. A copy of them was kept."));
+            ui.add_space(theme::SPACE_2);
+            ui.horizontal(|ui| {
+                for (id, label) in [("open", "Open the Copy"), ("discard", "Throw It Away"), ("later", "Later")] {
+                    let response = ui.button(label);
+                    self.automation.add(format!("recovery.{id}"), "button", label, &response);
+                    if response.clicked() {
+                        answer = Some(id);
+                    }
+                }
+            });
+        });
+        match answer {
+            Some("open") => {
+                self.recovered = None;
+                match files::open(&copy) {
+                    Ok((script, _)) => {
+                        self.session = Session::new(script);
+                        self.session.dirty = true;
+                        self.after_open();
+                        let _ = std::fs::remove_file(&copy);
+                        self.status = format!("Recovered “{name}”: save it to keep it (File > Save As…).");
+                    }
+                    Err(error) => self.error = Some(crate::messages::open_failed(&copy, Some(error.problem()), &error.to_string())),
+                }
+            }
+            Some("discard") => {
+                self.recovered = None;
+                let _ = std::fs::remove_file(&copy);
+            }
+            Some(_) => self.recovered = None,
+            None => {}
         }
     }
 
@@ -1764,6 +1838,7 @@ impl StorytellerApp {
             }
             Some("discard") => {
                 if let Some(action) = self.prompt.take() {
+                    self.forget_recovery();
                     self.session.dirty = false;
                     self.perform(ctx, action);
                 }
@@ -1801,6 +1876,7 @@ impl StorytellerApp {
         self.rename_dialog(&ctx);
         self.help_windows(&ctx);
         self.unsaved_prompt(&ctx);
+        self.recovery_prompt(&ctx);
         for id in std::mem::take(&mut self.queued) {
             self.run_command(&ctx, &id);
         }
