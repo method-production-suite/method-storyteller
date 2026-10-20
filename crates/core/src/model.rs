@@ -191,6 +191,50 @@ impl Default for Numbering {
     }
 }
 
+/// What [`Script::number_with`] did.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Numbered {
+    /// Headings whose number changed.
+    pub changed: usize,
+    /// New scenes left unnumbered, because no number sits between their neighbours.
+    pub unplaced: Vec<Unplaced>,
+}
+
+/// A new scene with no number between its neighbours: `before` and `after` are theirs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Unplaced {
+    pub heading: usize,
+    pub before: String,
+    pub after: String,
+}
+
+/// How many numbers are tried for one inserted scene: the next letter, then a level deeper.
+const INSERT_TRIES: usize = 30;
+
+/// Whether `number` comes before `after` in a script's order: by the number's digits, then its
+/// letters as written (`2` < `2A` < `2AA` < `2B`). Numbers with letters in front (`A1`) and
+/// other forms compare by their digits alone, then as written.
+fn sorts_before(number: &str, after: &str) -> bool {
+    let key = |n: &str| {
+        let digits: String = n.chars().filter(char::is_ascii_digit).collect();
+        let value = digits.parse::<u64>().unwrap_or(0);
+        let suffix: String = n.chars().skip_while(|c| !c.is_ascii_digit()).skip_while(char::is_ascii_digit).collect();
+        let prefix: String = n.chars().take_while(|c| !c.is_ascii_digit()).collect();
+        // A1 sorts before 1: a prefix is an insert ahead of its number.
+        (value, prefix.is_empty(), prefix, suffix)
+    };
+    key(number) < key(after)
+}
+
+/// The letter after `c` (skipping I and O with `skip_io`), or `None` after Z.
+fn next_letter(c: char, skip_io: bool) -> Option<char> {
+    let mut next = char::from_u32(u32::from(c) + 1)?;
+    while skip_io && matches!(next, 'I' | 'O') {
+        next = char::from_u32(u32::from(next) + 1)?;
+    }
+    (next <= 'Z').then_some(next)
+}
+
 /// The `n`th inserted-scene letter group: A … Z, AA, AB … (I and O left out with `skip_io`).
 pub fn letters(n: usize, skip_io: bool) -> String {
     let alphabet: Vec<char> = ('A'..='Z').filter(|c| !(skip_io && matches!(c, 'I' | 'O'))).collect();
@@ -207,21 +251,37 @@ pub fn letters(n: usize, skip_io: bool) -> String {
     out.iter().rev().collect()
 }
 
-/// The `n`th number tried for a scene inserted after `before`. First the next letter (`12`
-/// gives `12A`, `12A` gives `12B`); when that is taken, because the next scene already has it,
-/// a level deeper, so the order holds (`12AA` between `12A` and `12B`).
+/// The `n`th number tried for a scene inserted after `before`, in the order they sort: first
+/// the next letter (`12` gives `12A`, `12A` gives `12B`; `12Z` has none), then a level deeper
+/// (`12AA`, `12AB` … between `12A` and `12B`). I and O are left out with `skip_io`, even after a
+/// suffix that has them.
 fn insert_after(before: &str, n: usize, skip_io: bool) -> String {
     let digits_end = before.char_indices().rev().find(|(_, c)| c.is_ascii_digit()).map_or(0, |(i, c)| i + c.len_utf8());
-    let (stem, suffix) = before.split_at(digits_end);
-    let lettered = !stem.is_empty() && !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_uppercase());
+    let suffix = before.get(digits_end..).unwrap_or_default();
+    let lettered = digits_end > 0 && !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_uppercase());
+    // The level-deeper letters: A, B … Z without wrapping.
+    let deeper = |k: usize| -> Option<char> {
+        let mut c = 'A';
+        for _ in 0..k {
+            c = next_letter(c, skip_io)?;
+        }
+        Some(c)
+    };
     if !lettered {
-        return format!("{before}{}", letters(n, skip_io));
+        return deeper(n).map_or_else(String::new, |c| format!("{before}{c}"));
     }
     if n == 0 {
-        let place = (0..10_000).find(|&k| letters(k, skip_io) == suffix).unwrap_or(0);
-        return format!("{stem}{}", letters(place + 1, skip_io));
+        let mut chars: Vec<char> = suffix.chars().collect();
+        return match chars.last().copied().and_then(|c| next_letter(c, skip_io)) {
+            Some(next) => {
+                chars.pop();
+                chars.push(next);
+                format!("{}{}", before.get(..digits_end).unwrap_or_default(), chars.iter().collect::<String>())
+            }
+            None => String::new(),
+        };
     }
-    format!("{before}{}", letters(n - 1, skip_io))
+    deeper(n - 1).map_or_else(String::new, |c| format!("{before}{c}"))
 }
 
 /// The first of `candidate(0)`, `candidate(1)` … that `taken` does not hold.
@@ -1018,15 +1078,16 @@ impl Script {
         self.number_with(Numbering { keep_existing, ..Numbering::default() });
     }
 
-    /// Numbers the scene headings as `options` says (docs/production-spec.md §3.1); returns how
-    /// many headings changed.
+    /// Numbers the scene headings as `options` says (docs/production-spec.md §3.1): how many
+    /// headings changed, and the new scenes left unnumbered because no number sits between
+    /// their neighbours (a new scene between `2` and an existing `2A`).
     ///
     /// Without `keep_existing`, the headings from `from` on are numbered `start`, `start + 1` …
     /// With it, numbered headings keep their numbers; an unnumbered one after `12` becomes `12A`,
     /// then `12B`; one before the first numbered heading (`1`) becomes `A1`, then `B1`. A
     /// number the script already uses is never given twice: the next letter is tried, then a
     /// further one (`12AA`).
-    pub fn number_with(&mut self, options: Numbering) -> usize {
+    pub fn number_with(&mut self, options: Numbering) -> Numbered {
         let headings: Vec<usize> = self.scene_indices();
         let mut changed = 0;
         let mut set = |elements: &mut Vec<Element>, at: usize, number: String| {
@@ -1043,8 +1104,9 @@ impl Script {
                 set(&mut self.elements, h, next.to_string());
                 next = next.saturating_add(1);
             }
-            return changed;
+            return Numbered { changed, unplaced: Vec::new() };
         }
+        let mut unplaced = Vec::new();
         let mut taken: std::collections::HashSet<String> =
             headings.iter().filter_map(|&h| self.elements.get(h).and_then(|e| e.scene_number.clone())).collect();
         let mut previous: Option<String> = None;
@@ -1062,10 +1124,19 @@ impl Script {
             match &previous {
                 // After a numbered scene: its number with the next letter.
                 Some(before) => {
-                    let number = free(&taken, |n| insert_after(before, n, options.skip_io));
-                    taken.insert(number.clone());
-                    set(&mut self.elements, h, number.clone());
-                    previous = Some(number);
+                    // The next numbered scene bounds it: a new number must sort between the two.
+                    let after = headings.iter().skip(position + 1).find_map(|&k| self.elements.get(k).and_then(|e| e.scene_number.clone()));
+                    let fits = |number: &str| {
+                        !number.is_empty() && !taken.contains(number) && after.as_deref().is_none_or(|after| sorts_before(number, after))
+                    };
+                    match (0..INSERT_TRIES).map(|n| insert_after(before, n, options.skip_io)).find(|n| fits(n)) {
+                        Some(number) => {
+                            taken.insert(number.clone());
+                            set(&mut self.elements, h, number.clone());
+                            previous = Some(number);
+                        }
+                        None => unplaced.push(Unplaced { heading: h, before: before.clone(), after: after.unwrap_or_default() }),
+                    }
                     position += 1;
                 }
                 // Before the first numbered scene: letters in front of its number.
@@ -1083,7 +1154,7 @@ impl Script {
                 }
             }
         }
-        changed
+        Numbered { changed, unplaced }
     }
 
     /// Sets one scene's number by hand (empty clears it). Refuses a number another scene has,

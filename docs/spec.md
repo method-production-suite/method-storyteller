@@ -130,7 +130,7 @@ one step.
   Keep existing numbers (on when any scene has one), From the current scene on, and Leave out
   the letters I and O (decision 20, off by default, remembered). Kept numbers stay; a new scene
   after `12` becomes `12A`, then `12B`; one before the first numbered scene becomes `A1`; one
-  between `12A` and `12B` goes a level deeper, `12AA`; no number is given twice. Production >
+  between `12A` and `12B` goes a level deeper, `12AA`; no number is given twice, and each new number sorts between its neighbours. A new scene with no number between them (after `2`, before an existing `2A`) is left unnumbered, and the status bar says to set it by hand. Production >
   Edit Scene Number… (`scene.set_number`) sets or clears the caret's scene's number by hand,
   refusing one another scene has. One Undo each. View > Scene Numbers shows them in the editor
   and PDF. Stored in Fountain as `#12#`, in FDX as `Number="12"`, in OSF as `scene_number`.
