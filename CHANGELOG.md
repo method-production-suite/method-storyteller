@@ -5,6 +5,11 @@ for its own version in Help > What's New, once after an update.
 
 ## Unreleased
 
+### New
+
+- Production > Characters: every speaking character with their speeches, scenes, words and
+  first scene; a name goes to their first line.
+
 ## 0.5.0
 
 ### New

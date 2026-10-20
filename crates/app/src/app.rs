@@ -39,7 +39,7 @@ const GO_TO_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Alt+G" } else { "Cmd
 const FIND_NEXT_KEY: &str = if cfg!(target_os = "macos") { "Cmd+G" } else { "F3" };
 const FIND_PREVIOUS_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Shift+G" } else { "Shift+F3" };
 
-const APP_COMMANDS: [AppCommand; 38] = [
+const APP_COMMANDS: [AppCommand; 39] = [
     AppCommand { id: "app.close", label: "Close", menu: "File/Close", shortcut: Some("Cmd+W") },
     AppCommand { id: "app.title_page", label: "Title Page…", menu: "File/Title Page…", shortcut: Some("Cmd+Shift+T") },
     AppCommand {
@@ -70,6 +70,7 @@ const APP_COMMANDS: [AppCommand; 38] = [
     AppCommand { id: "app.find_next", label: "Find Next", menu: "Edit/Find Next", shortcut: Some(FIND_NEXT_KEY) },
     AppCommand { id: "app.find_previous", label: "Find Previous", menu: "Edit/Find Previous", shortcut: Some(FIND_PREVIOUS_KEY) },
     AppCommand { id: "app.rename_character", label: "Rename Character…", menu: "Production/Rename Character…", shortcut: None },
+    AppCommand { id: "app.characters", label: "Characters", menu: "Production/Characters", shortcut: None },
     AppCommand { id: "app.go_to", label: "Go To…", menu: "Edit/Go To…", shortcut: Some(GO_TO_KEY) },
     AppCommand { id: "prefs.smart_quotes", label: "Smart Quotes", menu: "Format/Smart Quotes", shortcut: None },
     AppCommand { id: "app.bold", label: "Bold", menu: "Format/Bold", shortcut: Some("Cmd+B") },
@@ -214,6 +215,8 @@ pub struct StorytellerApp {
     new_tv: Option<storyteller_core::model::TvShape>,
     rename: Option<RenameDraft>,
     scene_dialog: Option<SceneDraft>,
+    /// Production > Characters: the character table is open.
+    characters: bool,
     find: Option<find_bar::FindBar>,
     spelling: Option<spelling::SpellDialog>,
     spell_cache: spelling::SpellCache,
@@ -330,6 +333,7 @@ impl StorytellerApp {
             new_tv: None,
             rename: None,
             scene_dialog: None,
+            characters: false,
             find: None,
             spelling: None,
             spell_cache: spelling::SpellCache::default(),
@@ -555,6 +559,7 @@ impl StorytellerApp {
             "edit.copy_scene" => self.copy_scene(ctx, None),
             // File > Close: the script closes and an empty one takes its place (decision 15).
             "app.close" => self.guard_unsaved(ctx, Pending::New),
+            "app.characters" => self.characters = !self.characters,
             "app.clear_recent" => {
                 self.prefs.update(|p| p.general.recent.clear());
                 self.status = "Cleared the list of recent scripts.".into();
@@ -1148,6 +1153,7 @@ impl StorytellerApp {
             "prefs.new_fountain" => Some(self.preferred_extension() == "fountain"),
             "prefs.new_osf" => Some(self.preferred_extension() == "osf"),
             "prefs.smart_quotes" => Some(self.prefs.get().general.smart_quotes),
+            "app.characters" => Some(self.characters),
             "prefs.spelling_us" => Some(self.prefs.get().general.spelling_language != "en_GB"),
             "prefs.spelling_uk" => Some(self.prefs.get().general.spelling_language == "en_GB"),
             "prefs.check_spelling" => Some(self.prefs.get().view.check_spelling),
@@ -1674,6 +1680,49 @@ impl StorytellerApp {
         }
     }
 
+    /// Production > Characters: every speaking character with their speeches, scenes, words
+    /// and first scene. A name takes the caret to the character's first cue.
+    fn characters_window(&mut self, ctx: &egui::Context) {
+        if !self.characters {
+            return;
+        }
+        let rows = storyteller_engine::commands::character_table(&self.session.script);
+        let mut open = true;
+        let mut go = None;
+        egui::Window::new("Characters").open(&mut open).collapsible(false).default_width(420.0).show(ctx, |ui| {
+            if rows.is_empty() {
+                ui.label("No one speaks yet. Character cues appear here as you write them.");
+                return;
+            }
+            egui::ScrollArea::vertical().max_height(420.0).show(ui, |ui| {
+                egui::Grid::new("storyteller.character_table").num_columns(5).striped(true).spacing([18.0, 6.0]).show(ui, |ui| {
+                    for heading in ["Character", "Speeches", "Scenes", "Words", "First scene"] {
+                        ui.label(egui::RichText::new(heading).small().strong());
+                    }
+                    ui.end_row();
+                    for (n, row) in rows.iter().enumerate() {
+                        let name = ui.link(row.name.as_str()).on_hover_text("Go to their first line");
+                        self.automation.add(format!("characters.row.{n}"), "link", row.name.clone(), &name);
+                        if name.clicked() {
+                            go = Some(row.first);
+                        }
+                        ui.label(row.speeches.to_string());
+                        ui.label(row.scenes.to_string());
+                        ui.label(row.words.to_string());
+                        ui.label(row.first_scene.clone().unwrap_or_else(|| "–".into()));
+                        ui.end_row();
+                    }
+                });
+            });
+        });
+        self.characters = open;
+        if let Some(cue) = go {
+            self.session.caret = Caret { element: cue, offset: 0 };
+            self.focus_next_frame = Some((cue, 0));
+            ctx.request_repaint();
+        }
+    }
+
     /// Opens Scene Properties for the scene headed at `heading`.
     fn open_scene_dialog(&mut self, heading: usize) {
         let meta = self.session.script.elements.get(heading).map(|e| e.scene.clone()).unwrap_or_default();
@@ -2032,6 +2081,7 @@ impl StorytellerApp {
         self.spelling_dialog(&ctx);
         self.rename_dialog(&ctx);
         self.scene_properties_dialog(&ctx);
+        self.characters_window(&ctx);
         self.help_windows(&ctx);
         self.unsaved_prompt(&ctx);
         self.recovery_prompt(&ctx);

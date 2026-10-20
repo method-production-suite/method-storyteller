@@ -213,6 +213,74 @@ pub fn character_names(script: &Script) -> Vec<(String, usize)> {
     counts
 }
 
+/// One row of the character table: a speaking character, with the speeches, scenes and first
+/// appearance.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct CharacterRow {
+    pub name: String,
+    pub speeches: usize,
+    /// Scenes the character speaks in.
+    pub scenes: usize,
+    /// The element of the first cue.
+    pub first: usize,
+    /// The scene of the first cue, by its printed number or position, if it is in one.
+    pub first_scene: Option<String>,
+    /// Words spoken, dialogue only.
+    pub words: usize,
+}
+
+/// Every speaking character, most speeches first (then by name).
+pub fn character_table(script: &Script) -> Vec<CharacterRow> {
+    let mut rows: Vec<CharacterRow> = Vec::new();
+    let mut scene: Option<usize> = None;
+    let mut scene_count = 0usize;
+    let mut seen_in: Vec<(String, usize)> = Vec::new();
+    let mut speaker: Option<usize> = None;
+    for (index, element) in script.elements.iter().enumerate() {
+        match element.kind {
+            ElementKind::SceneHeading => {
+                scene_count += 1;
+                scene = Some(index);
+                speaker = None;
+            }
+            ElementKind::Character => {
+                let name = element.character_name().to_uppercase();
+                if name.is_empty() {
+                    speaker = None;
+                    continue;
+                }
+                let at = match rows.iter().position(|r| r.name == name) {
+                    Some(at) => at,
+                    None => {
+                        let first_scene =
+                            scene.map(|h| script.elements.get(h).and_then(|e| e.scene_number.clone()).unwrap_or_else(|| scene_count.to_string()));
+                        rows.push(CharacterRow { name: name.clone(), speeches: 0, scenes: 0, first: index, first_scene, words: 0 });
+                        rows.len() - 1
+                    }
+                };
+                if let Some(row) = rows.get_mut(at) {
+                    row.speeches += 1;
+                    let key = (name, scene.unwrap_or(usize::MAX));
+                    if !seen_in.contains(&key) {
+                        seen_in.push(key);
+                        row.scenes += 1;
+                    }
+                }
+                speaker = Some(at);
+            }
+            ElementKind::Dialogue | ElementKind::Lyrics => {
+                if let Some(row) = speaker.and_then(|at| rows.get_mut(at)) {
+                    row.words += storyteller_core::inline::plain(&element.text).split_whitespace().count();
+                }
+            }
+            ElementKind::Parenthetical => {}
+            _ => speaker = None,
+        }
+    }
+    rows.sort_by(|a, b| b.speeches.cmp(&a.speeches).then_with(|| a.name.cmp(&b.name)));
+    rows
+}
+
 /// The find parameters shared by `find.*`.
 fn find_query(params: &Params) -> Result<find::Query, CommandError> {
     let text = string(params, "text")?;
@@ -1055,6 +1123,15 @@ fn all_commands() -> Vec<Command> {
             params: &[],
             enabled: always,
             run: |s, _| Ok(Outcome::value(json!(character_names(&s.script)))),
+        },
+        Command {
+            id: "character.table",
+            label: "Character Table",
+            menu: "",
+            shortcut: None,
+            params: &[],
+            enabled: always,
+            run: |s, _| Ok(Outcome::value(json!(character_table(&s.script)))),
         },
         Command {
             id: "spell.next",
