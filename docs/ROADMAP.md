@@ -271,7 +271,7 @@ signed `.app.tar.gz`), the OSF and Fountain study, and the design pass. Each is 
 - **Scene CONTINUED** [missing] S. Off by default; measured only if a corpus file turns it on.
 - **File > Open Recent and Close** [have] S. Open Recent needs a menu built at run time (the
   menu is fixed today); Close (⌘W) closes the script and leaves an empty one (decision 15).
-- **Recovery copies at launch** [missing] S. The app writes a recovery copy as the writer works
+- **Recovery copies at launch** [have] S. The app writes a recovery copy as the writer works
   but never offers it after a crash. Offer it at launch, ahead of the first-launch sample.
 - **The editor lays out only the rows on screen** [missing] M. Every paragraph is laid out
   each frame today; long scripts will feel it first in the spelling underline and find marks.

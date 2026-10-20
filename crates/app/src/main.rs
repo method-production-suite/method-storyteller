@@ -11,6 +11,7 @@ mod messages;
 #[cfg(target_os = "macos")]
 mod native_menu;
 mod prefs;
+mod recovery;
 mod theme;
 mod updates;
 
