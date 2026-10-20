@@ -42,7 +42,7 @@ writer can save to Fountain or FDX, export a PDF, and open those files again wit
 | Centered | Fountain `>TEXT<` |
 | Lyrics | Fountain `~` |
 | New Act | A television act's opening line (`TEASER`, `COLD OPEN`, `ACT ONE`, `TAG`): capitals, centred, and it starts a new page. `.fdx` New Act, OSF style "New Act"; Fountain has no act element, so it writes a centred line (`> ACT ONE <`), and a centred line that reads as an act opens one when read back. Element picker B; Enter goes on to a scene heading |
-| End of Act | The line closing an act (`END OF ACT ONE`): capitals, centred. `.fdx` End of Act, OSF style "End of Act", a centred `END OF …` line in Fountain. Element picker E; Enter goes on to the next New Act |
+| End of Act | The line closing an act (`END OF ACT ONE`): capitals, centred. `.fdx` End of Act, OSF style "End of Act", a centred `END OF …` line in Fountain. Element picker E; Enter goes on to the next New Act. Kept in step (decision 18): after an edit, an act named the usual way (TEASER, ACT TWO, TAG) has its last End of Act line renamed `END OF <act>` when that line names an act; a writer's own line (END OF SHOW) is left alone. An act whose line is being written gets an End of Act line at its end when it has none. Opening a file changes nothing until the first edit |
 | Section / Synopsis | Fountain `#` / `=`; outline only, not printed |
 | Page break | Fountain `===`; forced break |
 

@@ -606,3 +606,49 @@ fn go_to_finds_an_act_by_position_or_name() {
         assert!(refused.is_err(), "{missing} is refused");
     }
 }
+
+#[test]
+fn end_of_act_lines_follow_their_acts() {
+    let registry = Registry::new();
+    let mut s = Session::default();
+    run(&registry, &mut s, "file.new_tv", json!({ "shape": "half_hour" }));
+    let texts = |s: &Session| s.script.elements.iter().map(|e| e.text.clone()).collect::<Vec<_>>();
+    let at = |s: &Session, text: &str| s.script.elements.iter().position(|e| e.text == text).unwrap();
+    // Renaming an act renames its End of Act line, in the same Undo step.
+    let two = at(&s, "ACT TWO");
+    run(&registry, &mut s, "element.set_text", json!({ "index": two, "text": "act two b" }));
+    assert!(texts(&s).contains(&"END OF ACT TWO B".to_string()), "{:?}", texts(&s));
+    assert!(!texts(&s).contains(&"END OF ACT TWO".to_string()));
+    run(&registry, &mut s, "edit.undo", json!({}));
+    assert_eq!(s.script.elements[two + 2].text, "END OF ACT TWO", "one Undo puts both back");
+
+    // The writer's own end line stays as written.
+    let end_tag = at(&s, "END OF TAG");
+    run(&registry, &mut s, "element.set_text", json!({ "index": end_tag, "text": "END OF SHOW" }));
+    let tag = at(&s, "TAG");
+    run(&registry, &mut s, "element.set_text", json!({ "index": tag, "text": "EPILOGUE" }));
+    assert_eq!(s.script.elements[end_tag].text, "END OF SHOW");
+
+    // A new act gets its End of Act line, after the caret, which stays on the act.
+    let last = s.script.elements.len() - 1;
+    run(&registry, &mut s, "element.insert", json!({ "index": last, "kind": "new_act", "text": "ACT FOUR" }));
+    assert_eq!(s.script.elements[last + 1].text, "ACT FOUR");
+    assert_eq!(s.script.elements[last + 2].text, "END OF ACT FOUR");
+    assert_eq!(s.script.elements[last + 2].kind, K::EndOfAct);
+    assert_eq!(s.caret.element, last + 1);
+    // Typing on: it keeps in step, and no second line appears.
+    run(&registry, &mut s, "element.set_text", json!({ "index": last + 1, "text": "ACT FOUR A", "typing": true }));
+    assert_eq!(s.script.elements[last + 2].text, "END OF ACT FOUR A");
+    assert_eq!(s.script.elements.iter().filter(|e| e.kind == K::EndOfAct).count(), 6, "five acts and the new one");
+}
+
+#[test]
+fn an_opened_script_keeps_its_end_lines_as_written() {
+    let registry = Registry::new();
+    let script = storyteller_core::fountain::parse("> ACT ONE <\n\nINT. HUT - DAY\n\nRain.\n\n> END OF ACT TWO <\n").unwrap();
+    let mut s = Session::new(script);
+    run(&registry, &mut s, "caret.set", json!({ "index": 2, "offset": 0 }));
+    assert_eq!(s.script.elements[3].text, "END OF ACT TWO", "moving the caret changes nothing");
+    run(&registry, &mut s, "element.set_text", json!({ "index": 2, "text": "Rain falls." }));
+    assert_eq!(s.script.elements[3].text, "END OF ACT ONE", "the first edit brings it in step");
+}

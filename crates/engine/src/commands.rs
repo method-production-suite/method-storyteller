@@ -166,7 +166,13 @@ impl Registry {
         if !(command.enabled)(session) {
             return Err(CommandError::Disabled(id.to_string()));
         }
+        let edits = session.edits();
         let outcome = (command.run)(session, params)?;
+        // Only after an edit (not after opening a file, undo or redo): those keep the script
+        // as it was.
+        if session.edits() != edits {
+            session.keep_acts_in_step();
+        }
         session.clamp_caret();
         Ok(outcome)
     }

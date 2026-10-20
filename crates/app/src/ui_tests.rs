@@ -549,3 +549,15 @@ fn acts_head_their_scenes_in_the_navigator_and_go_to_finds_them() {
     let s = &harness.state().session;
     assert_eq!(s.script.elements[s.caret.element].text, "TEASER");
 }
+
+#[test]
+fn typing_on_an_act_line_brings_its_end_of_act_line() {
+    let (mut harness, _file) = harness("> ACT ONE <\n\nINT. HUT - DAY\n\nRain.\n");
+    harness.state_mut().editor.pending_focus = Some((0, "ACT ONE".len()));
+    harness.run_steps(3);
+    harness.input_mut().events.push(egui::Event::Text(" B".into()));
+    harness.run_steps(4);
+    let texts: Vec<String> = harness.state().session.script.elements.iter().map(|e| e.text.clone()).collect();
+    assert_eq!(texts, ["ACT ONE B", "INT. HUT - DAY", "Rain.", "END OF ACT ONE B"]);
+    assert_eq!(harness.state().session.caret.element, 0, "the caret stays on the act line");
+}
