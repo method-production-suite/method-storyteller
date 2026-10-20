@@ -22,6 +22,9 @@ Start a new file by copying the skeleton at the end of this page. Release steps:
   hashes, no milestone numbers.
 - No other vendors' product names. Name a file format by its extension (`.fdx`), as the
   README does.
+- Name platforms the way the README's table does: "a Mac (Apple silicon or Intel)", "Windows",
+  "Linux". The Mac download is one app for both kinds of Mac; don't name chips unless the
+  release changes what runs where.
 - Examples use invented scripts only (Field Station). Never a real production, a real
   script or a real person's work: the notes become a public web page.
 - Claim only what is built and in this release. Most commits earn no bullet: refactors,

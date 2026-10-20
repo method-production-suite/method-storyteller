@@ -39,7 +39,7 @@ website and in the README never go stale:
 
 | File | Platform | How it is made |
 |---|---|---|
-| `Method-Storyteller-macOS.dmg` | macOS 11 or later, Apple silicon only | `cargo xtask bundle-macos`, then `cargo xtask dmg-macos` |
+| `Method-Storyteller-macOS.dmg` | macOS 11 or later, one universal app for Apple silicon and Intel | `cargo xtask bundle-macos --target universal-apple-darwin`, then `cargo xtask dmg-macos` |
 | `Method-Storyteller-windows-x64-setup.exe` | Windows 10 or later, x64 | `cargo xtask package-windows` (Inno Setup 6) |
 | `Method-Storyteller-linux-amd64.deb` | Debian and Ubuntu, x86_64 | `cargo xtask package-linux` (`dpkg-deb`) |
 | `Method-Storyteller-linux-x86_64.AppImage` | Other Linux, x86_64 | `cargo xtask package-linux --appimagetool <path> --runtime <path>` |
@@ -54,10 +54,12 @@ Everything lands in `target/bundle/<platform>/`.
 
 ### Try the Mac app locally
 
-On an Apple silicon Mac, unsigned (ad-hoc signed, as every local build is):
+On a Mac, unsigned (ad-hoc signed, as every local build is). `universal-apple-darwin` builds
+both slices (`rustup target add aarch64-apple-darwin x86_64-apple-darwin` once) and joins them
+with `lipo`, as the release does; `aarch64-apple-darwin` alone is quicker for a look:
 
 ```bash
-cargo xtask bundle-macos --target aarch64-apple-darwin
+cargo xtask bundle-macos --target universal-apple-darwin
 open "target/bundle/macos/Method Storyteller.app"
 cargo xtask dmg-macos           # optional: the disk image, from the bundle above
 ```
@@ -82,10 +84,16 @@ From an up-to-date `main` with a clean tree (`0.2.0` stands for the new version)
    terminal picture needs Chrome) and compare them with the committed ones before committing.
 2. Bump `version` in the root `Cargo.toml`, run `cargo check --workspace` so `Cargo.lock`
    follows, and write `docs/releases/0.2.0.md` from the skeleton.
-3. `cargo xtask ci`, then open a pull request with those changes (MReview reviews it).
-   Merge it when it is approved and green.
-4. Tag the merge commit on `main` and push the tag, **with the owner's approval** (the
-   suite's rule for anything outward):
+3. `cargo xtask ci`, and the Intel slice under Rosetta on an Apple silicon Mac:
+   `cargo test --locked --workspace --target x86_64-apple-darwin`, then `arch -x86_64
+   target/x86_64-apple-darwin/debug/method-storyteller --version` and one headless launch
+   of the app. Open a pull request with those changes (MReview reviews it). Merge it when
+   it is approved and green.
+4. Rehearse: Actions > release > Run workflow on `main`, the tag left empty. It builds,
+   signs, notarizes and checks the merge commit exactly as a release would, and drafts
+   nothing. Wait for green; it is the only full build before the tag.
+5. Tag the rehearsed commit and push the tag, **with the owner's approval** (one yes covers
+   the tag and publishing). Run each as its own command:
 
    ```bash
    git switch main && git pull --ff-only
@@ -93,8 +101,9 @@ From an up-to-date `main` with a clean tree (`0.2.0` stands for the new version)
    git push origin v0.2.0
    ```
 
-5. Watch the `release` workflow. When it is green, the draft release is on the Releases
-   page.
+6. Watch the `release` workflow. When it is green, the draft release is on the Releases
+   page. Check it (below), report to the coordinator, then publish it unless the owner has
+   said stop. A failed check stops it.
 
 **A pushed tag is permanent.** People download from it and the workflow has built from it.
 Never move, delete or force-push a public tag: fix a problem with the next patch version.
@@ -105,20 +114,22 @@ draft and refuses a release that is already published.
 
 ## Before publishing the draft
 
-- Download `Method-Storyteller-macOS.dmg` on an Apple silicon Mac, drag the app to
+- Download `Method-Storyteller-macOS.dmg` on a Mac, drag the app to
   Applications and open it. Signed and notarized, it opens without a warning; check with
   `spctl --assess --type execute --verbose=4 "/Applications/Method Storyteller.app"`
-  (`accepted`, source Notarized Developer ID).
+  (`accepted`, source Notarized Developer ID). `lipo -archs` on the app's binary says
+  exactly `x86_64 arm64`, and `arch -x86_64` runs it with `--version` under Rosetta.
 - Open an invented sample script, type a scene, save it, reopen it.
 - Where you can, install the Windows setup and the `.deb` or AppImage and do the same; the
   README's platform table says which were tested.
 - Check the four installer names are version-free and `SHA256SUMS` lists every file of the
   release (exactly one checksum file, under exactly that name).
-- Check the updater files are there: `Method-Storyteller_<version>_aarch64.app.tar.gz`, its
-  `.sig`, and `latest.json` naming this version with a `darwin-aarch64` entry. The draft job
-  already refused a signature that does not check against the app's public key. Once the
-  draft is published, `releases/latest/download/latest.json` serves it and installed apps on
-  Apple silicon find the update within six hours (or at once with Help > Check for Updates).
+- Check the updater files are there: `Method-Storyteller_<version>_universal.app.tar.gz`, its
+  `.sig`, and `latest.json` naming this version with `darwin-aarch64` and `darwin-x86_64`
+  entries, both for that one archive. The workflow already refused a signature that does not
+  check against the app's public key. Once the draft is published,
+  `releases/latest/download/latest.json` serves it and installed apps on Macs find the update
+  within six hours (or at once with Help > Check for Updates).
 - Then publish. Afterwards, the shared checklist's "After publishing" steps (the website,
   live download links, the announcement), and the README's platform table where a status
   changed.
@@ -176,9 +187,10 @@ leaving GitHub. A red run means the next release's update would be refused: fix 
 
 | Job | Permissions | What it does |
 |---|---|---|
-| `check` | contents: read | the tag is `v` plus the version in `Cargo.toml`, points at a commit on `main`, and `docs/releases/<version>.md` is written |
-| `build` (macOS arm64, Windows x64, Linux x64) | contents: read | compiles everything first, before any secret reaches the runner; then packages each platform with `--no-build`; on macOS signs, notarizes, staples and verifies (the binary must be arm64 only), each only when its secrets are there; then, with the update key, packs and signs the updater archive; on Windows signs the app and the installer only with a certificate |
-| `draft` | contents: write (the only job with it) | checks all four installers are there, writes `latest.json` after checking the archive's signature against the app's public key, writes and checks `SHA256SUMS` (one line per file of the release), and runs `gh release create --draft` with the notes |
+| `check` | contents: read | the tag is `v` plus the version in `Cargo.toml`, points at a commit on `main`, and `docs/releases/<version>.md` is written; with no tag, on `main`, a rehearsal of main's latest commit |
+| `build` (macOS universal, Windows x64, Linux x64) | contents: read | compiles everything first, before any secret reaches the runner (on macOS both slices, joined with `lipo`); then packages each platform with `--no-build`; on macOS signs, notarizes, staples and verifies (every executable must be exactly `x86_64 arm64`), each only when its secrets are there; then, with the update key, packs and signs the updater archive; on Windows signs the app and the installer only with a certificate |
+| `assemble` | contents: read | checks all four installers are there, writes `latest.json` after checking the archive's signature against the app's public key (one universal archive under `darwin-aarch64` and `darwin-x86_64`), writes and checks `SHA256SUMS` (one line per file of the release); runs in a rehearsal too |
+| `draft` | contents: write (the only job with it) | runs `gh release create --draft` with the notes and the files; skipped in a rehearsal |
 
 Only first-party actions are used, each pinned to the suite's full commit SHA. Each secret
 is given only to the steps that use it. The two AppImage tools (appimagetool and its

@@ -1,8 +1,12 @@
-# Release builds on a version tag: the app packaged for macOS on Apple silicon (.dmg), Windows
-# (Inno Setup installer) and Linux (.deb and AppImage), under version-free names so the
-# website can link releases/latest/download/<file>, attached to a DRAFT GitHub release for a
-# person to check and publish. Nothing is published by this workflow. How to cut a release:
-# docs/RELEASING.md.
+# Release builds on a version tag: the app packaged for macOS as one universal app for Apple
+# silicon and Intel (.dmg), Windows (Inno Setup installer) and Linux (.deb and AppImage), under
+# version-free names so the website can link releases/latest/download/<file>, attached to a
+# DRAFT GitHub release for a person to check and publish. Nothing is published by this
+# workflow. How to cut a release: docs/RELEASING.md.
+#
+# Run by hand on main with no tag, it rehearses a release (SUITE-STANDARDS.md §6): the same
+# builds, signing and checks on main's latest commit, and no draft. The rehearsal is the only
+# full build before a release.
 #
 #   Method-Storyteller-macOS.dmg               Method-Storyteller-linux-amd64.deb
 #   Method-Storyteller-windows-x64-setup.exe   Method-Storyteller-linux-x86_64.AppImage
@@ -26,10 +30,12 @@
 #                      minisign update key in 1Password, "Method Storyteller - Update signing
 #                      key"; its public half is PUBKEY in crates/app/src/updates.rs). With the
 #                      key and a notarized build, the release also carries the updater archive
-#                      Method-Storyteller_<version>_aarch64.app.tar.gz, its .sig, and
+#                      Method-Storyteller_<version>_universal.app.tar.gz, its .sig, and
 #                      latest.json, which installed apps read (`cargo xtask updater-archive`
 #                      and `update-manifest`, xtask/src/updater.rs).
-# Every compile happens before any secret reaches the runner.
+# Every compile happens before any secret reaches the runner, and no step runs cargo once
+# its job has met a secret: those steps run the xtask binary built first (tested by xtask's
+# release_workflow test).
 #
 # Least privilege: only the draft job writes. First-party actions only, pinned to the suite's
 # full commit SHAs; no caches (release builds start clean). The two AppImage tools are
@@ -42,8 +48,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "An existing tag to build, such as v0.1.0"
-        required: true
+        description: "An existing tag to build, such as v0.3.0. Leave empty on main to rehearse: everything is built, signed and checked, and no release is drafted."
+        required: false
+        default: ""
 permissions:
   contents: read
 concurrency:
@@ -56,18 +63,40 @@ jobs:
     timeout-minutes: 20
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
+      ref: ${{ steps.tag.outputs.ref }}
+      version: ${{ steps.tag.outputs.version }}
+      rehearsal: ${{ steps.tag.outputs.rehearsal }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
-      - name: The tag matches the version in Cargo.toml, on main
+      - name: The tag matches the version in Cargo.toml, on main (or a rehearsal)
         id: tag
         env:
+          EVENT: ${{ github.event_name }}
           INPUT_TAG: ${{ github.event.inputs.tag }}
+          REF: ${{ github.ref }}
           REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
+          # A rehearsal: run by hand on main with no tag. It builds, signs and checks main's
+          # latest commit exactly as a release would, with its notes, and drafts nothing.
+          if [ "$EVENT" = workflow_dispatch ] && [ -z "$INPUT_TAG" ]; then
+            if [ "$REF" != refs/heads/main ]; then
+              echo "::error::A rehearsal runs on main."
+              exit 1
+            fi
+            version="$(cargo xtask version)"
+            notes="docs/releases/$version.md"
+            if [ ! -s "$notes" ] || grep -n '{{' "$notes"; then
+              echo "::error::$notes is missing or still has {{placeholders}}."
+              exit 1
+            fi
+            echo "Rehearsing v$version on main ($GITHUB_SHA)."
+            { echo "tag="; echo "ref=$GITHUB_SHA"; echo "version=$version"; echo "rehearsal=true"; } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           tag="${INPUT_TAG:-$REF_NAME}"
           if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
             echo "::error::$tag is not a version tag (vX.Y.Z or vX.Y.Z-pre)."
@@ -94,7 +123,7 @@ jobs:
             echo "::error::$tag points at a commit that is not on main."
             exit 1
           fi
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          { echo "tag=$tag"; echo "ref=$tag"; echo "version=$version"; echo "rehearsal=false"; } >> "$GITHUB_OUTPUT"
       - name: Every locked crate is at least 14 days old, apart from security fixes
         # SUITE-STANDARDS.md §6: main may list a young crate in scripts/crate-age-exceptions.txt
         # while it ages out, but no release ships one; a listed security fix (RUSTSEC) may.
@@ -111,8 +140,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Apple silicon only (the suite standard).
-          - name: macos-arm64
+          # One universal app for Apple silicon and Intel (SUITE-STANDARDS.md §3, the owner,
+          # 2026-10-19): both slices built, joined with lipo.
+          - name: macos-universal
             os: macos-latest
           # Inno Setup 6 comes with this image.
           - name: windows-x64
@@ -139,7 +169,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.check.outputs.tag }}
+          ref: ${{ needs.check.outputs.ref }}
           persist-credentials: false
 
       - name: Linux packages for eframe
@@ -148,23 +178,28 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libxkbcommon-dev libgl1-mesa-dev libwayland-dev dpkg-dev
 
-      - name: Add the Rust target (macOS)
+      - name: Add the Rust targets (macOS)
         if: runner.os == 'macOS'
-        run: rustup target add aarch64-apple-darwin
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
       # Every build runs before any secret reaches the runner, so no dependency's build
       # script runs while the signing keychain or the notarization key exists. The packaging
       # steps below use --no-build.
       - name: Build the app and the packaging tool
-        env:
-          TARGET: ${{ runner.os == 'macOS' && 'aarch64-apple-darwin' || '' }}
         run: |
           set -euo pipefail
           target=()
-          if [ -n "$TARGET" ]; then target=(--target "$TARGET"); fi
+          if [ "$RUNNER_OS" = macOS ]; then target=(--target aarch64-apple-darwin --target x86_64-apple-darwin); fi
           # ${a[@]+...}: an empty array is "unbound" under set -u in the Mac runner's bash 3.2.
           cargo build --release --locked --package method-storyteller --bin method-storyteller-app ${target[@]+"${target[@]}"}
           cargo build --locked --package xtask
+          if [ "$RUNNER_OS" = macOS ]; then
+            # The universal binary, joined before any secret (lipo runs no build script).
+            out=target/universal-apple-darwin/release
+            mkdir -p "$out"
+            lipo -create -output "$out/method-storyteller-app" \
+              target/aarch64-apple-darwin/release/method-storyteller-app target/x86_64-apple-darwin/release/method-storyteller-app
+          fi
 
       - name: Decide what gets signed
         run: |
@@ -230,7 +265,8 @@ jobs:
           set -euo pipefail
           sign=()
           if [ "${MACOS_SIGN:-no}" = yes ]; then sign=(--sign "$APPLE_SIGNING_IDENTITY"); fi
-          cargo xtask bundle-macos --target aarch64-apple-darwin --no-build ${sign[@]+"${sign[@]}"}
+          # The xtask binary built before any secret, run directly: never cargo beside a key.
+          target/debug/xtask bundle-macos --target universal-apple-darwin --no-build ${sign[@]+"${sign[@]}"}
 
       - name: Notarize and staple the app (macOS)
         if: runner.os == 'macOS' && env.MACOS_NOTARIZE == 'yes'
@@ -252,7 +288,7 @@ jobs:
           set -euo pipefail
           sign=()
           if [ "${MACOS_SIGN:-no}" = yes ]; then sign=(--sign "$APPLE_SIGNING_IDENTITY"); fi
-          cargo xtask dmg-macos ${sign[@]+"${sign[@]}"}
+          target/debug/xtask dmg-macos ${sign[@]+"${sign[@]}"}
 
       - name: Notarize and staple the disk image (macOS)
         if: runner.os == 'macOS' && env.MACOS_NOTARIZE == 'yes'
@@ -272,10 +308,19 @@ jobs:
           app="target/bundle/macos/Method Storyteller.app"
           dmg="target/bundle/macos/Method-Storyteller-macOS.dmg"
           codesign --verify --deep --strict --verbose=2 "$app"
-          # Apple silicon only: a universal or Intel binary fails here.
-          archs="$(lipo -archs "$app/Contents/MacOS/method-storyteller-app")"
-          if [ "$archs" != arm64 ]; then
-            echo "::error::The app binary is \"$archs\", not arm64 only."
+          # Universal: every executable in the bundle must hold exactly both slices.
+          found=0
+          while IFS= read -r -d '' exe; do
+            found=$((found + 1))
+            archs="$(lipo -archs "$exe")"
+            if [ "$archs" != "x86_64 arm64" ]; then
+              echo "::error::$exe is \"$archs\", not \"x86_64 arm64\"."
+              exit 1
+            fi
+            echo "$exe: $archs"
+          done < <(find "$app/Contents/MacOS" -type f -perm -u+x -print0)
+          if [ "$found" -eq 0 ]; then
+            echo "::error::No executable in $app/Contents/MacOS."
             exit 1
           fi
           plutil -p "$app/Contents/Info.plist" | grep -F '"CFBundleIdentifier" => "com.methodstoryteller.desktop"'
@@ -296,14 +341,14 @@ jobs:
         env:
           UPDATER_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           UPDATER_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          TAG: ${{ needs.check.outputs.tag }}
+          VERSION: ${{ needs.check.outputs.version }}
         run: |
           set -euo pipefail
           # The xtask binary built with everything else, before any secret, run directly: not
           # `cargo xtask`, which would rebuild (and run build scripts) on a stale fingerprint
           # while the key is in the environment.
           test -x target/debug/xtask
-          target/debug/xtask updater-archive --app "target/bundle/macos/Method Storyteller.app" --version "${TAG#v}" --out-dir target/bundle/updater
+          target/debug/xtask updater-archive --app "target/bundle/macos/Method Storyteller.app" --version "$VERSION" --out-dir target/bundle/updater
           ls -l target/bundle/updater
 
       - name: Forget the signing material (macOS)
@@ -331,7 +376,8 @@ jobs:
 
       - name: Build the installer (Windows)
         if: runner.os == 'Windows'
-        run: cargo xtask package-windows --no-build
+        # The xtask binary built before any secret, run directly: never cargo beside a key.
+        run: target/debug/xtask package-windows --no-build
 
       - name: Sign the installer (Windows)
         if: runner.os == 'Windows' && env.HAS_WIN_SIGNING == 'true'
@@ -361,7 +407,7 @@ jobs:
           curl --fail --location --silent --show-error --output "$tools/runtime" "$APPIMAGE_RUNTIME_URL"
           printf '%s  %s\n' "$APPIMAGETOOL_SHA256" "$tools/appimagetool" "$APPIMAGE_RUNTIME_SHA256" "$tools/runtime" | sha256sum --check --strict
           chmod +x "$tools/appimagetool"
-          cargo xtask package-linux --no-build --appimagetool "$tools/appimagetool" --runtime "$tools/runtime"
+          target/debug/xtask package-linux --no-build --appimagetool "$tools/appimagetool" --runtime "$tools/runtime"
           dpkg-deb --info target/bundle/linux/Method-Storyteller-linux-amd64.deb
           dpkg-deb --contents target/bundle/linux/Method-Storyteller-linux-amd64.deb
 
@@ -387,7 +433,7 @@ jobs:
           name: bundles-${{ matrix.name }}
           path: dist/*
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 1
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: runner.os == 'macOS'
@@ -395,21 +441,19 @@ jobs:
           name: meta-${{ matrix.name }}
           path: meta/*
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 1
 
-  draft:
-    name: draft release
-    # The only job with write access: it drafts the release with the notes and the
-    # installers. Publishing the draft is left to a person.
+  assemble:
+    name: release files
+    # Read-only, and run in a rehearsal too: every installer, the update manifest and
+    # SHA256SUMS, checked and handed to the draft job.
     needs: [check, build]
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    permissions:
-      contents: write # create the draft release and upload its files
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.check.outputs.tag }}
+          ref: ${{ needs.check.outputs.ref }}
           persist-credentials: false
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -423,7 +467,7 @@ jobs:
           merge-multiple: true
       - name: Every installer is here, under its version-free name
         env:
-          TAG: ${{ needs.check.outputs.tag }}
+          VERSION: ${{ needs.check.outputs.version }}
         run: |
           set -euo pipefail
           for f in Method-Storyteller-macOS.dmg Method-Storyteller-windows-x64-setup.exe \
@@ -432,8 +476,8 @@ jobs:
           done
           # The update manifest, when the Mac build brought the signed updater archive. It is
           # checked against the app's own public key before it is written.
-          version="${TAG#v}"
-          archive="Method-Storyteller_${version}_aarch64.app.tar.gz"
+          version="$VERSION"
+          archive="Method-Storyteller_${version}_universal.app.tar.gz"
           if [ -s "dist/$archive" ] && [ -s "dist/$archive.sig" ]; then
             cargo xtask update-manifest --dir dist --version "$version" --out dist/latest.json
           else
@@ -452,6 +496,48 @@ jobs:
             echo "::error::SHA256SUMS lists $listed files, but the release has $files."
             exit 1
           fi
+          # The manifest offers the one universal archive to both kinds of Mac.
+          if [ -s dist/latest.json ]; then
+            python3 - "$version" <<'PY'
+          import json, sys
+          version = sys.argv[1]
+          platforms = json.load(open("dist/latest.json"))["platforms"]
+          assert sorted(platforms) == ["darwin-aarch64", "darwin-x86_64"], sorted(platforms)
+          urls = {p["url"] for p in platforms.values()}
+          assert urls == {f"https://github.com/method-production-suite/method-storyteller/releases/download/v{version}/Method-Storyteller_{version}_universal.app.tar.gz"}, urls
+          PY
+          fi
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-files
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 1
+
+  draft:
+    name: draft release
+    # The only job with write access: it drafts the release with the notes and the
+    # installers. Publishing the draft is left to a person. A rehearsal drafts nothing.
+    needs: [check, assemble]
+    if: needs.check.outputs.rehearsal != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # create the draft release and upload its files
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.check.outputs.tag }}
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-files
+          path: dist
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: meta-*
+          path: meta
+          merge-multiple: true
       - name: Draft the release
         env:
           GH_TOKEN: ${{ github.token }}

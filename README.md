@@ -64,11 +64,11 @@ Status: early alpha. The first release, 0.2.0, came out on 2026-10-19. See
 
 | Platform | Download | Signed | Tested |
 | --- | --- | --- | --- |
-| macOS 11 or later (Apple silicon) | `.dmg` | Yes, and notarized | Weekly full build; the release tested by hand |
+| macOS 11 or later (Apple silicon and Intel, one app) | `.dmg` | Yes, and notarized | Every release build; the release tested by hand (Intel under Rosetta) |
 | Windows 10 or later (x64) | Setup `.exe` | No: Windows warns about an unknown publisher | Weekly full build |
 | Linux (x86_64) | `.deb`, AppImage | No (as usual for both) | Weekly full build |
 
-The app updates itself on Apple silicon Macs; on Windows and Linux, download each new version.
+The app updates itself on a Mac; on Windows and Linux, download each new version.
 Not there yet: printing, revision mode, side-by-side editing of dual dialogue, and formatting
 markup still shows as typed in the editor.
 

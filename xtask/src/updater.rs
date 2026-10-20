@@ -1,8 +1,8 @@
-//! The files a release gives the suite updater (`method-update`), so installed apps on Apple
-//! silicon Macs find the new version (SUITE-STANDARDS.md §1, §3):
+//! The files a release gives the suite updater (`method-update`), so installed apps on Macs
+//! (Apple silicon and Intel) find the new version (SUITE-STANDARDS.md §1, §3):
 //!
 //! - `cargo xtask updater-archive --app <Method Storyteller.app> --version X.Y.Z --out-dir D`
-//!   packs the signed, notarized, stapled bundle as `Method-Storyteller_X.Y.Z_aarch64.app.tar.gz`
+//!   packs the signed, notarized, stapled bundle as `Method-Storyteller_X.Y.Z_universal.app.tar.gz`
 //!   (top folder `Method Storyteller.app`) and signs it with the update key, read from
 //!   `UPDATER_PRIVATE_KEY` (base64 of the minisign secret key box) and
 //!   `UPDATER_PRIVATE_KEY_PASSWORD`. The trusted comment names the version, which the
@@ -23,11 +23,11 @@ const REPO: &str = "method-production-suite/method-storyteller";
 /// The bundle's name inside the archive. The updater swaps in whatever top folder it finds,
 /// so this is for people reading the archive.
 const BUNDLE: &str = "Method Storyteller.app";
-/// The updater's only platform.
-const PLATFORM: &str = "darwin-aarch64";
+/// The updater's platforms: one universal app, listed for each chip (each slice asks for its own).
+const PLATFORMS: [&str; 2] = ["darwin-aarch64", "darwin-x86_64"];
 
 pub fn archive_name(version: &str) -> String {
-    format!("Method-Storyteller_{version}_aarch64.app.tar.gz")
+    format!("Method-Storyteller_{version}_universal.app.tar.gz")
 }
 
 struct Args {
@@ -145,16 +145,16 @@ pub fn manifest(dir: &Path, version: &str, pubkey_b64: &str, notes: &str, unix_n
     if signed != Some(version) {
         return Err(format!("{name}.sig is signed for version {signed:?}, not {version}"));
     }
+    let entry = serde_json::json!({
+        "signature": sig_b64,
+        "url": format!("https://github.com/{REPO}/releases/download/v{version}/{name}"),
+    });
+    let platforms: serde_json::Map<String, serde_json::Value> = PLATFORMS.iter().map(|p| ((*p).to_string(), entry.clone())).collect();
     let manifest = serde_json::json!({
         "version": version,
         "notes": notes,
         "pub_date": rfc3339(unix_now),
-        "platforms": {
-            PLATFORM: {
-                "signature": sig_b64,
-                "url": format!("https://github.com/{REPO}/releases/download/v{version}/{name}"),
-            }
-        }
+        "platforms": platforms,
     });
     serde_json::to_string_pretty(&manifest).map(|s| s + "\n").map_err(|e| e.to_string())
 }
@@ -213,7 +213,7 @@ mod tests {
 
         let out = dir.join("updater");
         let archive = write_archive(&app, "0.2.0", &out).unwrap();
-        assert_eq!(archive.file_name().unwrap().to_string_lossy(), "Method-Storyteller_0.2.0_aarch64.app.tar.gz");
+        assert_eq!(archive.file_name().unwrap().to_string_lossy(), "Method-Storyteller_0.2.0_universal.app.tar.gz");
         // The archive holds the bundle under its own name.
         let mut names = Vec::new();
         let mut reader = tar::Archive::new(flate2::read::GzDecoder::new(File::open(&archive).unwrap()));
@@ -234,11 +234,16 @@ mod tests {
         let value: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(value["version"], "0.2.0");
         assert_eq!(value["pub_date"], "2026-10-18T00:00:00Z");
-        assert_eq!(value["platforms"]["darwin-aarch64"]["signature"], sig.as_str());
-        assert_eq!(
-            value["platforms"]["darwin-aarch64"]["url"],
-            "https://github.com/method-production-suite/method-storyteller/releases/download/v0.2.0/Method-Storyteller_0.2.0_aarch64.app.tar.gz"
-        );
+        // The same universal file for each chip.
+        for platform in ["darwin-aarch64", "darwin-x86_64"] {
+            assert_eq!(value["platforms"][platform]["signature"], sig.as_str(), "{platform}");
+            assert_eq!(
+                value["platforms"][platform]["url"],
+                "https://github.com/method-production-suite/method-storyteller/releases/download/v0.2.0/Method-Storyteller_0.2.0_universal.app.tar.gz",
+                "{platform}"
+            );
+        }
+        assert_eq!(value["platforms"].as_object().map(|p| p.len()), Some(2));
 
         // The suite updater itself accepts it: the signature with the version it announces,
         // and the archive unpacks to the bundle.

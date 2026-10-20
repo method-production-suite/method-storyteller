@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/*", "xtask"]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 rust-version = "1.95"
@@ -21,7 +21,7 @@ craft-atomic = { git = "https://github.com/storytold/craft-libs", rev = "8f5a283
 craft-settings = { git = "https://github.com/storytold/craft-libs", rev = "8f5a2831614e632f91ad367f7af2a6e5b61b9529" }
 craft-quit = { git = "https://github.com/storytold/craft-libs", rev = "8f5a2831614e632f91ad367f7af2a6e5b61b9529", features = ["egui", "menu"] }
 # method-libs: the suite's updater, pinned to one reviewed revision.
-method-update = { git = "https://github.com/method-production-suite/method-libs", rev = "37a9c8b9801bfcdedb9d79565a62f84fcdfb9a4a" }
+method-update = { git = "https://github.com/method-production-suite/method-libs", rev = "25c80f8cfcc2e5222de4c5b79413a9de488196af" }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

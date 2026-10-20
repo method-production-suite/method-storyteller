@@ -1926,7 +1926,7 @@ dependencies = [
 
 [[package]]
 name = "method-storyteller"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "craft-atomic",
  "craft-quit",
@@ -1950,7 +1950,7 @@ dependencies = [
 [[package]]
 name = "method-update"
 version = "0.1.0"
-source = "git+https://github.com/method-production-suite/method-libs?rev=37a9c8b9801bfcdedb9d79565a62f84fcdfb9a4a#37a9c8b9801bfcdedb9d79565a62f84fcdfb9a4a"
+source = "git+https://github.com/method-production-suite/method-libs?rev=25c80f8cfcc2e5222de4c5b79413a9de488196af#25c80f8cfcc2e5222de4c5b79413a9de488196af"
 dependencies = [
  "base64 0.23.1",
  "flate2",
@@ -3397,7 +3397,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "storyteller-cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "serde_json",
  "storyteller-core",
@@ -3406,7 +3406,7 @@ dependencies = [
 
 [[package]]
 name = "storyteller-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "quick-xml 0.42.0",
  "serde",
@@ -3416,7 +3416,7 @@ dependencies = [
 
 [[package]]
 name = "storyteller-engine"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "craft-atomic",
  "crc32fast",
@@ -3432,7 +3432,7 @@ dependencies = [
 
 [[package]]
 name = "storyteller-macos-open"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "objc2 0.6.4",
  "objc2-foundation 0.3.2",
@@ -3440,7 +3440,7 @@ dependencies = [
 
 [[package]]
 name = "storyteller-pdf"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "craft-pdf",
  "storyteller-core",
@@ -4686,7 +4686,7 @@ checksum = "9440ea3e5aeabb0ac63af70daf835274065238cdd0cec83418f417eae38bacee"
 
 [[package]]
 name = "xtask"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "base64 0.23.1",
  "flate2",
