@@ -106,10 +106,9 @@ says otherwise.
 
 ### Tests that need the owner's hands
 
-- **Windows and Linux, by a person (waiting on owner (Windows/Linux)).** Each release builds,
-  unit-tests and packages both in CI; nobody has yet installed and used them. When there is a
-  machine: install the setup `.exe` and the `.deb` or AppImage, open the Field Station sample,
-  type a scene, save, reopen.
+- **Linux, by a person (eventually).** Each release builds, unit-tests and packages it in CI;
+  nobody has yet installed and used it. When there is a machine: install the `.deb` or the
+  AppImage, open the Field Station sample, type a scene, save, reopen.
 
 - **The writing feel (M3).** Write a few pages from scratch: Enter, Tab, the element picker,
   autocomplete, ⌘1–7 and ⌘⌥1–7. Say what feels wrong.
@@ -154,6 +153,12 @@ says otherwise.
   with the `.mstory` package, scene properties, US and UK spelling, recovery at launch, Close
   and Open Recent. Called 0.5.0, not 0.4.1, because a tag must be on main and main already
   carries those features. Release PR to MReview, rehearsal, then the tag request.
+
+### Deferred (the owner, 2026-10-20)
+
+- **Windows, by a person: deferred indefinitely.** Windows keeps being built, unit-tested and
+  packaged in CI and in every release, and its notes keep saying it is not yet tested by a
+  person. Nothing waits on it.
 ---
 
 ## Where we are
