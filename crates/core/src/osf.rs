@@ -48,6 +48,8 @@ const NOTE_MARKER: &str = "method_storyteller_note";
 const PAGE_MARKER: &str = "method_storyteller_page";
 /// Our element for a scene heading's title, summary and colour, which OSF has no place for.
 const SCENE_MARKER: &str = "method_storyteller_scene";
+/// Our element for the scene an omitted heading keeps, as Fountain.
+const OMITTED_MARKER: &str = "method_storyteller_omitted";
 
 /// The element name a raw section starts with, compared loosely.
 fn top_name(raw: &str) -> String {
@@ -521,6 +523,11 @@ fn read_para(
             color: get(&scene, "color").filter(|c| !c.is_empty()).map(str::to_string),
         };
     }
+    if kind == ElementKind::SceneHeading
+        && let Some(omitted) = tags(&para.children).into_iter().find(|(tag, _)| tag == OMITTED_MARKER).map(|(_, a)| a)
+    {
+        element.omitted = Some(get(&omitted, "fountain").unwrap_or_default().to_string());
+    }
     // Locked pages: a page starts with the paragraph whose page number changes, unless our own
     // page elements say exactly which pages start in it.
     if let Some(current) = page.as_mut() {
@@ -574,7 +581,11 @@ fn strip_ours(children: &str) -> String {
                 if depth == 0
                     && matches!(
                         start.local_name().as_ref(),
-                        "method_storyteller" | "method_storyteller_note" | "method_storyteller_page" | "method_storyteller_scene"
+                        "method_storyteller"
+                            | "method_storyteller_note"
+                            | "method_storyteller_page"
+                            | "method_storyteller_scene"
+                            | "method_storyteller_omitted"
                     ) =>
             {
                 out.push_str(children.get(from..before).unwrap_or_default());
@@ -1226,6 +1237,13 @@ fn write_para(element: &Element, extras: &ParaExtras, spelling: Spelling, styles
         if let Some(color) = &element.scene.color {
             write_attr("color", color, out);
         }
+        out.push_str("/>\n");
+    }
+    if element.kind == ElementKind::SceneHeading
+        && let Some(omitted) = element.omitted.as_deref().filter(|o| !o.trim().is_empty())
+    {
+        out.push_str(&format!("      <{OMITTED_MARKER}"));
+        write_attr("fountain", omitted, out);
         out.push_str("/>\n");
     }
     if !element.notes.is_empty() {

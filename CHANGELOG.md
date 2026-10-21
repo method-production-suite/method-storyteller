@@ -7,6 +7,9 @@ for its own version in Help > What's New, once after an update.
 
 ### New
 
+- Production > Omit Scene replaces a scene with OMITTED, keeping its number and the scene itself;
+  Production > Unomit Scene brings it back. All three file formats keep it.
+
 - Production > Number Scenes… keeps existing numbers and letters new scenes (12A, 12B; A1 before
   the first), or numbers from any start and from the current scene on, and can leave out I and
   O. Production > Edit Scene Number… sets one by hand.

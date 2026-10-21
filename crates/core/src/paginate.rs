@@ -761,7 +761,9 @@ pub fn scene_lengths(script: &Script, paginated: &Paginated, layout: &Layout) ->
         .into_iter()
         .map(|(element, page, parts)| {
             let heading = script.elements.get(element);
-            let omitted = heading.and_then(|h| h.fdx.as_deref()).is_some_and(|f| f.children.contains("<OmittedScene"));
+            // No length for a scene omitted here, or under Final Draft's omitted-scene marker; a
+            // heading that only reads OMITTED is measured like any other, as Final Draft does.
+            let omitted = heading.is_some_and(|h| h.omitted.is_some() || h.fdx.as_deref().is_some_and(|f| f.children.contains("<OmittedScene")));
             let style = match heading.and_then(|h| h.fdx.as_deref()).filter(|f| f.kind == ElementKind::SceneHeading) {
                 Some(fdx) => crate::fdx::paragraph_style(fdx, layout.scene_heading),
                 None => layout.scene_heading,
