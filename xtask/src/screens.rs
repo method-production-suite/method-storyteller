@@ -25,14 +25,14 @@ pub fn run(root: &Path) -> Result<(), String> {
     if !status.success() {
         return Err("build failed".into());
     }
-    let work = root.join("target/screens");
+    let work = crate::target_dir().join("screens");
     let _ = std::fs::remove_dir_all(&work);
     std::fs::create_dir_all(&work).map_err(|e| e.to_string())?;
     // The master is Open Screenplay Format; the import shot opens its .fdx, and the terminal
     // shows its Fountain text.
     let script = work.join("field-station.osf");
     std::fs::copy(root.join(SAMPLE), &script).map_err(|e| format!("{SAMPLE}: {e}"))?;
-    let cli = root.join("target/release/method-storyteller");
+    let cli = crate::target_dir().join("release").join("method-storyteller");
     let fdx = work.join("field-station.fdx");
     run_quiet(Command::new(&cli).arg("convert").arg(&script).arg(&fdx))?;
     let fountain = work.join("field-station.fountain");

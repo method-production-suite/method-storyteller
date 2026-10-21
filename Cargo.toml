@@ -49,5 +49,10 @@ dbg_macro = "warn"
 [patch.crates-io]
 krilla = { git = "https://github.com/storytold/craft-libs", rev = "8f5a2831614e632f91ad367f7af2a6e5b61b9529", version = "=0.8.2" }
 
+[profile.dev]
+# Smaller dev builds (the suite's disk rules): line tables for our crates, none for dependencies.
+debug = "line-tables-only"
+
 [profile.dev.package."*"]
 opt-level = 2
+debug = false

@@ -12,7 +12,7 @@ mod release_workflow;
 mod screens;
 mod updater;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 /// Crates and the workspace crates each may depend on (docs/architecture.md §1).
@@ -60,6 +60,29 @@ fn main() -> ExitCode {
 
 fn root() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap_or(Path::new("."))
+}
+
+/// Where cargo puts what it builds: `CARGO_TARGET_DIR` when set (the suite's shared cache,
+/// `~/.cache/method-target/method-storyteller`), else what `cargo metadata` says, else
+/// `./target`. Never assumed to be `./target`.
+pub fn target_dir() -> PathBuf {
+    static DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    DIR.get_or_init(|| {
+        if let Some(dir) = std::env::var_os("CARGO_TARGET_DIR").filter(|d| !d.is_empty()) {
+            let dir = PathBuf::from(dir);
+            return if dir.is_absolute() { dir } else { root().join(dir) };
+        }
+        Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()))
+            .args(["metadata", "--format-version", "1", "--no-deps", "--offline"])
+            .current_dir(root())
+            .output()
+            .ok()
+            .filter(|out| out.status.success())
+            .and_then(|out| serde_json::from_slice::<serde_json::Value>(&out.stdout).ok())
+            .and_then(|meta| meta.get("target_directory").and_then(|d| d.as_str()).map(PathBuf::from))
+            .unwrap_or_else(|| root().join("target"))
+    })
+    .clone()
 }
 
 /// Dependency names from a manifest's `[dependencies]` table (a small TOML subset).
@@ -193,4 +216,17 @@ fn ci() -> Result<(), String> {
     privacy()?;
     println!("ci: all gates passed");
     Ok(())
+}
+
+#[cfg(test)]
+mod target_dir_tests {
+    /// The build folder is the one cargo uses, never assumed to be ./target.
+    #[test]
+    fn the_target_dir_is_cargos() {
+        let dir = super::target_dir();
+        assert!(dir.is_absolute(), "{}", dir.display());
+        if let Some(set) = std::env::var_os("CARGO_TARGET_DIR").filter(|d| !d.is_empty()) {
+            assert_eq!(dir, super::root().join(set), "CARGO_TARGET_DIR wins");
+        }
+    }
 }

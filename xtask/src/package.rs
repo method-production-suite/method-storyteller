@@ -84,7 +84,7 @@ fn numeric_version(version: &str) -> &str {
 }
 
 fn target_dir() -> PathBuf {
-    std::env::var_os("CARGO_TARGET_DIR").map(PathBuf::from).unwrap_or_else(|| root().join("target"))
+    crate::target_dir()
 }
 
 fn bundle_dir(platform: &str) -> PathBuf {
@@ -392,6 +392,7 @@ pub fn package_windows(options: &Options) -> Result<(), String> {
         format!("/DAppVersion={version}"),
         format!("/DAppNumericVersion={}", numeric_version(&version)),
         format!("/DSourceDir={}", root().display()),
+        format!("/DTargetDir={}", target_dir().display()),
         format!("/DOutputDir={}", out.display()),
     ];
     let script = packaging("windows/method-storyteller.iss");
