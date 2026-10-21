@@ -12,8 +12,11 @@
 #ifndef SourceDir
   #define SourceDir "..\.."
 #endif
+#ifndef TargetDir
+  #define TargetDir SourceDir + "\target"
+#endif
 #ifndef OutputDir
-  #define OutputDir SourceDir + "\target\bundle\windows"
+  #define OutputDir TargetDir + "\bundle\windows"
 #endif
 
 [Setup]
@@ -53,7 +56,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "{#SourceDir}\target\release\method-storyteller-app.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#TargetDir}\release\method-storyteller-app.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\LICENSE-MIT"; DestDir: "{app}"; DestName: "LICENSE-MIT.txt"; Flags: ignoreversion
 Source: "{#SourceDir}\LICENSE-APACHE"; DestDir: "{app}"; DestName: "LICENSE-APACHE.txt"; Flags: ignoreversion
 Source: "{#SourceDir}\NOTICE"; DestDir: "{app}"; DestName: "NOTICE.txt"; Flags: ignoreversion

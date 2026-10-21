@@ -104,13 +104,15 @@ fn write_png(path: &Path, width: u32, height: u32, rgba: &[u8]) -> Result<(), St
 
 /// Every surface in light and dark, for the design pass: the dialogs, the Help windows, the
 /// find bar and a selection on the page. Written to `STORYTELLER_GALLERY_OUT` (default
-/// `target/gallery`); nothing is committed. Run with
+/// `gallery` beside the build: the shared cache, or `target/`); nothing is committed. Run with
 /// `cargo test -p method-storyteller --release gallery -- --ignored`.
 #[test]
 #[ignore = "pictures for the design pass"]
 fn gallery() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let out = var("STORYTELLER_GALLERY_OUT").unwrap_or_else(|| root.join("target/gallery"));
+    // Beside the build: the shared cache when CARGO_TARGET_DIR names it, else ./target.
+    let target = var("CARGO_TARGET_DIR").filter(|d| !d.as_os_str().is_empty()).unwrap_or_else(|| root.join("target"));
+    let out = var("STORYTELLER_GALLERY_OUT").unwrap_or_else(|| target.join("gallery"));
     if let Err(error) = std::fs::create_dir_all(&out) {
         panic!("{}: {error}", out.display());
     }
