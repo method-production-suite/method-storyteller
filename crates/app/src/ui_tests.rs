@@ -751,3 +751,17 @@ fn number_scenes_asks_how_and_numbers() {
     let error = harness.state().scene_number.as_ref().and_then(|d| d.error.clone()).unwrap_or_default();
     assert!(error.contains("already has the number 6"), "{error}");
 }
+
+#[test]
+fn the_revisions_window_adds_the_next_set() {
+    let (mut harness, _file) = harness(SCRIPT);
+    harness.state_mut().queued.push("app.revisions".into());
+    harness.run_steps(3);
+    harness.get_by_label("Add White Revision").click();
+    harness.run_steps(3);
+    harness.get_by_label("Add Blue Revision").click();
+    harness.run_steps(3);
+    let sets = &harness.state().session.script.revisions.sets;
+    assert_eq!(sets.iter().map(|s| s.name.split(' ').next().unwrap_or_default().to_string()).collect::<Vec<_>>(), ["White", "Blue"]);
+    assert_eq!(harness.state().session.script.revisions.active, sets.last().map(|s| s.id));
+}

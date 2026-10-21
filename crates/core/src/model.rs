@@ -483,6 +483,116 @@ impl Revisions {
     pub fn is_empty(&self) -> bool {
         self.active.is_none() && self.sets.is_empty() && self.fdx_attributes.is_empty()
     }
+
+    /// The set with this id.
+    pub fn set(&self, id: u32) -> Option<&RevisionSet> {
+        self.sets.iter().find(|s| s.id == id)
+    }
+}
+
+/// The standard order of revision colours, with each page colour: the first round, then
+/// `Double White` and on (docs/production-spec.md §3.3).
+pub const REVISION_COLORS: [(&str, Option<&str>); 10] = [
+    ("White", None),
+    ("Blue", Some("#C9DAF8")),
+    ("Pink", Some("#F4CCCC")),
+    ("Yellow", Some("#FFF2CC")),
+    ("Green", Some("#D9EAD3")),
+    ("Goldenrod", Some("#F6D58C")),
+    ("Buff", Some("#F3E3C3")),
+    ("Salmon", Some("#F8C3B0")),
+    ("Cherry", Some("#E6A1A8")),
+    ("Tan", Some("#D9C3A5")),
+];
+
+/// The `n`th colour in the standard order, with its round: `Blue`, then `Double Blue` …
+pub fn revision_color(n: usize) -> (String, Option<&'static str>) {
+    let (name, page) = REVISION_COLORS.get(n % REVISION_COLORS.len()).copied().unwrap_or(("White", None));
+    let prefix = match n / REVISION_COLORS.len() {
+        0 => "",
+        1 => "Double ",
+        2 => "Triple ",
+        _ => "Quadruple ",
+    };
+    (format!("{prefix}{name}"), page)
+}
+
+impl Script {
+    /// Adds the next set in the standard order (`White` first), named for its colour and
+    /// `date` (`Blue Revision 10/21/26`), with the mark `*`, and makes it the active one.
+    /// Returns its id.
+    pub fn add_revision_set(&mut self, date: &str) -> u32 {
+        let id = self.revisions.sets.iter().map(|s| s.id).max().map_or(1, |m| m + 1);
+        let (color, page) = revision_color(self.revisions.sets.len());
+        let name = if date.is_empty() { format!("{color} Revision") } else { format!("{color} Revision {date}") };
+        self.revisions.sets.push(RevisionSet {
+            id,
+            name,
+            mark: "*".into(),
+            color: None,
+            page_color: page.map(str::to_string),
+            fdx_attributes: Vec::new(),
+        });
+        self.revisions.active = Some(id);
+        id
+    }
+
+    /// Changes a set's name, mark (up to two characters) or page colour (`#RRGGBB`).
+    pub fn update_revision_set(&mut self, id: u32, name: Option<&str>, mark: Option<&str>, page_color: Option<Option<&str>>) -> Result<(), String> {
+        let set = self.revisions.sets.iter_mut().find(|s| s.id == id).ok_or("there is no such revision set")?;
+        if let Some(name) = name {
+            let name = name.trim();
+            if name.is_empty() {
+                return Err("a revision set needs a name".into());
+            }
+            set.name = name.to_string();
+        }
+        if let Some(mark) = mark {
+            let mark = mark.trim();
+            if mark.is_empty() || mark.chars().count() > 2 {
+                return Err("a revision mark is one or two characters, such as *".into());
+            }
+            set.mark = mark.to_string();
+        }
+        if let Some(page) = page_color {
+            set.page_color = page.map(|c| c.to_uppercase());
+        }
+        Ok(())
+    }
+
+    /// Deletes a set. Text it marks moves to the set before it in the list (or loses its mark
+    /// when it was the first); the active set moves to the last one left. Returns how many
+    /// marked passages moved.
+    pub fn delete_revision_set(&mut self, id: u32) -> Result<usize, String> {
+        let at = self.revisions.sets.iter().position(|s| s.id == id).ok_or("there is no such revision set")?;
+        let before = at.checked_sub(1).and_then(|b| self.revisions.sets.get(b)).map(|s| s.id);
+        self.revisions.sets.remove(at);
+        let mut moved = 0;
+        for element in &mut self.elements {
+            match before {
+                Some(before) => {
+                    for revised in element.revised.iter_mut().filter(|r| r.set == id) {
+                        revised.set = before;
+                        moved += 1;
+                    }
+                }
+                None => {
+                    let count = element.revised.len();
+                    element.revised.retain(|r| r.set != id);
+                    moved += count - element.revised.len();
+                }
+            }
+        }
+        if self.revisions.active == Some(id) {
+            self.revisions.active = self.revisions.sets.last().map(|s| s.id);
+        }
+        Ok(moved)
+    }
+
+    /// How many passages a set marks.
+    pub fn revision_marks(&self, id: u32) -> usize {
+        self.elements.iter().map(|e| e.revised.iter().filter(|r| r.set == id).count()).sum()
+    }
 }
 
 /// How a Final Draft file stores a script note.

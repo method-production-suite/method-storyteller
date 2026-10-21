@@ -7,6 +7,10 @@ for its own version in Help > What's New, once after an update.
 
 ### New
 
+- Production > Revisions… lists the revision sets: add the next in the standard colours (White,
+  Blue, Pink …), rename them, change their mark, choose the active one, delete one (its marks
+  move to the set before).
+
 - Production > Omit Scene replaces a scene with OMITTED, keeping its number and the scene itself;
   Production > Unomit Scene brings it back. All three file formats keep it.
 

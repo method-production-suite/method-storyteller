@@ -838,3 +838,24 @@ fn omit_and_unomit_a_scene_one_undo_each() {
     run(&registry, &mut s, "edit.undo", json!({}));
     assert_eq!(s.script.elements[0].text, "OMITTED", "one Undo back to omitted");
 }
+
+#[test]
+fn revision_sets_are_added_changed_and_deleted_one_undo_each() {
+    let registry = Registry::new();
+    let mut s = Session::new(storyteller_core::fountain::parse("INT. HUT - DAY\n\nRain.\n").unwrap());
+    run(&registry, &mut s, "revisions.add", json!({ "date": "10/21/26" }));
+    let blue = run(&registry, &mut s, "revisions.add", json!({ "date": "10/22/26" }))["value"]["id"].as_u64().unwrap();
+    let list = run(&registry, &mut s, "revisions.list", json!({}));
+    assert_eq!(list["value"][1]["name"], "Blue Revision 10/22/26");
+    assert_eq!(list["value"][1]["active"], true);
+    run(&registry, &mut s, "revisions.set_active", json!({ "id": 1 }));
+    assert_eq!(s.script.revisions.active, Some(1));
+    run(&registry, &mut s, "revisions.update", json!({ "id": blue, "mark": "#", "page_color": "#c9daf8" }));
+    assert_eq!(s.script.revisions.sets[1].mark, "#");
+    assert!(registry.run("revisions.update", &mut s, &serde_json::from_value(json!({ "id": blue, "page_color": "blue" })).unwrap()).is_err());
+    run(&registry, &mut s, "revisions.delete", json!({ "id": blue }));
+    assert_eq!(s.script.revisions.sets.len(), 1);
+    run(&registry, &mut s, "edit.undo", json!({}));
+    assert_eq!(s.script.revisions.sets.len(), 2, "one Undo brings it back");
+    assert!(registry.run("revisions.delete", &mut s, &serde_json::from_value(json!({ "id": 99 })).unwrap()).is_err());
+}
