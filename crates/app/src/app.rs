@@ -39,7 +39,7 @@ const GO_TO_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Alt+G" } else { "Cmd
 const FIND_NEXT_KEY: &str = if cfg!(target_os = "macos") { "Cmd+G" } else { "F3" };
 const FIND_PREVIOUS_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Shift+G" } else { "Shift+F3" };
 
-const APP_COMMANDS: [AppCommand; 40] = [
+const APP_COMMANDS: [AppCommand; 41] = [
     AppCommand { id: "app.close", label: "Close", menu: "File/Close", shortcut: Some("Cmd+W") },
     AppCommand { id: "app.title_page", label: "Title Page…", menu: "File/Title Page…", shortcut: Some("Cmd+Shift+T") },
     AppCommand {
@@ -72,6 +72,7 @@ const APP_COMMANDS: [AppCommand; 40] = [
     AppCommand { id: "app.rename_character", label: "Rename Character…", menu: "Production/Rename Character…", shortcut: None },
     AppCommand { id: "app.characters", label: "Characters", menu: "Production/Characters", shortcut: None },
     AppCommand { id: "app.edit_scene_number", label: "Edit Scene Number…", menu: "Production/Edit Scene Number…", shortcut: None },
+    AppCommand { id: "app.revisions", label: "Revisions…", menu: "Production/Revisions…", shortcut: None },
     AppCommand { id: "app.go_to", label: "Go To…", menu: "Edit/Go To…", shortcut: Some(GO_TO_KEY) },
     AppCommand { id: "prefs.smart_quotes", label: "Smart Quotes", menu: "Format/Smart Quotes", shortcut: None },
     AppCommand { id: "app.bold", label: "Bold", menu: "Format/Bold", shortcut: Some("Cmd+B") },
@@ -135,6 +136,16 @@ enum Pending {
 
 struct TitleDraft {
     fields: Vec<(String, String)>,
+}
+
+/// Production > Revisions…: the names and marks being edited, by set id, and a delete waiting
+/// for its answer.
+#[derive(Default)]
+struct RevisionsDraft {
+    names: std::collections::HashMap<u32, String>,
+    marks: std::collections::HashMap<u32, String>,
+    confirm_delete: Option<u32>,
+    error: Option<String>,
 }
 
 /// Production > Number Scenes….
@@ -236,6 +247,7 @@ pub struct StorytellerApp {
     /// Production > Characters: the character table is open.
     characters: bool,
     numbering: Option<NumberingDraft>,
+    revisions: Option<RevisionsDraft>,
     scene_number: Option<SceneNumberDraft>,
     find: Option<find_bar::FindBar>,
     spelling: Option<spelling::SpellDialog>,
@@ -355,6 +367,7 @@ impl StorytellerApp {
             scene_dialog: None,
             characters: false,
             numbering: None,
+            revisions: None,
             scene_number: None,
             find: None,
             spelling: None,
@@ -582,6 +595,7 @@ impl StorytellerApp {
             // File > Close: the script closes and an empty one takes its place (decision 15).
             "app.close" => self.guard_unsaved(ctx, Pending::New),
             "app.characters" => self.characters = !self.characters,
+            "app.revisions" => self.revisions = Some(RevisionsDraft::default()),
             "scene.number" => {
                 let numbered = self.session.script.scene_indices().iter().any(|&h| self.session.element(h).is_some_and(|e| e.scene_number.is_some()));
                 self.numbering = Some(NumberingDraft {
@@ -1836,6 +1850,119 @@ impl StorytellerApp {
         }
     }
 
+    /// Production > Revisions…: every set with its name, mark and page colour, the active one
+    /// chosen, the next in the standard order added, and a set deleted (asking first when it
+    /// marks anything). Each change is one Undo.
+    fn revisions_window(&mut self, ctx: &egui::Context) {
+        if self.revisions.is_none() {
+            return;
+        }
+        let sets = self.session.script.revisions.sets.clone();
+        let active = self.session.script.revisions.active;
+        let mut run: Vec<(&'static str, Vec<(&'static str, Value)>)> = Vec::new();
+        let mut open = true;
+        let Some(draft) = self.revisions.as_mut() else { return };
+        egui::Window::new("Revisions").open(&mut open).collapsible(false).resizable(false).default_width(520.0).show(ctx, |ui| {
+            if sets.is_empty() {
+                ui.label("No revision sets yet. The first is White; each next one follows the standard colours.");
+            } else {
+                egui::Grid::new("storyteller.revisions").num_columns(6).striped(true).spacing([12.0, 6.0]).show(ui, |ui| {
+                    for heading in ["Active", "Name", "Mark", "Page", "Marks", ""] {
+                        ui.label(egui::RichText::new(heading).small().strong());
+                    }
+                    ui.end_row();
+                    for set in &sets {
+                        let on = ui.radio(active == Some(set.id), "");
+                        self.automation.add(format!("revisions.active.{}", set.id), "radio", set.name.clone(), &on);
+                        if on.clicked() {
+                            run.push(("revisions.set_active", vec![("id", json!(set.id))]));
+                        }
+                        let name = draft.names.entry(set.id).or_insert_with(|| set.name.clone());
+                        let field = ui.add(egui::TextEdit::singleline(name).desired_width(220.0));
+                        self.automation.add(format!("revisions.name.{}", set.id), "textbox", "Name", &field);
+                        if field.lost_focus() && *name != set.name {
+                            run.push(("revisions.update", vec![("id", json!(set.id)), ("name", json!(name.clone()))]));
+                        }
+                        let mark = draft.marks.entry(set.id).or_insert_with(|| set.mark.clone());
+                        let field = ui.add(egui::TextEdit::singleline(mark).desired_width(28.0).char_limit(2));
+                        self.automation.add(format!("revisions.mark.{}", set.id), "textbox", "Mark", &field);
+                        if field.lost_focus() && *mark != set.mark {
+                            run.push(("revisions.update", vec![("id", json!(set.id)), ("mark", json!(mark.clone()))]));
+                        }
+                        let page = storyteller_core::model::SceneMeta { color: set.page_color.clone(), ..Default::default() }.rgb();
+                        let (rect, _) = ui.allocate_exact_size(egui::vec2(28.0, 16.0), egui::Sense::hover());
+                        let fill = page.map_or(egui::Color32::WHITE, |(r, g, b)| egui::Color32::from_rgb(r, g, b));
+                        ui.painter().rect_filled(rect, 3.0, fill);
+                        ui.painter().rect_stroke(rect, 3.0, egui::Stroke::new(1.0, ui.visuals().weak_text_color()), egui::StrokeKind::Inside);
+                        let marks = self.session.script.revision_marks(set.id);
+                        ui.label(marks.to_string());
+                        let delete = ui.small_button("Delete");
+                        self.automation.add(format!("revisions.delete.{}", set.id), "button", "Delete", &delete);
+                        if delete.clicked() {
+                            if marks == 0 {
+                                run.push(("revisions.delete", vec![("id", json!(set.id))]));
+                            } else {
+                                draft.confirm_delete = Some(set.id);
+                            }
+                        }
+                        ui.end_row();
+                    }
+                });
+            }
+            if let Some(id) = draft.confirm_delete {
+                let name = sets.iter().find(|s| s.id == id).map(|s| s.name.clone()).unwrap_or_default();
+                let before = sets.iter().position(|s| s.id == id).and_then(|at| at.checked_sub(1)).and_then(|b| sets.get(b)).map(|s| s.name.clone());
+                let marks = self.session.script.revision_marks(id);
+                ui.add_space(theme::SPACE_2);
+                ui.label(match before {
+                    Some(before) => format!("“{name}” marks {marks} passages. Delete it and move them to “{before}”?"),
+                    None => format!("“{name}” marks {marks} passages. Delete it and take their marks away?"),
+                });
+                ui.horizontal(|ui| {
+                    let yes = ui.button("Delete");
+                    self.automation.add("revisions.confirm_delete", "button", "Delete", &yes);
+                    let no = ui.button("Keep");
+                    self.automation.add("revisions.keep", "button", "Keep", &no);
+                    if yes.clicked() {
+                        run.push(("revisions.delete", vec![("id", json!(id))]));
+                        draft.confirm_delete = None;
+                    }
+                    if no.clicked() {
+                        draft.confirm_delete = None;
+                    }
+                });
+            }
+            if let Some(error) = &draft.error {
+                ui.colored_label(ui.visuals().error_fg_color, error);
+            }
+            ui.add_space(theme::SPACE_2);
+            let next = storyteller_core::model::revision_color(sets.len()).0;
+            let add = ui.button(format!("Add {next} Revision"));
+            self.automation.add("revisions.add", "button", "Add", &add);
+            if add.clicked() {
+                run.push(("revisions.add", Vec::new()));
+            }
+        });
+        for (id, args) in run {
+            let target = params(&args.iter().map(|(k, v)| (*k, v.clone())).collect::<Vec<_>>());
+            let result = self.registry.run(id, &mut self.session, &target);
+            if let Some(draft) = self.revisions.as_mut() {
+                draft.error = result.err().map(|e| match e {
+                    storyteller_engine::CommandError::Invalid { reason, .. } => capitalise(&reason),
+                    other => other.to_string(),
+                });
+                if id == "revisions.delete" {
+                    draft.names.clear();
+                    draft.marks.clear();
+                }
+            }
+        }
+        if !open {
+            self.revisions = None;
+            self.refocus();
+        }
+    }
+
     /// Production > Edit Scene Number…: the caret's scene's number, by hand.
     fn scene_number_dialog(&mut self, ctx: &egui::Context) {
         let Some(draft) = &mut self.scene_number else { return };
@@ -2249,6 +2376,7 @@ impl StorytellerApp {
         self.scene_properties_dialog(&ctx);
         self.characters_window(&ctx);
         self.numbering_dialog(&ctx);
+        self.revisions_window(&ctx);
         self.scene_number_dialog(&ctx);
         self.help_windows(&ctx);
         self.unsaved_prompt(&ctx);

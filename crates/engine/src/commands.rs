@@ -476,6 +476,42 @@ pub fn scene_range(script: &Script, index: usize) -> std::ops::Range<usize> {
     start..end
 }
 
+/// A revision set's id from the `id` parameter.
+fn set_id(params: &Params) -> Result<u32, CommandError> {
+    let id = opt_index(params, "id")?.ok_or(CommandError::Missing("id"))?;
+    u32::try_from(id).map_err(|_| CommandError::Invalid { name: "id", reason: "there is no such revision set".into() })
+}
+
+/// Today's date as a revision set's name carries it: `10/21/26`.
+fn today_short() -> std::string::String {
+    let days = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() / 86_400);
+    let (year, month, day) = civil_from_days(i64::try_from(days).unwrap_or(0));
+    format!("{month:02}/{day:02}/{:02}", year.rem_euclid(100))
+}
+
+/// The calendar date `days` after 1970-01-01 (Howard Hinnant's algorithm).
+fn civil_from_days(days: i64) -> (i64, u32, u32) {
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = u32::try_from(doy - (153 * mp + 2) / 5 + 1).unwrap_or(1);
+    let month = u32::try_from(if mp < 10 { mp + 3 } else { mp - 9 }).unwrap_or(1);
+    (yoe + era * 400 + i64::from(month <= 2), month, day)
+}
+
+#[cfg(test)]
+mod date_tests {
+    #[test]
+    fn civil_dates() {
+        assert_eq!(super::civil_from_days(0), (1970, 1, 1));
+        assert_eq!(super::civil_from_days(20_747), (2026, 10, 21));
+        assert_eq!(super::civil_from_days(11_016), (2000, 2, 29));
+    }
+}
+
 /// The heading of the scene element `index` is in.
 fn heading_of(session: &Session, index: usize) -> Result<usize, CommandError> {
     session
@@ -1612,6 +1648,113 @@ fn all_commands() -> Vec<Command> {
                 } else {
                     format!("{done} {}", unplaced.join(" "))
                 }))
+            },
+        },
+        Command {
+            id: "revisions.list",
+            label: "Revision Sets",
+            menu: "",
+            shortcut: None,
+            params: &[],
+            enabled: always,
+            run: |s, _| {
+                let sets: Vec<Value> = s
+                    .script
+                    .revisions
+                    .sets
+                    .iter()
+                    .map(|set| {
+                        json!({
+                            "id": set.id, "name": set.name, "mark": set.mark, "page_color": set.page_color,
+                            "active": s.script.revisions.active == Some(set.id), "marks": s.script.revision_marks(set.id),
+                        })
+                    })
+                    .collect();
+                Ok(Outcome::value(json!(sets)))
+            },
+        },
+        Command {
+            id: "revisions.add",
+            label: "Next Revision Set",
+            menu: "",
+            shortcut: None,
+            params: const { &[param("date", String, false, "The date in its name (default today, as 10/21/26)")] },
+            enabled: always,
+            run: |s, p| {
+                let date = opt_string(p, "date")?.unwrap_or_else(today_short);
+                s.checkpoint(EditKind::Other);
+                let id = s.script.add_revision_set(&date);
+                Ok(Outcome::value(json!({ "id": id })))
+            },
+        },
+        Command {
+            id: "revisions.update",
+            label: "Change Revision Set",
+            menu: "",
+            shortcut: None,
+            params: const {
+                &[
+                    param("id", Integer, true, "The set"),
+                    param("name", String, false, "Its name"),
+                    param("mark", String, false, "Its margin mark, one or two characters"),
+                    param("page_color", String, false, "Its page colour, #RRGGBB (empty for none)"),
+                ]
+            },
+            enabled: always,
+            run: |s, p| {
+                let id = set_id(p)?;
+                let (name, mark, page) = (opt_string(p, "name")?, opt_string(p, "mark")?, opt_string(p, "page_color")?);
+                if let Some(page) = page.as_deref().filter(|c| !c.is_empty()) {
+                    let valid = page.len() == 7 && page.starts_with('#') && page.chars().skip(1).all(|c| c.is_ascii_hexdigit());
+                    if !valid {
+                        return Err(CommandError::Invalid { name: "page_color", reason: "a colour is #RRGGBB, such as #C9DAF8".into() });
+                    }
+                }
+                let mut changed = s.script.clone();
+                changed
+                    .update_revision_set(id, name.as_deref(), mark.as_deref(), page.as_deref().map(|c| (!c.is_empty()).then_some(c)))
+                    .map_err(|reason| CommandError::Invalid { name: "id", reason })?;
+                if changed.revisions == s.script.revisions {
+                    return Ok(Outcome::done());
+                }
+                s.checkpoint(EditKind::Other);
+                s.script = changed;
+                Ok(Outcome::done())
+            },
+        },
+        Command {
+            id: "revisions.delete",
+            label: "Delete Revision Set",
+            menu: "",
+            shortcut: None,
+            params: const { &[param("id", Integer, true, "The set; its marks move to the set before it")] },
+            enabled: always,
+            run: |s, p| {
+                let id = set_id(p)?;
+                let mut changed = s.script.clone();
+                let moved = changed.delete_revision_set(id).map_err(|reason| CommandError::Invalid { name: "id", reason })?;
+                s.checkpoint(EditKind::Other);
+                s.script = changed;
+                Ok(Outcome::value(json!({ "moved": moved })))
+            },
+        },
+        Command {
+            id: "revisions.set_active",
+            label: "Active Revision Set",
+            menu: "",
+            shortcut: None,
+            params: const { &[param("id", Integer, true, "The set changes are marked in")] },
+            enabled: always,
+            run: |s, p| {
+                let id = set_id(p)?;
+                if s.script.revisions.set(id).is_none() {
+                    return Err(CommandError::Invalid { name: "id", reason: "there is no such revision set".into() });
+                }
+                if s.script.revisions.active != Some(id) {
+                    s.checkpoint(EditKind::Other);
+                    s.script.revisions.active = Some(id);
+                }
+                Ok(Outcome::done())
             },
         },
         Command {

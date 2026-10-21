@@ -96,7 +96,10 @@ renames, reorders and deletes sets, and chooses the active one.
 - The mark is up to two characters, `*` by default.
 - Deleting a set that marks text asks first, and moves its marks to the set before it.
 
-Commands: `revisions.add`, `revisions.update`, `revisions.delete`, `revisions.set_active`.
+Commands: `revisions.list`, `revisions.add` (the date defaults to today, `10/21/26`),
+`revisions.update` (name, mark, page colour), `revisions.delete` (its marks move to the set
+before it, or go when it was the first) and `revisions.set_active`; one Undo each. Page colours
+of the standard order are pale tints, kept in the file as `#RRGGBB`.
 
 ### 3.4 Revision mode
 

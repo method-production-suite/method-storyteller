@@ -260,7 +260,7 @@ wait for a decision above.
    document type and icon. Comes first in M5.
 9. **M5, production I** L. Spec: [production-spec.md](production-spec.md), section 3, with its
    order of PRs. Done: scene numbering (letter inserts, start, from the caret, I and O, edit one
-   number), omit and unomit. Next: left and right margins, revision sets (name, mark, colour), revision mode, mark and clear,
+   number), omit and unomit, revision sets. Next: left and right margins, revision sets (name, mark, colour), revision mode, mark and clear,
    deleted-text markers, revisions drawn in the editor and the PDF, the revised-pages header,
    revised-pages-only and range PDFs, clean copies. Kept in the `.mstory` package (decision 1).
 10. **M6, production II and reports** L. Spec: [production-spec.md](production-spec.md),
