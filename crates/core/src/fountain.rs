@@ -102,6 +102,19 @@ fn remove_boneyard(text: &str, blocks: &[(usize, usize)]) -> String {
 /// Gives each block to the paragraph that follows it, in one pass: a block standing at the
 /// start of a line (only spaces before it) belongs with a paragraph starting on that line or
 /// later; one after text on its line, with the next paragraph to start below. Blocks after the
+/// How an omitted scene's kept text starts, as a boneyard block before its `OMITTED` heading.
+const OMITTED_BLOCK: &str = "/* OMITTED SCENE";
+
+/// An omitted heading's kept scene, from the boneyard block before it, into the model.
+fn take_omitted_blocks(script: &mut Script) {
+    for element in script.elements.iter_mut().filter(|e| e.kind == ElementKind::SceneHeading) {
+        let Some(at) = element.boneyard.iter().position(|b| b.starts_with(OMITTED_BLOCK)) else { continue };
+        let block = element.boneyard.remove(at);
+        let kept = block.trim_start_matches(OMITTED_BLOCK).trim_end().trim_end_matches("*/").trim_matches('\n');
+        element.omitted = Some(format!("{}\n", kept.trim_end()));
+    }
+}
+
 /// last paragraph go to `boneyard_end`.
 fn attach_boneyard(script: &mut Script, starts: &[usize], stripped: &str, source: &str, blocks: &[(usize, usize)]) {
     let mut removed = 0;
@@ -157,6 +170,7 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
     let stripped = remove_boneyard(&source, &blocks);
     let (mut script, starts) = parse_body(&stripped)?;
     attach_boneyard(&mut script, &starts, &stripped, &source, &blocks);
+    take_omitted_blocks(&mut script);
     // A literal `/*` in the text was written escaped, so it never pairs with a later block.
     for element in &mut script.elements {
         if element.text.contains("/\\*") {
@@ -413,6 +427,12 @@ pub fn write(script: &Script) -> String {
         // line, so the paragraph reads exactly as it did.
         for block in &element.boneyard {
             out.push_str(block);
+        }
+        // The scene an omitted heading keeps, set aside just before it.
+        if element.kind == ElementKind::SceneHeading
+            && let Some(kept) = element.omitted.as_deref().filter(|k| !k.trim().is_empty())
+        {
+            out.push_str(&format!("{OMITTED_BLOCK}\n{}\n*/\n", kept.trim_end().replace("*/", "* /")));
         }
         // A literal `/*` is written escaped, or it would pair with a later block's `*/`.
         let escaped = element.text.replace("/*", "/\\*");

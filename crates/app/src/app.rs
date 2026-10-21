@@ -1497,6 +1497,9 @@ impl StorytellerApp {
                 // A scene's own title stands in for its heading; its colour marks the row.
                 let meta = self.session.script.elements.get(scene.element).map(|e| e.scene.clone()).unwrap_or_default();
                 let shown = if meta.title.is_empty() { heading.to_string() } else { meta.title.clone() };
+                // An omitted scene's row is muted: it is there, but not shot.
+                let omitted = self.session.script.elements.get(scene.element).is_some_and(storyteller_core::Element::is_omitted);
+                let text = if omitted { weak } else { text };
                 let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), theme::NAV_ROW_HEIGHT), egui::Sense::click());
                 let selected = n + 1 == current;
                 if selected || response.hovered() {

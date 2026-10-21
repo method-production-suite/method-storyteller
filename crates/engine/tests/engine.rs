@@ -821,3 +821,20 @@ fn a_new_scene_with_no_number_between_its_neighbours_is_left_for_the_writer() {
     assert_eq!(out["message"], "There's no number between 2 and 2A for scene 2; set it by hand (Production > Edit Scene Number…).");
     assert!(!s.can_undo(), "nothing changed, so nothing to undo");
 }
+
+#[test]
+fn omit_and_unomit_a_scene_one_undo_each() {
+    let registry = Registry::new();
+    let mut s = Session::new(storyteller_core::fountain::parse("INT. HUT - DAY #4#\n\nRain.\n\nEXT. RIDGE - DAWN #5#\n\nWind.\n").unwrap());
+    s.caret = storyteller_engine::Caret { element: 1, offset: 0 };
+    assert!(registry.get("scene.unomit").is_some_and(|c| !(c.enabled)(&s)), "Unomit is for omitted scenes");
+    run(&registry, &mut s, "scene.omit", json!({}));
+    assert_eq!(s.script.elements[0].text, "OMITTED");
+    assert_eq!(s.script.elements[1].text, "EXT. RIDGE - DAWN");
+    assert!(registry.get("scene.omit").is_some_and(|c| !(c.enabled)(&s)), "an omitted scene can't be omitted again");
+    run(&registry, &mut s, "scene.unomit", json!({}));
+    assert_eq!(s.script.elements[1].text, "Rain.");
+    assert_eq!(s.script.elements[0].scene_number.as_deref(), Some("4"));
+    run(&registry, &mut s, "edit.undo", json!({}));
+    assert_eq!(s.script.elements[0].text, "OMITTED", "one Undo back to omitted");
+}

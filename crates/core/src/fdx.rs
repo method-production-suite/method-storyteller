@@ -240,6 +240,22 @@ pub(crate) fn set_tag_attr(tag: &str, name: &str, value: &str) -> String {
     format!("{} {name}=\"{value}\"{}", tag.get(..close).unwrap_or_default().trim_end(), tag.get(close..).unwrap_or_default())
 }
 
+/// Our child of an omitted scene's heading: the scene it replaced, as Fountain. Final Draft
+/// keeps an omitted scene's content in a way no saved file has shown yet; this keeps ours.
+const OMITTED_CHILD: &str = "StorytellerOmitted";
+
+/// The scene our child keeps, and the children without it.
+fn take_omitted(children: &str) -> Option<(String, String)> {
+    let open = format!("<{OMITTED_CHILD}>");
+    let close = format!("</{OMITTED_CHILD}>");
+    let start = children.find(&open)?;
+    let end = start + children.get(start..)?.find(&close)? + close.len();
+    let raw = children.get(start + open.len()..end - close.len())?;
+    let text = quick_xml::escape::unescape(raw).map(|t| t.into_owned()).unwrap_or_else(|_| raw.to_string());
+    let rest = format!("{}{}", children.get(..start).unwrap_or_default(), children.get(end..).unwrap_or_default());
+    Some((text, rest.trim().to_string()))
+}
+
 /// The paragraph's own `SceneProperties`, which Final Draft writes first among its children:
 /// (where its start tag begins, where it ends, where the whole element ends). An omitted scene
 /// keeps its original heading, with properties of its own, nested further in.
@@ -405,6 +421,12 @@ fn write_paragraph(element: &Element, scene: Option<(u32, u32)>, new_page: bool,
         out.push_str("  ");
         out.push_str(&children);
         out.push('\n');
+    }
+    if let Some(omitted) = element.omitted.as_deref().filter(|o| !o.trim().is_empty()) {
+        out.push_str(indent);
+        out.push_str(&format!("  <{OMITTED_CHILD}>"));
+        escape(omitted, out);
+        out.push_str(&format!("</{OMITTED_CHILD}>\n"));
     }
     write_body(element, &format!("{indent}  "), out);
     out.push_str(indent);
@@ -1000,8 +1022,16 @@ impl Importer {
         if kind == ElementKind::Centered {
             attributes.retain(|(key, _)| key != "Alignment");
         }
-        if type_name != fdx_type(&element) || !attributes.is_empty() || !paragraph.children.is_empty() {
-            element.fdx = Some(Box::new(FdxParagraph { type_name, kind, attributes, children: paragraph.children }));
+        // The scene an omitted heading keeps, in our own child: modelled, so not kept raw.
+        let mut children = paragraph.children;
+        if kind == ElementKind::SceneHeading
+            && let Some((omitted, rest)) = take_omitted(&children)
+        {
+            element.omitted = Some(omitted);
+            children = rest;
+        }
+        if type_name != fdx_type(&element) || !attributes.is_empty() || !children.is_empty() {
+            element.fdx = Some(Box::new(FdxParagraph { type_name, kind, attributes, children }));
         }
         self.elements.push(element);
         self.starts.push(Some(start));

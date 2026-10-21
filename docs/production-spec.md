@@ -72,12 +72,16 @@ Production > Unomit Scene puts them back where they were. In revision mode, omit
 a revision of that line. The navigator shows the row as `OMITTED`, greyed out; a click still
 goes there.
 
-Model: `Element::omitted: Vec<Element>` on the heading (empty when the scene is not omitted)
-and the printed text `OMITTED`. `.fdx`: read and write the omitted-scene wrapper the importer
-keeps raw today (its shape is in the corpus; the structure is read, never the text). Open
-Screenplay Format: a `<method_storyteller kind="omitted">` marker holding the scene's
-paragraphs. Fountain: written as the heading with `OMITTED` and the kept content in a boneyard
-block, so nothing is lost.
+Model: `Element::omitted: Option<String>` on the heading, the scene it replaced as Fountain
+(heading and all), and the printed text `OMITTED`. A heading is also omitted when a file says
+so: it reads `OMITTED`, or carries `.fdx`'s omitted-scene marker; Unomit then says the file
+kept nothing to bring back. `.fdx`: the heading as Final Draft writes it (`OMITTED`, its
+`Number`, `Length="0/8"`) and the kept scene in our own `<StorytellerOmitted>` child, since no
+saved file has shown where Final Draft keeps it. Open Screenplay Format: a
+`<method_storyteller_omitted fountain="…"/>` child. Fountain: `.OMITTED #12#` with the kept
+scene in a boneyard block before it (`/* OMITTED SCENE … */`). Only a scene omitted here or
+under `.fdx`'s marker has no length; a heading that only reads `OMITTED` is measured like any
+other, as Final Draft measures it (the corpus is unchanged).
 
 Commands: `scene.omit` and `scene.unomit` (index anywhere in the scene).
 

@@ -172,6 +172,11 @@ impl TvShape {
     }
 }
 
+/// Whether an element of this kind starts what follows a scene: the next scene, or an act line.
+fn ends_scene(kind: ElementKind) -> bool {
+    matches!(kind, ElementKind::SceneHeading | ElementKind::NewAct | ElementKind::EndOfAct)
+}
+
 /// How Production > Number Scenes numbers (see [`Script::number_with`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Numbering {
@@ -358,7 +363,14 @@ pub struct Element {
     /// A scene heading's own title, summary and colour (`.fdx` `SceneProperties`).
     #[serde(default, skip_serializing_if = "SceneMeta::is_empty")]
     pub scene: SceneMeta,
+    /// An omitted scene's heading (printed `OMITTED`) keeps the scene it replaced, as Fountain,
+    /// heading and all, for Unomit; empty when the file kept nothing to bring back.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub omitted: Option<String>,
 }
+
+/// What an omitted scene's heading says.
+pub const OMITTED: &str = "OMITTED";
 
 /// What a writer says about a scene beyond its heading: a short title, a summary and a colour,
 /// shown in the navigator. Not printed.
@@ -628,6 +640,7 @@ impl Element {
             osf: None,
             boneyard: Vec::new(),
             scene: SceneMeta::default(),
+            omitted: None,
         };
         if kind == ElementKind::Section {
             element.level = 1;
@@ -679,6 +692,15 @@ impl Element {
     }
 
     /// Character name without extensions such as `(V.O.)` or a trailing `^`.
+    /// Whether this is an omitted scene's heading: one we omitted, or one a file says is
+    /// omitted (its heading reads `OMITTED`, or Final Draft's omitted-scene marker is kept).
+    pub fn is_omitted(&self) -> bool {
+        self.kind == ElementKind::SceneHeading
+            && (self.omitted.is_some()
+                || crate::inline::plain(&self.text).trim().eq_ignore_ascii_case(OMITTED)
+                || self.fdx.as_deref().is_some_and(|f| f.children.contains("<OmittedScene")))
+    }
+
     pub fn character_name(&self) -> &str {
         character_name(&self.text)
     }
@@ -1155,6 +1177,43 @@ impl Script {
             }
         }
         Numbered { changed, unplaced }
+    }
+
+    /// Omits the scene headed at `heading`: its heading reads `OMITTED`, keeps its number, and
+    /// keeps the whole scene (as Fountain) for Unomit. Returns the elements taken out.
+    pub fn omit_scene(&mut self, heading: usize) -> Result<usize, String> {
+        let element = self.elements.get(heading).filter(|e| e.kind == ElementKind::SceneHeading).ok_or("that is not a scene heading")?;
+        if element.is_omitted() {
+            return Err("that scene is already omitted".into());
+        }
+        let end = self.elements.iter().enumerate().skip(heading + 1).find(|(_, e)| ends_scene(e.kind)).map_or(self.elements.len(), |(i, _)| i);
+        let taken: Vec<Element> = self.elements.drain(heading..end).collect();
+        let kept = Script { elements: taken.iter().map(|e| Element { scene_number: None, ..e.clone() }).collect(), ..Script::default() };
+        let mut omitted = Element::new(ElementKind::SceneHeading, OMITTED);
+        omitted.scene_number = taken.first().and_then(|e| e.scene_number.clone());
+        omitted.scene = taken.first().map(|e| e.scene.clone()).unwrap_or_default();
+        omitted.omitted = Some(crate::fountain::write(&kept));
+        self.elements.insert(heading, omitted);
+        Ok(taken.len())
+    }
+
+    /// Brings an omitted scene back where it was, its number on its heading again. Refuses
+    /// when the file kept nothing to bring back.
+    pub fn unomit_scene(&mut self, heading: usize) -> Result<usize, String> {
+        let element = self.elements.get(heading).filter(|e| e.is_omitted()).ok_or("that scene is not omitted")?;
+        let kept = element.omitted.clone().unwrap_or_default();
+        if kept.trim().is_empty() {
+            return Err("the file kept nothing of this scene to bring back".into());
+        }
+        let number = element.scene_number.clone();
+        let mut back = crate::fountain::parse(&kept).map_err(|e| e.to_string())?.elements;
+        if let Some(first) = back.first_mut().filter(|e| e.kind == ElementKind::SceneHeading) {
+            first.scene_number = number;
+            first.scene = element.scene.clone();
+        }
+        let count = back.len();
+        self.elements.splice(heading..=heading, back);
+        Ok(count)
     }
 
     /// Sets one scene's number by hand (empty clears it). Refuses a number another scene has,

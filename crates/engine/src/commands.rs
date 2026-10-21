@@ -476,6 +476,22 @@ pub fn scene_range(script: &Script, index: usize) -> std::ops::Range<usize> {
     start..end
 }
 
+/// The heading of the scene element `index` is in.
+fn heading_of(session: &Session, index: usize) -> Result<usize, CommandError> {
+    session
+        .script
+        .elements
+        .iter()
+        .take(index + 1)
+        .rposition(|e| e.kind == ElementKind::SceneHeading)
+        .ok_or_else(|| CommandError::Invalid { name: "index", reason: "that is not in a scene".into() })
+}
+
+/// Whether the caret is in a scene that is not omitted.
+fn in_live_scene(session: &Session) -> bool {
+    heading_of(session, session.caret.element).ok().and_then(|h| session.script.elements.get(h)).is_some_and(|e| !e.is_omitted())
+}
+
 /// Whether pasted text is screenplay text in several paragraphs (a blank line between two), so
 /// that pasting it makes elements rather than one long paragraph.
 pub fn is_screenplay_paste(text: &str) -> bool {
@@ -1596,6 +1612,40 @@ fn all_commands() -> Vec<Command> {
                 } else {
                     format!("{done} {}", unplaced.join(" "))
                 }))
+            },
+        },
+        Command {
+            id: "scene.omit",
+            label: "Omit Scene",
+            menu: "Production/Omit Scene",
+            shortcut: None,
+            params: const { &[INDEX] },
+            enabled: |s| in_live_scene(s),
+            run: |s, p| {
+                let heading = heading_of(s, element_index(s, p)?)?;
+                let mut omitted = s.script.clone();
+                omitted.omit_scene(heading).map_err(|reason| CommandError::Invalid { name: "index", reason })?;
+                s.checkpoint(EditKind::Other);
+                s.script = omitted;
+                s.caret = Caret { element: heading, offset: 0 };
+                Ok(Outcome::message("Omitted the scene; Production > Unomit Scene brings it back".to_string()))
+            },
+        },
+        Command {
+            id: "scene.unomit",
+            label: "Unomit Scene",
+            menu: "Production/Unomit Scene",
+            shortcut: None,
+            params: const { &[INDEX] },
+            enabled: |s| s.script.elements.get(s.caret.element).is_some_and(storyteller_core::Element::is_omitted),
+            run: |s, p| {
+                let heading = heading_of(s, element_index(s, p)?)?;
+                let mut back = s.script.clone();
+                back.unomit_scene(heading).map_err(|reason| CommandError::Invalid { name: "index", reason })?;
+                s.checkpoint(EditKind::Other);
+                s.script = back;
+                s.caret = Caret { element: heading, offset: 0 };
+                Ok(Outcome::done())
             },
         },
         Command {
