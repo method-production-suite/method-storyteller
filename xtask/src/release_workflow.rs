@@ -53,6 +53,47 @@ fn violations(workflow: &str) -> Vec<String> {
     found
 }
 
+/// Jobs whose own `env` does not name the build folder in the checkout. Without it, xtask
+/// asks `cargo metadata` where the folder is, starting cargo beside a key.
+fn jobs_without_target_dir(workflow: &str) -> Vec<String> {
+    let mut missing = Vec::new();
+    let mut in_jobs = false;
+    let mut current: Option<(String, bool)> = None;
+    fn finish(job: Option<(String, bool)>, missing: &mut Vec<String>) {
+        if let Some((name, false)) = job {
+            missing.push(name);
+        }
+    }
+    for line in workflow.lines() {
+        if line == "jobs:" {
+            in_jobs = true;
+            continue;
+        }
+        if !in_jobs {
+            continue;
+        }
+        if let Some(name) = line.strip_prefix("  ").and_then(|l| l.strip_suffix(':')).filter(|n| !n.starts_with(' ') && !n.is_empty()) {
+            finish(current.take(), &mut missing);
+            current = Some((name.to_string(), false));
+        } else if line == "      CARGO_TARGET_DIR: ${{ github.workspace }}/target"
+            && let Some((_, found)) = current.as_mut()
+        {
+            *found = true;
+        }
+    }
+    finish(current, &mut missing);
+    missing
+}
+
+#[test]
+fn every_job_names_its_build_folder() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../.github/workflows/release.yml");
+    let workflow = std::fs::read_to_string(&path).expect("release.yml");
+    assert_eq!(jobs_without_target_dir(&workflow), Vec::<String>::new());
+    let bad = "jobs:\n  build:\n    env:\n      CARGO_TARGET_DIR: ${{ github.workspace }}/target\n    steps:\n  sign:\n    steps:\n";
+    assert_eq!(jobs_without_target_dir(bad), vec!["sign".to_string()]);
+}
+
 #[test]
 fn no_cargo_after_a_secret() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../.github/workflows/release.yml");
