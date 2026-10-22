@@ -13,6 +13,8 @@ use crate::model::ElementKind;
 pub const POINTS_PER_COLUMN: f32 = 7.2;
 /// Points per row (1/6 inch).
 pub const POINTS_PER_ROW: f32 = 12.0;
+/// Where revision marks stand, from the page's left edge: the column `.fdx` files record.
+pub const REVISION_MARK_INCHES: f32 = 7.75;
 /// How far Final Draft advances per character when wrapping, measured from its PDFs: a 6.00"
 /// action line holds 61 characters and a 3.50" dialogue line 35, so the advance lies between
 /// 7.00 and 7.08 points, a little under Courier's nominal 7.2.

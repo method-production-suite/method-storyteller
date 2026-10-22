@@ -1,35 +1,79 @@
 //! Monospace word wrapping over styled characters.
 
 use crate::inline::{self, Run, Style};
+use crate::model::{Deletion, Revised};
 
 /// One printable character and its style.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct StyledChar {
     pub c: char,
     pub style: Style,
+    /// The revision set the character was changed in.
+    pub revised: Option<u32>,
+    /// A deletion mark of this set sits beside the character (see [`revised_chars`]).
+    pub deleted: Option<u32>,
+}
+
+impl StyledChar {
+    pub fn new(c: char, style: Style) -> Self {
+        StyledChar { c, style, ..StyledChar::default() }
+    }
 }
 
 /// Printable characters of element markup (notes removed), optionally in capitals.
 pub fn styled_chars(markup: &str, caps: bool) -> Vec<StyledChar> {
+    revised_chars(markup, caps, &[], &[])
+}
+
+/// [`styled_chars`] with each character's revision set, from spans of printed characters. A
+/// deletion mark goes on the character before its place (the first, at the start), so it stays
+/// on the line the deleted text was on.
+pub fn revised_chars(markup: &str, caps: bool, revised: &[Revised], deletions: &[Deletion]) -> Vec<StyledChar> {
     let mut out = Vec::new();
+    // Where each printed character starts in `out` (capitals can be longer).
+    let mut starts = Vec::new();
+    // Spans start and end in order of place; where they overlap, the later in the list wins.
+    let mut edges: Vec<(u32, bool, usize)> =
+        revised.iter().enumerate().filter(|(_, r)| r.from < r.to).flat_map(|(i, r)| [(r.from, true, i), (r.to, false, i)]).collect();
+    edges.sort_unstable();
+    let mut edges = edges.into_iter().peekable();
+    let mut open = std::collections::BTreeSet::new();
     for run in inline::parse(markup) {
         if run.note {
             continue;
         }
         for c in run.text.chars() {
-            let c = if c == '\t' { ' ' } else { c };
-            if caps {
-                out.extend(c.to_uppercase().map(|c| StyledChar { c, style: run.style }));
-            } else {
-                out.push(StyledChar { c, style: run.style });
+            let printed = u32::try_from(starts.len()).unwrap_or(u32::MAX);
+            starts.push(out.len());
+            while let Some((_, start, i)) = edges.next_if(|&(at, _, _)| at <= printed) {
+                if start {
+                    open.insert(i);
+                } else {
+                    open.remove(&i);
+                }
             }
+            let set = open.last().and_then(|&i| revised.get(i)).map(|r| r.set);
+            let c = if c == '\t' { ' ' } else { c };
+            let styled = |c| StyledChar { c, style: run.style, revised: set, deleted: None };
+            if caps {
+                out.extend(c.to_uppercase().map(styled));
+            } else {
+                out.push(styled(c));
+            }
+        }
+    }
+    for deletion in deletions {
+        let at = usize::try_from(deletion.at).unwrap_or(usize::MAX);
+        let index = at.checked_sub(1).and_then(|i| starts.get(i)).copied().unwrap_or(0);
+        if let Some(sc) = out.get_mut(index) {
+            sc.deleted = Some(deletion.set);
         }
     }
     out
 }
 
 fn plain(chars: &str) -> Vec<StyledChar> {
-    chars.chars().map(|c| StyledChar { c, style: Style::default() }).collect()
+    chars.chars().map(|c| StyledChar::new(c, Style::default())).collect()
 }
 
 /// Unstyled characters.
@@ -109,8 +153,8 @@ pub fn runs(line: &[StyledChar]) -> Vec<Run> {
     let mut runs: Vec<Run> = Vec::new();
     for sc in line {
         match runs.last_mut() {
-            Some(run) if run.style == sc.style => run.text.push(sc.c),
-            _ => runs.push(Run { text: sc.c.to_string(), style: sc.style, note: false }),
+            Some(run) if run.style == sc.style && run.revised == sc.revised => run.text.push(sc.c),
+            _ => runs.push(Run { text: sc.c.to_string(), style: sc.style, note: false, revised: sc.revised }),
         }
     }
     runs

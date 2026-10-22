@@ -117,7 +117,9 @@ fn gallery() {
         panic!("{}: {error}", out.display());
     }
     let script = root.join("examples/field-station.fountain");
-    let states: [(&str, &[&str]); 13] = [
+    // One shot by name, when only that one is wanted.
+    let only = std::env::var("STORYTELLER_GALLERY_ONLY").ok();
+    let states: [(&str, &[&str]); 14] = [
         ("find", &["app.find"]),
         ("go-to", &["app.go_to"]),
         ("rename", &["app.rename_character"]),
@@ -131,10 +133,14 @@ fn gallery() {
         ("nothing-found", &["app.find"]),
         ("open-failed", &[]),
         ("save-failed", &[]),
+        ("revised-page", &[]),
     ];
     for theme in [egui::Theme::Light, egui::Theme::Dark] {
         let suffix = if theme == egui::Theme::Dark { "dark" } else { "light" };
         for (name, commands) in states {
+            if only.as_deref().is_some_and(|only| only != name) {
+                continue;
+            }
             let mut harness =
                 Harness::builder().with_size(SIZE).with_pixels_per_point(PIXELS_PER_POINT).with_theme(theme).with_max_steps(64).build_eframe(|cc| {
                     StorytellerApp::without_menu(cc, Some(script.clone()), None, craft_settings::Location::Memory, Default::default())
@@ -166,6 +172,26 @@ fn gallery() {
                 "unsaved" => {
                     harness.state_mut().session.dirty = true;
                     harness.state_mut().prompt = Some(super::Pending::Close);
+                }
+                "revised-page" => {
+                    // Blue and Pink sets on the first page, Pink active, in page colours.
+                    use storyteller_core::model::{Deletion, Revised};
+                    let app = harness.state_mut();
+                    app.prefs.update(|p| p.view.page_view = true);
+                    let script = &mut app.session.script;
+                    for date in ["", "10/14/26", "10/20/26"] {
+                        script.add_revision_set(date);
+                    }
+                    if let Some(element) = script.elements.get_mut(2) {
+                        element.revised.push(Revised { from: 0, to: 24, set: 2 });
+                    }
+                    if let Some(element) = script.elements.get_mut(6) {
+                        element.revised.push(Revised { from: 4, to: 30, set: 3 });
+                        element.deletions.push(Deletion { at: 60, set: 3 });
+                    }
+                    app.session.page_colours = true;
+                    app.session.invalidate_layout();
+                    harness.state_mut().editor.pending_focus = Some((0, 0));
                 }
                 "selection" => {
                     harness.run_steps(2);

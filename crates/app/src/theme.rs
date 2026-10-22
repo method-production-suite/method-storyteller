@@ -104,6 +104,42 @@ pub const FIND_MARK: Color32 = rgb(0xEBBCC8);
 pub const SPELL_MARK: Color32 = rgb(0xC0392B);
 /// Selected text on the page: a lighter wash, so a find match inside it still shows.
 pub const PAGE_SELECTION: Color32 = rgb(0xF5D9E0);
+/// Revised text and its margin mark, for a set with no colour of its own (or one too light to
+/// read): a deep blue that reads on white and on every page colour of the standard order.
+pub const REVISED_INK: Color32 = rgb(0x173B7A);
+
+/// Faint text on a coloured revised page, where [`PAGE_MUTED`] is too light to read.
+pub const PAGE_MUTED_DEEP: Color32 = rgb(0x454545);
+
+/// Faint text on `paper`.
+pub fn muted_on(paper: Color32) -> Color32 {
+    if paper == PAGE { PAGE_MUTED } else { PAGE_MUTED_DEEP }
+}
+
+/// A `#RRGGBB` colour, as revision sets keep them.
+pub fn hex(text: &str) -> Option<Color32> {
+    let digits = text.strip_prefix('#').filter(|d| d.len() == 6)?;
+    u32::from_str_radix(digits, 16).ok().map(rgb)
+}
+
+/// The ink of a revision set's text and mark on `paper`: the set's own colour where it reads
+/// there (4.5:1), else [`REVISED_INK`].
+pub fn revised_ink(colour: Option<&str>, paper: Color32) -> Color32 {
+    colour.and_then(hex).filter(|&ink| contrast(ink, paper) >= 4.5).unwrap_or(REVISED_INK)
+}
+
+/// WCAG 2.x contrast ratio.
+pub fn contrast(a: Color32, b: Color32) -> f32 {
+    fn channel(c: u8) -> f32 {
+        let c = f32::from(c) / 255.0;
+        if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+    }
+    fn luminance(c: Color32) -> f32 {
+        0.2126 * channel(c.r()) + 0.7152 * channel(c.g()) + 0.0722 * channel(c.b())
+    }
+    let (x, y) = (luminance(a), luminance(b));
+    (x.max(y) + 0.05) / (x.min(y) + 0.05)
+}
 
 // The type scale, in points. The interface uses the system's own faces; the script is
 // Courier Prime at 12 pt, set by the editor.
@@ -234,19 +270,6 @@ pub fn apply(ctx: &egui::Context) {
 mod tests {
     use super::*;
 
-    /// WCAG 2.x contrast ratio.
-    pub(crate) fn contrast(a: Color32, b: Color32) -> f32 {
-        fn channel(c: u8) -> f32 {
-            let c = f32::from(c) / 255.0;
-            if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
-        }
-        fn luminance(c: Color32) -> f32 {
-            0.2126 * channel(c.r()) + 0.7152 * channel(c.g()) + 0.0722 * channel(c.b())
-        }
-        let (x, y) = (luminance(a), luminance(b));
-        (x.max(y) + 0.05) / (x.min(y) + 0.05)
-    }
-
     /// Every pair BRAND.md lists, with what it needs: 4.5 for text, 3 for meaningful borders.
     fn pairs(p: &Palette) -> Vec<(&'static str, Color32, Color32, f32)> {
         vec![
@@ -297,6 +320,28 @@ mod tests {
             }
         }
         assert!(failures.is_empty(), "{failures:#?}");
+    }
+
+    /// Type, revised text and the margin numbers read on every page colour of the standard
+    /// order, as they do on white.
+    #[test]
+    fn page_colours_keep_the_page_readable() {
+        let mut failures = Vec::new();
+        let papers = storyteller_core::model::REVISION_COLORS.iter().map(|(name, page)| (*name, page.and_then(hex).unwrap_or(PAGE)));
+        for (name, paper) in papers {
+            for (pair, ink) in [("page ink", PAGE_INK), ("revised ink", REVISED_INK), ("page muted", muted_on(paper))] {
+                let ratio = contrast(ink, paper);
+                if ratio < 4.5 {
+                    failures.push(format!("{pair} on {name}: {ratio:.2}, needs 4.5"));
+                }
+            }
+        }
+        assert!(failures.is_empty(), "{failures:#?}");
+        // A set's own colour is used only where it reads.
+        assert_eq!(revised_ink(Some("#C00000"), PAGE), rgb(0xC00000));
+        assert_eq!(revised_ink(Some("#FFFF00"), PAGE), REVISED_INK);
+        assert_eq!(revised_ink(Some("blue"), PAGE), REVISED_INK);
+        assert_eq!(revised_ink(None, PAGE), REVISED_INK);
     }
 
     /// Prints the table BRAND.md carries: `cargo test -p method-storyteller contrast_table -- --nocapture`.

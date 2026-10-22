@@ -7,6 +7,11 @@ for its own version in Help > What's New, once after an update.
 
 ### New
 
+- Revisions show on screen and print: revised text in its set's ink, the set's mark in the
+  right margin of every changed line (and where text was taken out), and the set's name and
+  date under the page number. View > Show All Revision Sets, Show Active Revision Set and Hide
+  Revisions choose which; View > Revised Page Colours shows revised pages in their set's colour.
+
 - Production > Revision Mode (⌘⇧R): what you change is marked in the active revision set, and
   text you take out leaves a mark where it was. Production > Mark Revised (⌘]) and Clear
   Revised (⌘[) act on the selection or the paragraph.

@@ -390,7 +390,7 @@ fn push_run(para: &mut Para, text: &str, (style, revision): (Style, u32)) {
     mark_revised(&mut para.revised, at, len, revision);
     match para.runs.last_mut() {
         Some(last) if last.style == style => last.text.push_str(&text),
-        _ => para.runs.push(Run { text, style, note: false }),
+        _ => para.runs.push(Run { text, style, note: false, revised: None }),
     }
 }
 

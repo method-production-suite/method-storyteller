@@ -935,7 +935,7 @@ impl Importer {
         mark_revised(&mut paragraph.revised, at, len, run.revision);
         match paragraph.runs.last_mut() {
             Some(last) if last.style == run.style && !last.note => last.text.push_str(&text),
-            _ => paragraph.runs.push(Run { text, style: run.style, note: false }),
+            _ => paragraph.runs.push(Run { text, style: run.style, note: false, revised: None }),
         }
     }
 
@@ -949,7 +949,7 @@ impl Importer {
                 let Some(read) = read_note(xml, FdxNoteForm::Inline) else { return Ok(()) };
                 let Some(paragraph) = self.parent_paragraph() else { return Ok(()) };
                 if read.plain {
-                    paragraph.runs.push(Run { text: read.note.text, style: Style::default(), note: true });
+                    paragraph.runs.push(Run { text: read.note.text, style: Style::default(), note: true, revised: None });
                 } else {
                     let mut note = read.note;
                     let at = paragraph.printed_chars();

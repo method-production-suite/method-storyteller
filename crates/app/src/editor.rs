@@ -10,8 +10,9 @@ use egui::text_edit::TextEditState;
 use egui::{
     Align, Color32, FontData, FontDefinitions, FontFamily, FontId, Frame, Id, Key, Margin, Modifiers, Order, Rect, Stroke, TextEdit, Ui, pos2, vec2,
 };
-use storyteller_core::layout::{Align as PageAlign, POINTS_PER_COLUMN, WRAP_ADVANCE_POINTS};
-use storyteller_core::{ElementKind, autocomplete, paginate};
+use storyteller_core::layout::{Align as PageAlign, POINTS_PER_COLUMN, REVISION_MARK_INCHES, WRAP_ADVANCE_POINTS};
+use storyteller_core::model::{Revisions, ShowRevisions};
+use storyteller_core::{Element, ElementKind, autocomplete, inline, paginate};
 use storyteller_engine::Session;
 use storyteller_engine::flow;
 
@@ -140,6 +141,42 @@ pub fn byte_to_char(text: &str, byte: usize) -> usize {
     text.char_indices().take_while(|(b, _)| *b < byte).count()
 }
 
+/// A revision shown in an element: the bytes of its revised text, or of the character a
+/// deletion mark sits beside, with the set's id.
+#[derive(Clone, Copy)]
+struct Shown {
+    start: usize,
+    end: usize,
+    set: u32,
+    deletion: bool,
+}
+
+/// An element's revisions that `show` shows, from its spans of printed characters.
+fn shown_revisions(element: &Element, revisions: &Revisions, show: ShowRevisions) -> Vec<Shown> {
+    let shows = |set: u32| revisions.set(set).is_some() && show.shows(set, revisions.active);
+    if show == ShowRevisions::None || (element.revised.is_empty() && element.deletions.is_empty()) {
+        return Vec::new();
+    }
+    let printed = inline::printed_bytes(&element.text);
+    let place = |at: u32| usize::try_from(at).ok().map(|at| at.min(printed.len()));
+    let mut out = Vec::new();
+    for span in element.revised.iter().filter(|r| shows(r.set)) {
+        let (Some(from), Some(to)) = (place(span.from), place(span.to)) else { continue };
+        if let (Some(first), Some(last)) = (printed.get(from), to.checked_sub(1).and_then(|i| printed.get(i)))
+            && first.0 < last.1
+        {
+            out.push(Shown { start: first.0, end: last.1, set: span.set, deletion: false });
+        }
+    }
+    for deletion in element.deletions.iter().filter(|d| shows(d.set)) {
+        // The character before the place, as on the printed page.
+        let before = place(deletion.at).and_then(|at| at.checked_sub(1)).and_then(|i| printed.get(i)).or(printed.first());
+        let (start, end) = before.copied().unwrap_or((0, 0));
+        out.push(Shown { start, end, set: deletion.set, deletion: true });
+    }
+    out
+}
+
 fn align(align: PageAlign) -> Align {
     match align {
         PageAlign::Left => Align::LEFT,
@@ -160,7 +197,26 @@ fn preview(text: &str) -> String {
 pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automation: &mut Automation, zoom: f32, pages: bool) -> Vec<EditAction> {
     let mut actions = Vec::new();
     let element_pages = session.paginated().element_pages.clone();
+    let show = session.show_revisions;
+    // Each page's revision label and paper (§3.5): the set it is issued in, and that set's page
+    // colour when View > Revised Page Colours is on.
+    let page_revisions: Vec<(Option<String>, Color32)> = {
+        let revisions = session.script.revisions.clone();
+        let colours = session.page_colours;
+        let pages = session.paginated().pages.iter().map(|page| page.revision(&revisions, show));
+        pages
+            .map(|set| {
+                let paper = set.filter(|_| colours).and_then(|s| s.page_color.as_deref()).and_then(crate::theme::hex);
+                (set.map(|s| s.name.clone()), paper.unwrap_or(crate::theme::PAGE))
+            })
+            .collect()
+    };
     let session: &Session = session;
+    let revisions = &session.script.revisions;
+    let paper_of = |page: u32| {
+        let index = usize::try_from(page).ok().and_then(|p| p.checked_sub(1));
+        index.and_then(|i| page_revisions.get(i)).filter(|_| pages).map_or(crate::theme::PAGE, |r| r.1)
+    };
     let layout = &session.layout;
     let col = 0.1 * PX_PER_INCH * zoom;
     let row = PX_PER_INCH / 6.0 * zoom;
@@ -277,14 +333,22 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                             editor.pending_focus = None;
                             editor.scroll_to_focus = true;
                         }
+                        let paper = paper_of(sheet_page);
+                        let faint = crate::theme::muted_on(paper);
                         let color = if kind.is_printed() { ink } else { faint };
+                        let shown = shown_revisions(element, revisions, show);
+                        let revised: Vec<(usize, usize, Color32)> = shown
+                            .iter()
+                            .filter(|r| !r.deletion)
+                            .map(|r| (r.start, r.end, crate::theme::revised_ink(revisions.set(r.set).and_then(|s| s.color.as_deref()), paper)))
+                            .collect();
                         let text_align = align(style.align);
                         let row_height = row;
                         let job_font = font.clone();
                         let marked = editor.highlight.filter(|h| h.0 == index).map(|h| (h.1, h.2));
                         let misspelled = editor.misspelled.get(&index).cloned().unwrap_or_default();
                         let mut layouter = move |ui: &Ui, buffer: &dyn egui::TextBuffer, wrap_width: f32| {
-                            let mut job = marked_job(buffer.as_str(), marked, &misspelled, &job_font, (color, faint), wrap_width);
+                            let mut job = marked_job(buffer.as_str(), marked, &misspelled, &revised, &job_font, (color, faint), wrap_width);
                             job.halign = text_align;
                             for section in &mut job.sections {
                                 section.format.line_height = Some(row_height);
@@ -331,6 +395,19 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                         {
                             scene_numbers(ui, response.rect, number, layout.scene_number_left_end, layout.scene_number_right, col, &font, ink);
                         }
+                        if !shown.is_empty() {
+                            let mark_x = column_left + REVISION_MARK_INCHES * PX_PER_INCH * zoom;
+                            revision_marks(
+                                ui,
+                                &output.galley,
+                                output.galley_pos,
+                                &element.text,
+                                &shown,
+                                (revisions, show),
+                                (mark_x, row),
+                                (&font, paper),
+                            );
+                        }
                         if kind == ElementKind::Character && automatic.get(index).copied().unwrap_or(false) {
                             // The automatic (CONT'D), drawn faint: it is added at layout, not typed.
                             let at = output.galley_pos + output.galley.rect.right_top().to_vec2() + vec2(advance, 0.0);
@@ -373,12 +450,25 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                     let bottom = if pages { (sheet_top + page_height).max(y) } else { y };
                     sheets.push((sheet_top, bottom, sheet_page));
                     ui.add_space(bottom - ui.cursor().top());
-                    ui.painter().set(paper, egui::Shape::Vec(paper_shapes(&sheets, column_left, page_width, pages)));
+                    let papers: Vec<Color32> = sheets.iter().map(|s| paper_of(s.2)).collect();
+                    ui.painter().set(paper, egui::Shape::Vec(paper_shapes(&sheets, &papers, column_left, page_width, pages)));
                     if pages {
-                        // Page numbers sit in the top margin, clear of the text.
-                        for (top, _, number) in sheets.iter().filter(|s| s.2 > 1) {
-                            let at = pos2(column_left + f32::from(layout.page_number_right) * col, top + f32::from(layout.page_number_row) * row);
-                            ui.painter().text(at, egui::Align2::RIGHT_TOP, format!("{number}."), font.clone(), ink);
+                        // Page numbers sit in the top margin, clear of the text; a revised page's
+                        // set and date go under its number.
+                        let right = column_left + f32::from(layout.page_number_right) * col;
+                        for (top, _, number) in &sheets {
+                            let at = pos2(right, top + f32::from(layout.page_number_row) * row);
+                            if *number > 1 {
+                                ui.painter().text(at, egui::Align2::RIGHT_TOP, format!("{number}."), font.clone(), ink);
+                            }
+                            let label = usize::try_from(*number)
+                                .ok()
+                                .and_then(|n| n.checked_sub(1))
+                                .and_then(|i| page_revisions.get(i))
+                                .and_then(|r| r.0.as_ref());
+                            if let Some(label) = label {
+                                ui.painter().text(at + vec2(0.0, row), egui::Align2::RIGHT_TOP, label, font.clone(), ink);
+                            }
                         }
                     }
                 });
@@ -397,21 +487,21 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
 }
 
 /// White sheets (or one continuous column) with a soft shadow.
-fn paper_shapes(sheets: &[(f32, f32, u32)], left: f32, width: f32, pages: bool) -> Vec<egui::Shape> {
+fn paper_shapes(sheets: &[(f32, f32, u32)], papers: &[Color32], left: f32, width: f32, pages: bool) -> Vec<egui::Shape> {
     let mut shapes = Vec::new();
-    let spans: Vec<(f32, f32)> = if pages {
-        sheets.iter().map(|s| (s.0, s.1)).collect()
+    let spans: Vec<(f32, f32, Color32)> = if pages {
+        sheets.iter().zip(papers.iter().chain(std::iter::repeat(&crate::theme::PAGE))).map(|(s, &paper)| (s.0, s.1, paper)).collect()
     } else {
         let top = sheets.first().map_or(0.0, |s| s.0);
         let bottom = sheets.last().map_or(top, |s| s.1);
-        vec![(top, bottom)]
+        vec![(top, bottom, crate::theme::PAGE)]
     };
-    for (top, bottom) in spans {
+    for (top, bottom, paper) in spans {
         let rect = Rect::from_min_max(pos2(left, top), pos2(left + width, bottom));
         for (spread, alpha) in [(6.0, 10u8), (3.0, 18), (1.0, 34)] {
             shapes.push(egui::Shape::rect_filled(rect.expand(spread).translate(vec2(0.0, spread * 0.5)), 3.0, Color32::from_black_alpha(alpha)));
         }
-        shapes.push(egui::Shape::rect_filled(rect, 1.0, crate::theme::PAGE));
+        shapes.push(egui::Shape::rect_filled(rect, 1.0, paper));
     }
     shapes
 }
@@ -622,6 +712,41 @@ fn picker_popup(ui: &Ui, editor: &EditorState, automation: &mut Automation, inde
     });
 }
 
+/// Each galley row with a shown revision gets its latest set's mark at 7.75", in that set's ink.
+#[allow(clippy::too_many_arguments)]
+fn revision_marks(
+    ui: &Ui,
+    galley: &egui::Galley,
+    origin: egui::Pos2,
+    text: &str,
+    shown: &[Shown],
+    (revisions, show): (&Revisions, ShowRevisions),
+    (mark_x, row): (f32, f32),
+    (font, paper): (&FontId, Color32),
+) {
+    let row_of = |byte: usize| {
+        let y = galley.pos_from_cursor(CCursor::new(byte_to_char(text, byte.min(text.len())))).min.y;
+        (y / row.max(1.0)).round() as i64
+    };
+    let mut rows: Vec<(i64, Vec<u32>)> = Vec::new();
+    for r in shown {
+        // The row of the last character, not of the place after it (which may wrap).
+        let last = text.get(..r.end.min(text.len())).and_then(|t| t.char_indices().last()).map_or(r.start, |(b, _)| b.max(r.start));
+        for line in row_of(r.start)..=row_of(last) {
+            match rows.iter_mut().find(|(l, _)| *l == line) {
+                Some((_, sets)) => sets.push(r.set),
+                None => rows.push((line, vec![r.set])),
+            }
+        }
+    }
+    for (line, sets) in rows {
+        if let Some(set) = revisions.latest(&sets, show) {
+            let at = pos2(mark_x, origin.y + line as f32 * row);
+            ui.painter().text(at, egui::Align2::LEFT_TOP, &set.mark, font.clone(), crate::theme::revised_ink(set.color.as_deref(), paper));
+        }
+    }
+}
+
 /// One element's text laid out: bold, italic and underlined text in Courier Prime's own faces,
 /// with the markup that says so (and notes) drawn faint; the current find match (or spelling
 /// word) on a rose wash; and misspelled words with a thin red underline. Ranges are bytes; any
@@ -630,6 +755,7 @@ fn marked_job(
     text: &str,
     marked: Option<(usize, usize)>,
     misspelled: &[(usize, usize)],
+    revised: &[(usize, usize, Color32)],
     font: &FontId,
     (color, faint): (Color32, Color32),
     wrap_width: f32,
@@ -637,15 +763,17 @@ fn marked_job(
     let fits = |&(start, end): &(usize, usize)| start < end && end <= text.len() && text.is_char_boundary(start) && text.is_char_boundary(end);
     let marked = marked.filter(fits);
     let misspelled: Vec<(usize, usize)> = misspelled.iter().copied().filter(fits).collect();
+    let revised: Vec<(usize, usize, Color32)> = revised.iter().copied().filter(|&(s, e, _)| fits(&(s, e))).collect();
     let spans = storyteller_core::inline::spans(text);
     let plain = spans.iter().all(|s| s.kind == storyteller_core::inline::SpanKind::Text(Default::default()));
-    if marked.is_none() && misspelled.is_empty() && plain {
+    if marked.is_none() && misspelled.is_empty() && revised.is_empty() && plain {
         return LayoutJob::simple(text.to_owned(), font.clone(), color, wrap_width);
     }
     let mut cuts: Vec<usize> = vec![0, text.len()];
     cuts.extend(spans.iter().flat_map(|s| [s.start, s.end]));
     cuts.extend(marked.iter().flat_map(|&(s, e)| [s, e]));
     cuts.extend(misspelled.iter().flat_map(|&(s, e)| [s, e]));
+    cuts.extend(revised.iter().flat_map(|&(s, e, _)| [s, e]));
     cuts.sort_unstable();
     cuts.dedup();
     let mut job = LayoutJob { wrap: egui::text::TextWrapping { max_width: wrap_width, ..Default::default() }, ..Default::default() };
@@ -653,6 +781,8 @@ fn marked_job(
         let &[start, end] = pair else { continue };
         let Some(part) = text.get(start..end) else { continue };
         let inside = |&(s, e): &(usize, usize)| s <= start && end <= e;
+        // Revised text in its set's ink; the markup around it stays faint.
+        let color = revised.iter().find(|&&(s, e, _)| inside(&(s, e))).map_or(color, |r| r.2);
         let mut format = egui::TextFormat { font_id: font.clone(), color, ..Default::default() };
         match spans.iter().find(|s| s.start <= start && end <= s.end).map(|s| s.kind) {
             Some(storyteller_core::inline::SpanKind::Text(style)) => {

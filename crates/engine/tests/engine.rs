@@ -116,6 +116,13 @@ fn save_open_export_round_trip() {
     let pdf = dir.path().join("attic.pdf");
     run(&registry, &mut s, "file.export_pdf", json!({ "path": pdf }));
     assert!(std::fs::read(&pdf).unwrap().starts_with(b"%PDF-"));
+    // Show Revisions is a view choice the export follows, unless it names its own.
+    assert_eq!(run(&registry, &mut s, "view.show_revisions", json!({ "show": "active" }))["value"]["show"], "active");
+    assert!(registry.run("view.show_revisions", &mut s, json!({ "show": "some" }).as_object().unwrap()).is_err());
+    assert_eq!(run(&registry, &mut s, "view.page_colours", json!({}))["value"]["show"], true);
+    run(&registry, &mut s, "file.export_pdf", json!({ "path": pdf, "revisions": "none", "colour": true }));
+    assert!(std::fs::read(&pdf).unwrap().starts_with(b"%PDF-"));
+    assert!(registry.run("file.export_pdf", &mut s, json!({ "path": pdf, "revisions": "blue" }).as_object().unwrap()).is_err());
     // Opening something hostile fails cleanly.
     let junk = dir.path().join("junk.fdx");
     std::fs::write(&junk, b"<FinalDraft><Content></Oops>").unwrap();

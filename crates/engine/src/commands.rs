@@ -339,6 +339,16 @@ fn opt_string(params: &Params, name: &'static str) -> Result<Option<String>, Com
     }
 }
 
+fn show_revisions(name: &'static str, text: &str) -> Result<storyteller_core::model::ShowRevisions, CommandError> {
+    use storyteller_core::model::ShowRevisions;
+    match text {
+        "active" => Ok(ShowRevisions::Active),
+        "all" => Ok(ShowRevisions::All),
+        "none" => Ok(ShowRevisions::None),
+        other => Err(CommandError::Invalid { name, reason: format!("expected active, all or none, got {other}") }),
+    }
+}
+
 fn opt_index(params: &Params, name: &'static str) -> Result<Option<usize>, CommandError> {
     match params.get(name) {
         None | Some(Value::Null) => Ok(None),
@@ -908,9 +918,25 @@ fn all_commands() -> Vec<Command> {
             label: "Export PDF…",
             menu: "File/Export PDF…",
             shortcut: Some("Cmd+E"),
-            params: const { &[param("path", Path, true, "Destination .pdf")] },
+            params: const {
+                &[
+                    param("path", Path, true, "Destination .pdf"),
+                    param("revisions", String, false, "Revisions to print: active, all or none; the view's choice when omitted"),
+                    param("colour", Bool, false, "Print revised pages in their set's page colour (white when omitted)"),
+                ]
+            },
             enabled: always,
-            run: |s, p| export(s, p, FileFormat::Pdf),
+            run: |s, p| {
+                let path = path(p, "path")?;
+                let revisions = match opt_string(p, "revisions")? {
+                    Some(show) => show_revisions("revisions", &show)?,
+                    None => s.show_revisions,
+                };
+                let options =
+                    storyteller_pdf::PdfOptions { revisions, coloured_pages: opt_bool(p, "colour")?.unwrap_or(false), ..Default::default() };
+                files::save_pdf(&s.script, &path, &s.layout, &options)?;
+                Ok(Outcome::message(files::saved_message("Exported", &path, &s.script, FileFormat::Pdf)))
+            },
         },
         Command {
             id: "file.export_fdx",
@@ -1926,6 +1952,30 @@ fn all_commands() -> Vec<Command> {
                 s.layout.show_scene_numbers = show;
                 s.invalidate_layout();
                 Ok(Outcome::value(json!({ "show": show })))
+            },
+        },
+        Command {
+            id: "view.show_revisions",
+            label: "Show Revisions",
+            menu: "",
+            shortcut: None,
+            params: const { &[param("show", String, true, "active (the active set's), all, or none")] },
+            enabled: always,
+            run: |s, p| {
+                s.show_revisions = show_revisions("show", &string(p, "show")?)?;
+                Ok(Outcome::value(json!({ "show": s.show_revisions })))
+            },
+        },
+        Command {
+            id: "view.page_colours",
+            label: "Revised Page Colours",
+            menu: "View/Revised Page Colours",
+            shortcut: None,
+            params: const { &[param("show", Bool, false, "Show (true) or hide (false); toggles when omitted")] },
+            enabled: always,
+            run: |s, p| {
+                s.page_colours = opt_bool(p, "show")?.unwrap_or(!s.page_colours);
+                Ok(Outcome::value(json!({ "show": s.page_colours })))
             },
         },
         Command {

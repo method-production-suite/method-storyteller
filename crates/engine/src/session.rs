@@ -52,6 +52,10 @@ pub struct Session {
     pub spelling: crate::spell::Personal,
     /// Revision mode: every change is marked in the active revision set (docs/production-spec.md §3.4).
     pub revision_mode: bool,
+    /// View > Show Revisions; the app keeps it in its settings (§3.5).
+    pub show_revisions: storyteller_core::model::ShowRevisions,
+    /// View > Revised Page Colours: revised pages on screen in their set's page colour.
+    pub page_colours: bool,
 }
 
 impl Default for Session {
@@ -82,6 +86,8 @@ impl Session {
             lengths: None,
             spelling: crate::spell::Personal::default(),
             revision_mode: false,
+            show_revisions: Default::default(),
+            page_colours: false,
         }
     }
 

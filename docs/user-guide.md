@@ -48,6 +48,15 @@ File > Title Page (⌘⇧T) sets the title, credit, author, contact and the othe
 Production > Number Scenes numbers every scene; Production > Remove Scene Numbers takes them off.
 View > Show Scene Numbers shows or hides them.
 
+## Revisions
+
+Production > Revisions… holds the revision sets (White, Blue, Pink …). With Production >
+Revision Mode on, what you change is marked in the active set. Revised text shows in the set's
+ink, each changed line gets the set's mark in the right margin, and a revised page carries the
+set's name and date under its page number, on screen and in the PDF. View > Show All Revision
+Sets, Show Active Revision Set and Hide Revisions choose which marks show. View > Revised Page
+Colours shows revised pages in their set's colour; exported PDFs stay white.
+
 ## Save and export
 
 - **File > Save** (⌘S) saves the script. A new script is saved as Fountain unless you choose
