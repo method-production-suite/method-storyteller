@@ -67,6 +67,9 @@ jobs:
       ref: ${{ steps.tag.outputs.ref }}
       version: ${{ steps.tag.outputs.version }}
       rehearsal: ${{ steps.tag.outputs.rehearsal }}
+    env:
+      # In the checkout, named, so no xtask step asks cargo where its build folder is.
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -154,6 +157,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     env:
+      # In the checkout, named, so no xtask step asks cargo where its build folder is.
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
       # Which optional secrets exist (true or false), never their values.
       HAS_DEVELOPER_ID: ${{ secrets.DEVELOPER_ID_CERT_P12_BASE64 != '' && secrets.CERT_PASSWORD != '' && secrets.KEYCHAIN_PASSWORD != '' }}
       HAS_NOTARY_KEY: ${{ secrets.AC_API_KEY_ID != '' && secrets.AC_API_ISSUER_ID != '' && secrets.AC_API_KEY_P8_BASE64 != '' }}
@@ -451,6 +456,9 @@ jobs:
     needs: [check, build]
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # In the checkout, named, so no xtask step asks cargo where its build folder is.
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -524,6 +532,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
+      # In the checkout, named, so no xtask step asks cargo where its build folder is.
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
       HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -570,6 +580,9 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write # create the draft release and upload its files
+    env:
+      # In the checkout, named, so no xtask step asks cargo where its build folder is.
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

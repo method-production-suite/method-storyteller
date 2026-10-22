@@ -64,13 +64,18 @@ fn root() -> &'static Path {
 
 /// Where cargo puts what it builds: `CARGO_TARGET_DIR` when set (the suite's shared cache,
 /// `~/.cache/method-target/method-storyteller`), else what `cargo metadata` says, else
-/// `./target`. Never assumed to be `./target`.
+/// `./target`. In CI without `CARGO_TARGET_DIR`, `./target` without asking cargo.
 pub fn target_dir() -> PathBuf {
     static DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
     DIR.get_or_init(|| {
         if let Some(dir) = std::env::var_os("CARGO_TARGET_DIR").filter(|d| !d.is_empty()) {
             let dir = PathBuf::from(dir);
             return if dir.is_absolute() { dir } else { root().join(dir) };
+        }
+        // In CI (the release workflow names the folder) cargo is never started from here: a
+        // step that has met a secret must not run it.
+        if std::env::var_os("CI").is_some() {
+            return root().join("target");
         }
         Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()))
             .args(["metadata", "--format-version", "1", "--no-deps", "--offline"])
