@@ -50,6 +50,8 @@ const PAGE_MARKER: &str = "method_storyteller_page";
 const SCENE_MARKER: &str = "method_storyteller_scene";
 /// Our element for the scene an omitted heading keeps, as Fountain.
 const OMITTED_MARKER: &str = "method_storyteller_omitted";
+/// Our element for a place revised text was deleted, which OSF's own marks may not say.
+const DELETION_MARKER: &str = "method_storyteller_deletion";
 
 /// The element name a raw section starts with, compared loosely.
 fn top_name(raw: &str) -> String {
@@ -523,6 +525,11 @@ fn read_para(
             color: get(&scene, "color").filter(|c| !c.is_empty()).map(str::to_string),
         };
     }
+    for deletion in tags(&para.children).into_iter().filter(|(tag, _)| tag == DELETION_MARKER).map(|(_, a)| a) {
+        if let (Some(at), Some(set)) = (get(&deletion, "at").and_then(|v| v.parse().ok()), get(&deletion, "set").and_then(|v| v.parse().ok())) {
+            element.deletions.push(crate::model::Deletion { at, set });
+        }
+    }
     if kind == ElementKind::SceneHeading
         && let Some(omitted) = tags(&para.children).into_iter().find(|(tag, _)| tag == OMITTED_MARKER).map(|(_, a)| a)
     {
@@ -586,6 +593,7 @@ fn strip_ours(children: &str) -> String {
                             | "method_storyteller_page"
                             | "method_storyteller_scene"
                             | "method_storyteller_omitted"
+                            | "method_storyteller_deletion"
                     ) =>
             {
                 out.push_str(children.get(from..before).unwrap_or_default());
@@ -1238,6 +1246,9 @@ fn write_para(element: &Element, extras: &ParaExtras, spelling: Spelling, styles
             write_attr("color", color, out);
         }
         out.push_str("/>\n");
+    }
+    for deletion in &element.deletions {
+        out.push_str(&format!("      <{DELETION_MARKER} at=\"{}\" set=\"{}\"/>\n", deletion.at, deletion.set));
     }
     if element.kind == ElementKind::SceneHeading
         && let Some(omitted) = element.omitted.as_deref().filter(|o| !o.trim().is_empty())

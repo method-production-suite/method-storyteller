@@ -39,7 +39,7 @@ const GO_TO_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Alt+G" } else { "Cmd
 const FIND_NEXT_KEY: &str = if cfg!(target_os = "macos") { "Cmd+G" } else { "F3" };
 const FIND_PREVIOUS_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Shift+G" } else { "Shift+F3" };
 
-const APP_COMMANDS: [AppCommand; 41] = [
+const APP_COMMANDS: [AppCommand; 43] = [
     AppCommand { id: "app.close", label: "Close", menu: "File/Close", shortcut: Some("Cmd+W") },
     AppCommand { id: "app.title_page", label: "Title Page…", menu: "File/Title Page…", shortcut: Some("Cmd+Shift+T") },
     AppCommand {
@@ -73,6 +73,8 @@ const APP_COMMANDS: [AppCommand; 41] = [
     AppCommand { id: "app.characters", label: "Characters", menu: "Production/Characters", shortcut: None },
     AppCommand { id: "app.edit_scene_number", label: "Edit Scene Number…", menu: "Production/Edit Scene Number…", shortcut: None },
     AppCommand { id: "app.revisions", label: "Revisions…", menu: "Production/Revisions…", shortcut: None },
+    AppCommand { id: "app.mark_revised", label: "Mark Revised", menu: "Production/Mark Revised", shortcut: Some("Cmd+CloseBracket") },
+    AppCommand { id: "app.clear_revised", label: "Clear Revised", menu: "Production/Clear Revised", shortcut: Some("Cmd+OpenBracket") },
     AppCommand { id: "app.go_to", label: "Go To…", menu: "Edit/Go To…", shortcut: Some(GO_TO_KEY) },
     AppCommand { id: "prefs.smart_quotes", label: "Smart Quotes", menu: "Format/Smart Quotes", shortcut: None },
     AppCommand { id: "app.bold", label: "Bold", menu: "Format/Bold", shortcut: Some("Cmd+B") },
@@ -596,6 +598,8 @@ impl StorytellerApp {
             "app.close" => self.guard_unsaved(ctx, Pending::New),
             "app.characters" => self.characters = !self.characters,
             "app.revisions" => self.revisions = Some(RevisionsDraft::default()),
+            "app.mark_revised" => self.mark_selection(ctx, "revisions.mark"),
+            "app.clear_revised" => self.mark_selection(ctx, "revisions.clear"),
             "scene.number" => {
                 let numbered = self.session.script.scene_indices().iter().any(|&h| self.session.element(h).is_some_and(|e| e.scene_number.is_some()));
                 self.numbering = Some(NumberingDraft {
@@ -751,6 +755,28 @@ impl StorytellerApp {
                 self.refocus();
             }
         }
+    }
+
+    /// Production > Mark Revised and Clear Revised (`command`): the selection in the caret's
+    /// paragraph, or the whole paragraph when nothing is selected.
+    fn mark_selection(&mut self, ctx: &egui::Context, command: &str) {
+        self.session.clamp_caret();
+        let index = self.session.caret.element;
+        let Some(text) = self.session.element(index).map(|e| e.text.clone()) else { return };
+        let mut target = vec![("index", json!(index))];
+        if let Some((_, range)) = self.editor.selection.filter(|(i, r)| *i == index && r.primary != r.secondary) {
+            let (a, b): (usize, usize) = (range.primary.index.into(), range.secondary.index.into());
+            target.push(("start", json!(crate::editor::char_to_byte(&text, a.min(b)))));
+            target.push(("end", json!(crate::editor::char_to_byte(&text, a.max(b)))));
+        }
+        if let Err(error) = self.registry.run(command, &mut self.session, &params(&target)) {
+            self.status = match error {
+                storyteller_engine::CommandError::Invalid { reason, .. } => capitalise(&reason),
+                other => other.to_string(),
+            };
+        }
+        self.focus_caret_field(ctx);
+        ctx.request_repaint();
     }
 
     /// Edit > Select All: the whole of the paragraph the caret is in, as ⌘A selects it.
@@ -1210,6 +1236,7 @@ impl StorytellerApp {
             "prefs.new_osf" => Some(self.preferred_extension() == "osf"),
             "prefs.smart_quotes" => Some(self.prefs.get().general.smart_quotes),
             "app.characters" => Some(self.characters),
+            "revisions.mode" => Some(self.session.revision_mode),
             "prefs.spelling_us" => Some(self.prefs.get().general.spelling_language != "en_GB"),
             "prefs.spelling_uk" => Some(self.prefs.get().general.spelling_language == "en_GB"),
             "prefs.check_spelling" => Some(self.prefs.get().view.check_spelling),

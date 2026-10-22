@@ -52,7 +52,7 @@ Storyteller", executable `method-storyteller-app`; `{{VERSION}}` is filled in),
 `windows/method-storyteller.iss`, `linux/method-storyteller.desktop`, and `icons/`.
 
 Everything lands in `bundle/<platform>/` in the build folder: `target/`, or on the suite's
-Macs the shared cache `~/.cache/method-target/method-storyteller`, which every local cargo
+Macs the shared cache `~/.cache/method-target/method-storyteller/main` (one folder per checkout), which every local cargo
 command names with `CARGO_TARGET_DIR` (xtask asks cargo where it is, never assumes `./target`).
 
 ### Try the Mac app locally

@@ -128,7 +128,7 @@ The app also takes `--open-sample` (open the sample script, Field Station) and
 ## Development
 
 On the suite's Macs every cargo command builds in the shared cache:
-`CARGO_TARGET_DIR="$HOME/.cache/method-target/method-storyteller" cargo …`.
+`CARGO_TARGET_DIR="$HOME/.cache/method-target/method-storyteller/main" cargo …`.
 
 `cargo xtask ci` runs every gate: `cargo fmt --check`, `cargo clippy --workspace --all-targets
 -- -D warnings`, `cargo test --workspace`, the crate layering check and the asset attribution

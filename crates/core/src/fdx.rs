@@ -27,7 +27,7 @@ use crate::inline::{self, Run, Style};
 use crate::layout::{Align, ElementStyle, Layout, chars_per_line};
 use crate::model::SceneMeta;
 use crate::model::{
-    Element, ElementKind, FdxDocument, FdxNote, FdxNoteForm, FdxParagraph, FdxSection, PageStart, Revised, RevisionSet, Revisions, Script,
+    Deletion, Element, ElementKind, FdxDocument, FdxNote, FdxNoteForm, FdxParagraph, FdxSection, PageStart, Revised, RevisionSet, Revisions, Script,
     ScriptNote, TitleField, TitlePage, mark_revised,
 };
 use crate::paginate;
@@ -509,6 +509,9 @@ pub fn write_with_layout(script: &Script, layout: &Layout) -> String {
     let locks = locked_pages(elements);
     let read_locks = script.fdx.as_deref().map(|d| d.locked_pages.as_slice()).unwrap_or_default();
     let locks_same = locks.len() == read_locks.len() && locks.iter().zip(read_locks).all(|((p, s), (rp, rs))| p == rp && *s == rs);
+    let marks = deletions(elements);
+    let marks_same = script.fdx.as_deref().map(|d| d.deletions.as_slice()).unwrap_or_default() == marks.as_slice();
+    let mut marks_written = false;
     let mut title_written = false;
     let format_same = script.fdx.as_ref().and_then(|d| d.format.as_ref()) == Some(&script.format);
     let mut ignored_written = false;
@@ -564,6 +567,17 @@ pub fn write_with_layout(script: &Script, layout: &Layout) -> String {
                 }
                 out.push('\n');
                 ignored_written = true;
+            }
+            FdxSection::Raw(xml) if section_is(xml, "DeletedText") && !marks_written => {
+                if marks_same {
+                    out.push_str("  ");
+                    out.push_str(xml);
+                    out.push('\n');
+                } else {
+                    let root = tags(xml).into_iter().next().map(|(_, a)| a).unwrap_or_default();
+                    write_deletions(&root, &marks, &mut out);
+                }
+                marks_written = true;
             }
             FdxSection::Raw(xml) if section_is(xml, "LockedPages") && !locks_written => {
                 if locks_same {
@@ -626,6 +640,9 @@ pub fn write_with_layout(script: &Script, layout: &Layout) -> String {
     }
     if !locks_written && !locks.is_empty() {
         write_locked_pages(&[], &locks, &mut out);
+    }
+    if !marks_written && !marks.is_empty() {
+        write_deletions(&[], &marks, &mut out);
     }
     if !revisions_written && !script.revisions.is_empty() {
         write_revisions(&script.revisions, &mut out);
@@ -1083,6 +1100,38 @@ impl Importer {
         Ok(())
     }
 
+    /// Reads the `DeletedText` list onto the paragraphs its marks fall in.
+    fn place_deletions(&mut self) -> Result<(), CoreError> {
+        let Some(xml) = self.document.sections.iter().find_map(|s| match s {
+            FdxSection::Raw(xml) if section_is(xml, "DeletedText") => Some(xml.clone()),
+            _ => None,
+        }) else {
+            return Ok(());
+        };
+        let starts: Vec<(usize, u32)> = self.starts.iter().enumerate().filter_map(|(i, s)| s.map(|s| (i, s))).collect();
+        let entries: Vec<Vec<(String, String)>> =
+            tags(&xml).into_iter().skip(1).filter(|(name, _)| name == "DeletedTextLocation").map(|(_, a)| a).collect();
+        if entries.len() > MAX_ELEMENTS {
+            return Err(CoreError::TooManyElements);
+        }
+        for attributes in entries {
+            let (Some(offset), Some(set)) = (number(get(&attributes, "Offset")), number(get(&attributes, "RevisionID"))) else { continue };
+            let after = starts.partition_point(|(_, s)| *s <= offset);
+            let Some(&(index, start)) = starts.get(after.saturating_sub(1)) else { continue };
+            let deletion = Deletion { at: offset.saturating_sub(start), set };
+            self.document.deletions.push((offset, deletion));
+            if let Some(element) = self.elements.get_mut(index) {
+                element.deletions.push(deletion);
+            }
+        }
+        self.document.deletions.sort_by_key(|(offset, d)| (*offset, d.set));
+        // In one order everywhere, whatever order the file listed two sets at one place in.
+        for element in &mut self.elements {
+            element.deletions.sort_by_key(|d| (d.at, d.set));
+        }
+        Ok(())
+    }
+
     /// Reads the top-level note lists onto the paragraphs they belong to.
     fn place_listed_notes(&mut self) -> Result<(), CoreError> {
         let mut ranged = Vec::new();
@@ -1138,6 +1187,7 @@ impl Importer {
         });
         self.document.revisions = revisions.clone();
         self.place_locked_pages()?;
+        self.place_deletions()?;
         apply_hidden_types(&mut self.elements, &self.document.sections);
         let title_page = self
             .document
@@ -1900,6 +1950,34 @@ pub(crate) fn replace_child(xml: &str, child: &str, fresh: &str) -> String {
 // Locked pages
 
 /// Every page start with its `Position` in the script, in order.
+/// Every deletion mark with its place in the whole script, in order.
+fn deletions(elements: &[Element]) -> Vec<(u32, Deletion)> {
+    let mut out: Vec<(u32, Deletion)> = elements
+        .iter()
+        .zip(text_starts(elements))
+        .filter_map(|(element, start)| start.map(|start| element.deletions.iter().map(move |d| (start.saturating_add(d.at), *d))))
+        .flatten()
+        .collect();
+    out.sort_by_key(|(offset, d)| (*offset, d.set));
+    out
+}
+
+fn write_deletions(root: &[(String, String)], marks: &[(u32, Deletion)], out: &mut String) {
+    out.push_str("  <DeletedText");
+    for (key, value) in root {
+        write_attr(key, value, out);
+    }
+    if marks.is_empty() {
+        out.push_str("/>\n");
+        return;
+    }
+    out.push_str(">\n");
+    for (offset, deletion) in marks {
+        out.push_str(&format!("    <DeletedTextLocation Offset=\"{offset}\" RevisionID=\"{}\"/>\n", deletion.set));
+    }
+    out.push_str("  </DeletedText>\n");
+}
+
 fn locked_pages(elements: &[Element]) -> Vec<(u32, &PageStart)> {
     let mut out: Vec<(u32, &PageStart)> = elements
         .iter()

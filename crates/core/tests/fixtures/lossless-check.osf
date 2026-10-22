@@ -14,6 +14,7 @@
     </para>
     <para scene_number="4A" page_number="1" note="Which set?">
       <style basestylename="Scene Heading"/>
+      <method_storyteller_deletion at="22" set="1"/>
       <method_storyteller_note text="Which set?" range="18,23" color="#00FF00" author="A. Writer"/>
       <text>INT. RADIO ROOM - NIGHT</text>
     </para>

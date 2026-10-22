@@ -346,6 +346,9 @@ pub struct Element {
     /// Revised text: spans of the printed text marked with a revision set (see [`Revised`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub revised: Vec<Revised>,
+    /// Places where revised text was taken out: the margin marks them, the text is gone.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub deletions: Vec<Deletion>,
     /// Locked pages that start in this paragraph (see [`PageStart`]). A script whose pages are
     /// locked has one for every page.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -436,6 +439,13 @@ pub struct PageStart {
     /// Final Draft `LockedPage` attributes the model does not use, every one in file order.
     #[serde(skip)]
     pub fdx_attributes: Vec<(String, String)>,
+}
+
+/// Where text was deleted in a revision: a printed-character position and its set.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Deletion {
+    pub at: u32,
+    pub set: u32,
 }
 
 /// Text marked as changed in a revision.
@@ -713,6 +723,9 @@ pub struct FdxDocument {
     /// The `LockedPages` list as read, each page with its `Position` in the script. Written back
     /// as it was while the script's page starts are the same.
     pub locked_pages: Vec<(u32, PageStart)>,
+    /// The `DeletedText` list as read, each mark with its `Offset` in the script. Written back
+    /// as it was while the script's deletion marks are the same.
+    pub deletions: Vec<(u32, Deletion)>,
     /// The page layout and element settings as read; their sections are written back as they
     /// were while they are the same.
     pub format: Option<crate::format::Format>,
@@ -751,6 +764,7 @@ impl Element {
             boneyard: Vec::new(),
             scene: SceneMeta::default(),
             omitted: None,
+            deletions: Vec::new(),
         };
         if kind == ElementKind::Section {
             element.level = 1;
@@ -831,6 +845,9 @@ impl Element {
             span.to = edit.end(span.to);
         }
         self.revised.retain(|r| r.to > r.from);
+        for deletion in &mut self.deletions {
+            deletion.at = edit.start(deletion.at);
+        }
         for page in &mut self.page_starts {
             page.at = edit.start(page.at);
         }
@@ -840,6 +857,60 @@ impl Element {
                     Some(if from == to { (edit.start(from), edit.start(from)) } else { (edit.start(from), edit.end(to).max(edit.start(from))) });
             }
         }
+    }
+
+    /// Replaces the text as [`Element::set_text`] does and, with a revision set, marks the
+    /// change in it: new or changed characters become revised in `set`, and text only taken
+    /// out leaves a deletion mark where it was (revision mode, docs/production-spec.md §3.4).
+    pub fn set_text_revised(&mut self, text: impl Into<String>, set: Option<u32>) {
+        let old = crate::inline::plain(&self.text);
+        self.set_text(text);
+        let Some(set) = set.filter(|s| *s != 0) else { return };
+        let new = crate::inline::plain(&self.text);
+        if old == new {
+            return;
+        }
+        let edit = Edit::between(&old, &new);
+        if edit.new_tail > edit.prefix {
+            self.mark_range(edit.prefix, edit.new_tail, Some(set));
+        } else if edit.old_tail > edit.prefix && !self.deletions.iter().any(|d| d.at == edit.prefix && d.set == set) {
+            self.deletions.push(Deletion { at: edit.prefix, set });
+            self.deletions.sort_by_key(|d| (d.at, d.set));
+        }
+    }
+
+    /// Marks printed characters `from..to` as revised in `set` (any other set's mark there
+    /// gives way), or clears every mark there, deletion marks included, with `None`.
+    pub fn mark_range(&mut self, from: u32, to: u32, set: Option<u32>) {
+        if to <= from {
+            return;
+        }
+        let mut spans = Vec::new();
+        for span in self.revised.drain(..) {
+            if span.to <= from || span.from >= to {
+                spans.push(span);
+                continue;
+            }
+            if span.from < from {
+                spans.push(Revised { to: from, ..span });
+            }
+            if span.to > to {
+                spans.push(Revised { from: to, ..span });
+            }
+        }
+        match set {
+            Some(set) => spans.push(Revised { from, to, set }),
+            None => self.deletions.retain(|d| d.at < from || d.at > to),
+        }
+        spans.sort_by_key(|r| (r.from, r.to));
+        let mut merged: Vec<Revised> = Vec::new();
+        for span in spans {
+            match merged.last_mut() {
+                Some(last) if last.set == span.set && last.to >= span.from => last.to = last.to.max(span.to),
+                _ => merged.push(span),
+            }
+        }
+        self.revised = merged;
     }
 
     /// Moves everything anchored at or after printed character `at` to `into` (the paragraph an
@@ -855,6 +926,9 @@ impl Element {
             }
         }
         self.revised = kept;
+        let (stay, go): (Vec<Deletion>, Vec<Deletion>) = self.deletions.drain(..).partition(|d| d.at <= at);
+        self.deletions = stay;
+        into.deletions.extend(go.into_iter().map(|d| Deletion { at: d.at - at, ..d }));
         let (stay, go): (Vec<ScriptNote>, Vec<ScriptNote>) = self.notes.drain(..).partition(|n| n.range.is_none_or(|(from, _)| from < at));
         self.notes = stay;
 
@@ -873,6 +947,7 @@ impl Element {
         for span in other.revised.drain(..) {
             mark_revised(&mut self.revised, at.saturating_add(span.from), span.to.saturating_sub(span.from), span.set);
         }
+        self.deletions.extend(other.deletions.drain(..).map(|d| Deletion { at: at.saturating_add(d.at), ..d }));
         self.page_starts.extend(other.page_starts.drain(..).map(|p| PageStart { at: at.saturating_add(p.at), ..p }));
         self.notes.extend(other.notes.drain(..).map(|mut n| {
             n.range = Some(n.range.map_or((at, at), |(from, to)| (at.saturating_add(from), at.saturating_add(to))));

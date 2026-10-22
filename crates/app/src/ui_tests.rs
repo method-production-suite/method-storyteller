@@ -765,3 +765,19 @@ fn the_revisions_window_adds_the_next_set() {
     assert_eq!(sets.iter().map(|s| s.name.split(' ').next().unwrap_or_default().to_string()).collect::<Vec<_>>(), ["White", "Blue"]);
     assert_eq!(harness.state().session.script.revisions.active, sets.last().map(|s| s.id));
 }
+
+#[test]
+fn revision_mode_is_a_menu_toggle_and_mark_revised_marks_the_paragraph() {
+    let (mut harness, _file) = harness(SCRIPT);
+    harness.state_mut().queued.push("revisions.mode".into());
+    harness.run_steps(3);
+    assert_eq!(harness.state().checked("revisions.mode"), Some(true));
+    harness.state_mut().editor.pending_focus = Some((1, 0));
+    harness.run_steps(3);
+    harness.state_mut().queued.push("app.mark_revised".into());
+    harness.run_steps(3);
+    assert!(!harness.state().session.script.elements[1].revised.is_empty(), "the paragraph is marked");
+    harness.state_mut().queued.push("app.clear_revised".into());
+    harness.run_steps(3);
+    assert!(harness.state().session.script.elements[1].revised.is_empty());
+}

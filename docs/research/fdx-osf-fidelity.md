@@ -42,6 +42,7 @@ named factually here; how other apps behave is not described.
 | Script notes: text, range, colour, author, all three `.fdx` forms | exact | OSF `note` (plain) plus `method_storyteller_note`; ranges count printed characters, one per paragraph break |
 | Revision sets: name, mark, mark colour, page colour, active set | exact | `Revisions` and `revision_colors`, `settings@revision`; colours OSF has no place for ride on `method_storyteller_` attributes |
 | Revised text | exact | `Text@RevisionID` and `text@revision` |
+| Deleted-text marks | exact | `DeletedText` (`Offset` counts like note ranges) and our `method_storyteller_deletion`; OSF's own `marks` are kept as read |
 | Locked pages and A-pages | exact | `LockedPages` (`Position` counts like note ranges) and `pages_locked` with `para@page_number`; a page starting inside a paragraph carries `method_storyteller_page` |
 | Element settings: font, size, styles, alignment, indents, space before, line spacing, page break, Enter and Tab | exact | `ElementSettings` and `styles`, in thousandths of an inch |
 | Page size, top and bottom margins, (MORE), (CONT'D), automatic continueds | exact | `PageLayout`, `MoresAndContinueds` and `settings` |
@@ -52,14 +53,13 @@ named factually here; how other apps behave is not described.
 | Lengths from OSF written to `.fdx` | approximated | can need up to six decimals of an inch (`7.248031`) to come back exact; to confirm in the final check |
 | Note body formatting | approximated | fonts and indents on a note's own text survive `.fdx` to `.fdx`; through OSF the text is rewritten plain |
 | Tab before and after | approximated | OSF has both, `.fdx` one: `style_tab_after` is `TabKey`, `style_tab_before` rides along |
+| Omitted scenes | approximated | the heading, its number and the scene it keeps go both ways (`StorytellerOmitted`, `method_storyteller_omitted`); a file's own `OmittedScene` wrapper stays in `.fdx` |
 | OSF page margins, keep-with-next, header and footer styles | cannot map | `.fdx` has no place: they ride along in `StorytellerOsf` and come back to OSF |
 | `.fdx` shortcuts, outline levels, hidden text, scene CONTINUEDs, header margins | cannot map | OSF has no place: they ride along in `fdx_xml`, `fdx_page_layout`, `fdx_mores` and come back to `.fdx` |
-| Deleted-text marks | cannot map | `DeletedText` and OSF `marks` are kept in their own format; converting them waits for M5's revision mode |
 | Ranges spell check ignores | cannot map | `.fdx` `IgnoredRanges` are character spans OSF has no place for; kept in `.fdx` |
 | Run fonts, colours and highlights | cannot map | not kept yet in either format |
 | Beat Board, cast, tags, SmartType lists, header and footer, scene number options, spelling lists | cannot map | kept in the format they came in; not converted (OSF lists and spelling likewise) |
 | Scene page and length | cannot map | `.fdx` caches them and OSF does not; written from our pagination on every `.fdx` save |
-| Omitted scenes | cannot map | the `.fdx` `OmittedScene` wrapper is kept in `.fdx`; OSF has no omitted flag, so only the heading text goes |
 <!-- table:end -->
 
 ## Evidence
