@@ -859,3 +859,25 @@ fn revision_sets_are_added_changed_and_deleted_one_undo_each() {
     assert_eq!(s.script.revisions.sets.len(), 2, "one Undo brings it back");
     assert!(registry.run("revisions.delete", &mut s, &serde_json::from_value(json!({ "id": 99 })).unwrap()).is_err());
 }
+
+#[test]
+fn revision_mode_marks_typing_and_mark_and_clear_act_on_a_range() {
+    let registry = Registry::new();
+    let mut s = Session::new(storyteller_core::fountain::parse("INT. HUT - DAY\n\nRain **falls**.\n").unwrap());
+    let out = run(&registry, &mut s, "revisions.mode", json!({}));
+    assert!(s.revision_mode);
+    assert_eq!(s.script.revisions.sets.len(), 1, "a first set, so there is somewhere to mark");
+    assert!(out["message"].as_str().unwrap_or_default().starts_with("Revision mode: changes are marked in White Revision"));
+    let white = s.script.revisions.active.unwrap();
+    run(&registry, &mut s, "element.set_text", json!({ "index": 1, "text": "Rain **falls** hard.", "typing": true }));
+    assert_eq!(s.script.elements[1].revised, [storyteller_core::Revised { from: 10, to: 15, set: white }]);
+    run(&registry, &mut s, "revisions.mode", json!({ "on": false }));
+    run(&registry, &mut s, "revisions.clear", json!({ "index": 1 }));
+    assert!(s.script.elements[1].revised.is_empty(), "the whole paragraph");
+    // Byte offsets in the markup; the printed characters "falls" are marked.
+    let start = "Rain **".len();
+    run(&registry, &mut s, "revisions.mark", json!({ "index": 1, "start": start, "end": start + 5 }));
+    assert_eq!(s.script.elements[1].revised, [storyteller_core::Revised { from: 5, to: 10, set: white }]);
+    run(&registry, &mut s, "edit.undo", json!({}));
+    assert!(s.script.elements[1].revised.is_empty());
+}

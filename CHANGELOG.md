@@ -7,6 +7,10 @@ for its own version in Help > What's New, once after an update.
 
 ### New
 
+- Production > Revision Mode (⌘⇧R): what you change is marked in the active revision set, and
+  text you take out leaves a mark where it was. Production > Mark Revised (⌘]) and Clear
+  Revised (⌘[) act on the selection or the paragraph.
+
 - Production > Revisions… lists the revision sets: add the next in the standard colours (White,
   Blue, Pink …), rename them, change their mark, choose the active one, delete one (its marks
   move to the set before).

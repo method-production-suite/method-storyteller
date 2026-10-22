@@ -18,7 +18,7 @@ pub mod wrap;
 
 pub use format::{ElementFormat, Format, PageFormat};
 pub use model::{
-    ArchiveEntry, Element, ElementKind, FdxDocument, FdxNote, FdxNoteForm, FdxParagraph, FdxSection, OsfDocument, OsfParagraph, OsfSection,
+    ArchiveEntry, Deletion, Element, ElementKind, FdxDocument, FdxNote, FdxNoteForm, FdxParagraph, FdxSection, OsfDocument, OsfParagraph, OsfSection,
     PageStart, Revised, RevisionSet, Revisions, Script, ScriptNote, TitlePage,
 };
 

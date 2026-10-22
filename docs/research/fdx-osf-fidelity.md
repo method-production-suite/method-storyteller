@@ -54,7 +54,7 @@ named factually here; how other apps behave is not described.
 | Tab before and after | approximated | OSF has both, `.fdx` one: `style_tab_after` is `TabKey`, `style_tab_before` rides along |
 | OSF page margins, keep-with-next, header and footer styles | cannot map | `.fdx` has no place: they ride along in `StorytellerOsf` and come back to OSF |
 | `.fdx` shortcuts, outline levels, hidden text, scene CONTINUEDs, header margins | cannot map | OSF has no place: they ride along in `fdx_xml`, `fdx_page_layout`, `fdx_mores` and come back to `.fdx` |
-| Deleted-text marks | cannot map | `DeletedText` and OSF `marks` are kept in their own format; converting them waits for M5's revision mode |
+| Deleted-text marks | exact | `.fdx` `DeletedText` places each mark in its paragraph; OSF carries them as `<method_storyteller_deletion at set/>`. OSF's own `marks`, when a file has them, are kept as read |
 | Ranges spell check ignores | cannot map | `.fdx` `IgnoredRanges` are character spans OSF has no place for; kept in `.fdx` |
 | Run fonts, colours and highlights | cannot map | not kept yet in either format |
 | Beat Board, cast, tags, SmartType lists, header and footer, scene number options, spelling lists | cannot map | kept in the format they came in; not converted (OSF lists and spelling likewise) |

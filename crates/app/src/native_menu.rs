@@ -51,6 +51,8 @@ pub fn accelerator(text: &str) -> Option<Accelerator> {
             "Equals" => code = Some(Code::Equal),
             "Minus" => code = Some(Code::Minus),
             "Semicolon" => code = Some(Code::Semicolon),
+            "OpenBracket" => code = Some(Code::BracketLeft),
+            "CloseBracket" => code = Some(Code::BracketRight),
             key => {
                 let mut chars = key.chars();
                 let (Some(c), None) = (chars.next(), chars.next()) else { return None };
@@ -247,6 +249,7 @@ mod tests {
         assert_eq!(accelerator("Cmd+Shift+S"), Some(Accelerator::new(Modifiers::META | Modifiers::SHIFT, Code::KeyS)));
         assert_eq!(accelerator("Cmd+1"), Some(Accelerator::new(Modifiers::META, Code::Digit1)));
         assert_eq!(accelerator("Cmd+Equals"), Some(Accelerator::new(Modifiers::META, Code::Equal)));
+        assert_eq!(accelerator("Cmd+CloseBracket"), Some(Accelerator::new(Modifiers::META, Code::BracketRight)));
         assert_eq!(accelerator("Enter"), None);
     }
 }

@@ -115,6 +115,17 @@ the active set:
 Production > Mark Revised and Clear Revised act on the selection (a selection across
 paragraphs comes with the rest of M4).
 
+Built (M5 item 4): `revisions.mode` (⌘⇧R; turning it on with no set adds White first),
+`revisions.mark` and `revisions.clear` (byte offsets in the markup, or the whole paragraph;
+⌘] and ⌘[ on the selection). Typing, Change Type, Replace All and Rename Character mark in the
+active set; a change inside another set's span takes those characters over; text only taken
+out leaves a deletion mark (`Element::deletions`). Marks follow their text through every edit,
+an Enter split and a Backspace join. `.fdx` reads and writes the `DeletedText` list
+(`DeletedTextLocation Offset RevisionID`, offsets in the whole script, as read while
+unchanged); OSF carries them as `<method_storyteller_deletion at set/>`. The corpus keeps all
+19,525 deletion marks through `.fdx` to OSF to `.fdx`. Not yet: marking a new paragraph from
+Enter or a paste, the join itself, and keeping revision mode on in the file.
+
 *Decision S2, shortcuts.* ⌘] and ⌘[ are the familiar keys for Mark and Clear Revised. Built on
 the recommendation: use them, since nothing in the app takes them.
 

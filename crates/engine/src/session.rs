@@ -50,6 +50,8 @@ pub struct Session {
     lengths: Option<Vec<SceneLength>>,
     /// The writer's learned words (see [`crate::spell::Personal`]); the app fills them from its settings.
     pub spelling: crate::spell::Personal,
+    /// Revision mode: every change is marked in the active revision set (docs/production-spec.md §3.4).
+    pub revision_mode: bool,
 }
 
 impl Default for Session {
@@ -79,6 +81,7 @@ impl Session {
             paginated: None,
             lengths: None,
             spelling: crate::spell::Personal::default(),
+            revision_mode: false,
         }
     }
 
@@ -179,6 +182,11 @@ impl Session {
             self.lengths = self.paginated.as_ref().map(|paginated| scene_lengths(script, paginated, layout));
         }
         self.lengths.as_deref().unwrap_or_default()
+    }
+
+    /// The set a change is marked in now: the active one, in revision mode.
+    pub fn marking_set(&self) -> Option<u32> {
+        if self.revision_mode { self.script.revisions.active } else { None }
     }
 
     /// How many edits the session has recorded (see [`Session::checkpoint`]).

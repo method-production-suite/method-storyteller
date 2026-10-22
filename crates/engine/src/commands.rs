@@ -417,8 +417,9 @@ pub fn set_text(session: &mut Session, index: usize, text: &str, typing: bool) -
     // however many keys arrive at once.
     let becomes_heading = typing && element.kind == ElementKind::Action && flow::becomes_heading(&element.text, &text);
     session.checkpoint(if typing { EditKind::Typing(index) } else { EditKind::Other });
+    let mark = session.marking_set();
     if let Some(element) = session.script.elements.get_mut(index) {
-        element.set_text(text);
+        element.set_text_revised(text, mark);
     }
     if becomes_heading {
         // Its own undo step, so one Undo turns it back into the action just typed.
@@ -441,9 +442,10 @@ fn set_kind(session: &mut Session, index: usize, to: ElementKind) -> Result<(), 
     }
     let (text, shift) = flow::convert_text(&element.text, from, to);
     session.checkpoint(EditKind::Other);
+    let mark = session.marking_set();
     if let Some(element) = session.script.elements.get_mut(index) {
         element.kind = to;
-        element.set_text(text);
+        element.set_text_revised(text, mark);
         element.normalize();
     }
     if session.caret.element == index {
@@ -474,6 +476,36 @@ pub fn scene_range(script: &Script, index: usize) -> std::ops::Range<usize> {
         .position(|e| e.kind == ElementKind::SceneHeading)
         .map_or(elements.len(), |n| start + 1 + n);
     start..end
+}
+
+/// Mark Revised (`mark`) or Clear Revised: the printed text between two byte offsets of an
+/// element's source, or all of it.
+fn mark_range(s: &mut Session, p: &Params, mark: bool) -> Result<Outcome, CommandError> {
+    let index = element_index(s, p)?;
+    let set = if mark {
+        Some(
+            s.script
+                .revisions
+                .active
+                .ok_or_else(|| CommandError::Invalid { name: "index", reason: "add a revision set first (Production > Revisions…)".into() })?,
+        )
+    } else {
+        None
+    };
+    let text = s.script.elements.get(index).map(|e| e.text.clone()).unwrap_or_default();
+    let (start, end) = (opt_index(p, "start")?.unwrap_or(0), opt_index(p, "end")?.unwrap_or(text.len()));
+    let printed = |byte: usize| u32::try_from(inline::printed_before(&text, byte.min(text.len()))).unwrap_or(u32::MAX);
+    let (from, to) = (printed(start.min(end)), printed(end.max(start)));
+    let mut changed = s.script.clone();
+    if let Some(element) = changed.elements.get_mut(index) {
+        element.mark_range(from, to, set);
+    }
+    if changed.elements.get(index) == s.script.elements.get(index) {
+        return Ok(Outcome::done());
+    }
+    s.checkpoint(EditKind::Other);
+    s.script = changed;
+    Ok(Outcome::done())
 }
 
 /// A revision set's id from the `id` parameter.
@@ -1075,9 +1107,10 @@ fn all_commands() -> Vec<Command> {
                 }
                 // One undo step for the lot.
                 s.checkpoint(EditKind::Other);
+                let mark = s.marking_set();
                 for (index, text) in changed {
                     if let Some(element) = s.script.elements.get_mut(index) {
-                        element.set_text(text);
+                        element.set_text_revised(text, mark);
                     }
                 }
                 s.clamp_caret();
@@ -1130,6 +1163,7 @@ fn all_commands() -> Vec<Command> {
                 let mention = find::Query { text: from.clone(), case: false, whole_word: true, kind: None };
                 // One undo step for every cue and mention.
                 s.checkpoint(EditKind::Other);
+                let mark = s.marking_set();
                 let (mut cues, mut mentions) = (0, 0);
                 for element in &mut s.script.elements {
                     if is_cue(element) {
@@ -1137,7 +1171,7 @@ fn all_commands() -> Vec<Command> {
                         let name_len = element.character_name().len();
                         let start = element.text.len() - element.text.trim_start().len();
                         let rest = element.text.get(start + name_len..).unwrap_or("").to_string();
-                        element.set_text(format!("{new_name}{rest}"));
+                        element.set_text_revised(format!("{new_name}{rest}"), mark);
                         cues += 1;
                     } else if everywhere && element.kind != ElementKind::Character {
                         // Names in prose are capitalised, so `will` is not WILL and `may` is not MAY.
@@ -1154,7 +1188,7 @@ fn all_commands() -> Vec<Command> {
                         if element.kind.is_caps() {
                             text = text.to_uppercase();
                         }
-                        element.set_text(text);
+                        element.set_text_revised(text, mark);
                         mentions += hits.len();
                     }
                 }
@@ -1756,6 +1790,55 @@ fn all_commands() -> Vec<Command> {
                 }
                 Ok(Outcome::done())
             },
+        },
+        Command {
+            id: "revisions.mode",
+            label: "Revision Mode",
+            menu: "Production/Revision Mode",
+            shortcut: Some("Cmd+Shift+R"),
+            params: const { &[param("on", Bool, false, "On or off (default: the other way)")] },
+            enabled: always,
+            run: |s, p| {
+                let on = opt_bool(p, "on")?.unwrap_or(!s.revision_mode);
+                if on && s.script.revisions.active.is_none() {
+                    // The first set, so changes have somewhere to be marked.
+                    s.checkpoint(EditKind::Other);
+                    s.script.add_revision_set(&today_short());
+                }
+                s.revision_mode = on;
+                let set = s.script.revisions.active.and_then(|id| s.script.revisions.set(id)).map(|set| set.name.clone()).unwrap_or_default();
+                Ok(Outcome::message(if on { format!("Revision mode: changes are marked in {set}") } else { "Revision mode is off".to_string() }))
+            },
+        },
+        Command {
+            id: "revisions.mark",
+            label: "Mark Revised",
+            menu: "",
+            shortcut: None,
+            params: const {
+                &[
+                    INDEX,
+                    param("start", Integer, false, "Byte offset where the text starts (default: the whole paragraph)"),
+                    param("end", Integer, false, "Byte offset where it ends"),
+                ]
+            },
+            enabled: always,
+            run: |s, p| mark_range(s, p, true),
+        },
+        Command {
+            id: "revisions.clear",
+            label: "Clear Revised",
+            menu: "",
+            shortcut: None,
+            params: const {
+                &[
+                    INDEX,
+                    param("start", Integer, false, "Byte offset where the text starts (default: the whole paragraph)"),
+                    param("end", Integer, false, "Byte offset where it ends"),
+                ]
+            },
+            enabled: always,
+            run: |s, p| mark_range(s, p, false),
         },
         Command {
             id: "scene.omit",

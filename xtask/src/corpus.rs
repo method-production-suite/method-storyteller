@@ -36,6 +36,7 @@ struct FileResult {
     notes: (usize, usize),
     /// Revised spans: (read, the same after `.fdx` to OSF to `.fdx`), and whether the revision sets were.
     revised: (usize, usize),
+    deletions: (usize, usize),
     sets_kept: Option<bool>,
     /// Locked pages: (read, the same after `.fdx` to OSF to `.fdx`), and scene headings whose
     /// recorded page matches the locked page they sit on: (headings, matching).
@@ -76,11 +77,12 @@ fn locks(script: &Script) -> Vec<String> {
 }
 
 /// Revised spans of every paragraph, after writing and reading `.fdx` again.
-fn revised(script: &Script) -> (Vec<String>, String) {
+fn revised(script: &Script) -> (Vec<String>, Vec<String>, String) {
     let reread = fdx::parse(&fdx::write(script)).unwrap_or_default();
     let spans = reread.elements.iter().enumerate().flat_map(|(i, e)| e.revised.iter().map(move |r| format!("{i} {r:?}"))).collect();
+    let deletions = reread.elements.iter().enumerate().flat_map(|(i, e)| e.deletions.iter().map(move |d| format!("{i} {d:?}"))).collect();
     let sets = format!("{:?} {:?}", reread.revisions, reread.revisions.sets.iter().map(|s| &s.fdx_attributes).collect::<Vec<_>>());
-    (spans, sets)
+    (spans, deletions, sets)
 }
 
 /// Every note with what it covers and the Final Draft attributes it is written with.
@@ -157,10 +159,12 @@ fn measure(fdx_path: &Path, pdf: Option<&Path>) -> Result<FileResult, String> {
     result.format_kept = bare_format(&via_osf) == bare_format(&script) && bare_format(&back) == bare_format(&script);
     let layout = Layout::for_script(&script);
     result.layout_kept = Layout::for_script(&via_osf) == layout && Layout::for_script(&back) == layout;
-    let (spans, sets) = revised(&script);
-    if !spans.is_empty() || !script.revisions.is_empty() {
-        let (after, after_sets) = osf::parse(&osf::write(&script)).map(|s| revised(&s)).unwrap_or_default();
+    let (spans, marks, sets) = revised(&script);
+    if !spans.is_empty() || !marks.is_empty() || !script.revisions.is_empty() {
+        let (after, after_marks, after_sets) = osf::parse(&osf::write(&script)).map(|s| revised(&s)).unwrap_or_default();
         result.revised = (spans.len(), spans.iter().zip(&after).filter(|(a, b)| a == b).count());
+        result.deletions =
+            (marks.len(), if marks == after_marks { marks.len() } else { marks.iter().zip(&after_marks).filter(|(a, b)| a == b).count() });
         result.sets_kept = Some(sets == after_sets);
     }
     if script.pages_locked() {
@@ -251,6 +255,7 @@ pub fn run(root: &Path) -> Result<(), String> {
     let mut lengths = (0usize, 0usize);
     let mut notes = (0usize, 0usize);
     let (mut revised, mut sets) = ((0usize, 0usize), (0usize, 0usize));
+    let mut deleted = (0usize, 0usize);
     let (mut locked, mut lock_pages, mut locked_files) = ((0usize, 0usize), (0usize, 0usize), 0usize);
     let (mut formats, mut layouts) = (0usize, 0usize);
     let mut ignored = (0usize, 0usize);
@@ -273,6 +278,8 @@ pub fn run(root: &Path) -> Result<(), String> {
                 notes.1 += r.notes.1;
                 revised.0 += r.revised.0;
                 revised.1 += r.revised.1;
+                deleted.0 += r.deletions.0;
+                deleted.1 += r.deletions.1;
                 formats += usize::from(r.format_kept);
                 ignored.0 += r.ignored.0;
                 ignored.1 += r.ignored.1;
@@ -321,8 +328,8 @@ pub fn run(root: &Path) -> Result<(), String> {
         locked.0, locked.1, lock_pages.1, lock_pages.0
     );
     println!(
-        "revisions: {} revised spans read, {} the same after .fdx to OSF to .fdx; revision sets the same in {}/{} files",
-        revised.0, revised.1, sets.1, sets.0
+        "revisions: {} revised spans read, {} the same after .fdx to OSF to .fdx; {} deletion marks read, {} the same; revision sets the same in {}/{} files",
+        revised.0, revised.1, deleted.0, deleted.1, sets.1, sets.0
     );
     println!(
         "corpus: {files} files, {failed} failed to import, {round_trips} round-trip identically; scenes exact {exact}/{scenes} ({}), files scene-exact {all_exact_files}, max drift {max_drift} pages; scene lengths exact {}/{} ({}); page count matches PDF {page_matches}/{with_pdf}",

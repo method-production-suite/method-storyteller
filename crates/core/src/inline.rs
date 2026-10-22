@@ -381,6 +381,12 @@ fn printed(source: &str) -> Vec<(usize, usize, Style)> {
     out
 }
 
+/// How many printed characters come before byte `byte` of `source` (markup and notes don't
+/// count): the place a selection in the editor is in the printed text revisions refer to.
+pub fn printed_before(source: &str, byte: usize) -> usize {
+    printed(source).iter().filter(|&&(start, _, _)| start < byte).count()
+}
+
 /// A style the Format menu turns on and off.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StyleKind {
