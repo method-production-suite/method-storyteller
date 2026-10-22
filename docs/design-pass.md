@@ -38,6 +38,7 @@ in light and dark:
 | `open-recent` | The window menu's File > Open Recent (Windows and Linux) |
 | `spelling` | Edit > Spelling… with suggestions |
 | `picker` | The element picker on an empty line |
+| `revised-page` | A Pink revised page: coloured paper, revised text, margin marks, the header label (in the gallery) |
 
 ### 2. Colours the app names itself
 

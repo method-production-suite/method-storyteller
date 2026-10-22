@@ -39,7 +39,7 @@ const GO_TO_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Alt+G" } else { "Cmd
 const FIND_NEXT_KEY: &str = if cfg!(target_os = "macos") { "Cmd+G" } else { "F3" };
 const FIND_PREVIOUS_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Shift+G" } else { "Shift+F3" };
 
-const APP_COMMANDS: [AppCommand; 43] = [
+const APP_COMMANDS: [AppCommand; 46] = [
     AppCommand { id: "app.close", label: "Close", menu: "File/Close", shortcut: Some("Cmd+W") },
     AppCommand { id: "app.title_page", label: "Title Page…", menu: "File/Title Page…", shortcut: Some("Cmd+Shift+T") },
     AppCommand {
@@ -82,6 +82,9 @@ const APP_COMMANDS: [AppCommand; 43] = [
     AppCommand { id: "app.underline", label: "Underline", menu: "Format/Underline", shortcut: Some("Cmd+U") },
     AppCommand { id: "view.navigator", label: "Scene Navigator", menu: "View/Scene Navigator", shortcut: Some("Cmd+Shift+N") },
     AppCommand { id: "view.page_view", label: "Page View", menu: "View/Page View", shortcut: Some("Cmd+Shift+P") },
+    AppCommand { id: "view.revisions_all", label: "Show All Revision Sets", menu: "View/Show All Revision Sets", shortcut: None },
+    AppCommand { id: "view.revisions_active", label: "Show Active Revision Set", menu: "View/Show Active Revision Set", shortcut: None },
+    AppCommand { id: "view.revisions_none", label: "Hide Revisions", menu: "View/Hide Revisions", shortcut: None },
     AppCommand { id: "view.zoom_in", label: "Zoom In", menu: "View/Zoom In", shortcut: Some("Cmd+Equals") },
     AppCommand { id: "view.zoom_out", label: "Zoom Out", menu: "View/Zoom Out", shortcut: Some("Cmd+Minus") },
     AppCommand { id: "view.zoom_reset", label: "Actual Size", menu: "View/Actual Size", shortcut: Some("Cmd+0") },
@@ -399,7 +402,7 @@ impl StorytellerApp {
         if help::record_version(&last_seen, help::VERSION) {
             app.prefs.update(|p| p.general.last_seen_version = help::VERSION.to_string());
         }
-        app.session.layout.show_scene_numbers = app.prefs.get().view.scene_numbers;
+        app.view_into_session();
         let ctx = cc.egui_ctx.clone();
         storyteller_macos_open::set_wake(move || ctx.request_repaint());
         // What to open (sample::launch_choice). The first launch retires the sample whatever
@@ -592,6 +595,19 @@ impl StorytellerApp {
                 self.run(id, Map::new());
                 let show = self.session.layout.show_scene_numbers;
                 self.prefs.update(|p| p.view.scene_numbers = show);
+            }
+            "view.page_colours" => {
+                self.run(id, Map::new());
+                let show = self.session.page_colours;
+                self.prefs.update(|p| p.view.page_colours = show);
+            }
+            "view.revisions_all" | "view.revisions_active" | "view.revisions_none" => {
+                let show = id.trim_start_matches("view.revisions_");
+                let mut params = Map::new();
+                params.insert("show".into(), json!(show));
+                self.run("view.show_revisions", params);
+                let show = self.session.show_revisions;
+                self.prefs.update(|p| p.view.revisions = show);
             }
             "edit.copy_scene" => self.copy_scene(ctx, None),
             // File > Close: the script closes and an empty one takes its place (decision 15).
@@ -843,9 +859,17 @@ impl StorytellerApp {
         self.after_open();
     }
 
+    /// The view settings a script is shown with, from the app's settings.
+    fn view_into_session(&mut self) {
+        let view = &self.prefs.get().view;
+        self.session.layout.show_scene_numbers = view.scene_numbers;
+        self.session.show_revisions = view.revisions;
+        self.session.page_colours = view.page_colours;
+    }
+
     fn after_open(&mut self) {
         self.recovery_name = self.fresh_recovery_name();
-        self.session.layout.show_scene_numbers = self.prefs.get().view.scene_numbers;
+        self.view_into_session();
         self.session.invalidate_layout();
         self.editor = EditorState::default();
         self.editor.pending_focus = Some((0, 0));
@@ -1231,6 +1255,10 @@ impl StorytellerApp {
             "view.navigator" => Some(self.prefs.get().view.navigator),
             "view.page_view" => Some(self.prefs.get().view.page_view),
             "view.scene_numbers" => Some(self.session.layout.show_scene_numbers),
+            "view.page_colours" => Some(self.session.page_colours),
+            "view.revisions_all" => Some(self.session.show_revisions == storyteller_core::model::ShowRevisions::All),
+            "view.revisions_active" => Some(self.session.show_revisions == storyteller_core::model::ShowRevisions::Active),
+            "view.revisions_none" => Some(self.session.show_revisions == storyteller_core::model::ShowRevisions::None),
             "prefs.new_mstory" => Some(self.preferred_extension() == "mstory"),
             "prefs.new_fountain" => Some(self.preferred_extension() == "fountain"),
             "prefs.new_osf" => Some(self.preferred_extension() == "osf"),

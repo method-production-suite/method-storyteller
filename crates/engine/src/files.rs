@@ -177,7 +177,9 @@ pub fn encode(script: &Script, format: FileFormat, layout: &Layout) -> Result<Ve
             let others = script.osf.as_ref().map(|d| d.archive_entries.as_slice()).unwrap_or_default();
             container::write_package(osf::write(script).as_bytes(), others).map_err(|source| FileError::Write { path: "package".into(), source })?
         }
-        FileFormat::Pdf => storyteller_pdf::export(script, layout, &storyteller_pdf::PdfOptions { creator: crate::app_version() })?,
+        FileFormat::Pdf => {
+            storyteller_pdf::export(script, layout, &storyteller_pdf::PdfOptions { creator: crate::app_version(), ..Default::default() })?
+        }
     })
 }
 
@@ -261,6 +263,13 @@ pub fn saved_message(verb: &str, path: &Path, script: &Script, format: FileForma
         _ if format == FileFormat::Fountain => format!("{verb} {}. Note: {}. Save as {other} to keep them.", path.display(), warnings.join("; ")),
         _ => format!("{verb} {}. Note: {}.", path.display(), warnings.join("; ")),
     }
+}
+
+/// Atomically write a PDF with its revision choices.
+pub fn save_pdf(script: &Script, path: &Path, layout: &Layout, options: &storyteller_pdf::PdfOptions) -> Result<(), FileError> {
+    let options = storyteller_pdf::PdfOptions { creator: crate::app_version(), ..options.clone() };
+    let bytes = storyteller_pdf::export(script, layout, &options)?;
+    craft_atomic::atomic_write(path, &bytes).map_err(|source| FileError::Write { path: path.display().to_string(), source })
 }
 
 /// Atomically write a script in a format.

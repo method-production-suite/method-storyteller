@@ -141,6 +141,20 @@ the recommendation: use them, since nothing in the app takes them.
   is on. PDFs stay white unless File > Export PDF… chooses **Coloured revised pages**, since
   productions print on coloured paper.
 
+Built (M5 item 5): every printed character carries its set through wrapping and page breaks
+(`wrap::revised_chars`), so each page line knows its marks (`PageLine::marks`) and each page
+the set it is issued in (`Page::revision`: the latest shown set with a mark on it). A deletion
+mark sits on the character before its place, so it marks the line the text was on. The PDF
+prints the mark at 7.75" and the label under the page number; `file.export_pdf` takes
+`revisions` (active, all, none; the view's choice when omitted) and `colour`. The editor
+draws revised text in the set's ink (its own colour where that reads on the page at 4.5:1,
+else a deep blue that reads on every page colour), marks at 7.75", labels and page colours.
+The menu has no submenus yet, so Show Revisions is three checked items: View > Show All
+Revision Sets, Show Active Revision Set and Hide Revisions, with View > Revised Page Colours
+(`view.show_revisions`, `view.page_colours`; kept in the app's settings). On a coloured page
+faint text (markup, hints) uses a deeper grey so it still reads. The Export PDF… choices
+come with 3.6.
+
 ### 3.6 Issuing pages
 
 File > Export PDF… gains:

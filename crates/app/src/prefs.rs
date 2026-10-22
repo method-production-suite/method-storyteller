@@ -91,11 +91,23 @@ pub struct View {
     pub page_view: bool,
     /// Underline misspelled words as the writer types.
     pub check_spelling: bool,
+    /// View > Show Revisions: the active set's, every set's, or none.
+    pub revisions: storyteller_core::model::ShowRevisions,
+    /// View > Revised Page Colours.
+    pub page_colours: bool,
 }
 
 impl Default for View {
     fn default() -> Self {
-        View { navigator: true, scene_numbers: true, zoom: 1.0, page_view: true, check_spelling: true }
+        View {
+            navigator: true,
+            scene_numbers: true,
+            zoom: 1.0,
+            page_view: true,
+            check_spelling: true,
+            revisions: storyteller_core::model::ShowRevisions::All,
+            page_colours: false,
+        }
     }
 }
 

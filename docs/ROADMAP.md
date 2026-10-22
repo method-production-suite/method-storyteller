@@ -152,7 +152,7 @@ says otherwise.
 - **v0.5.0, the security release:** the update checks' TLS fixes (RUSTSEC-2026-0382 and -0381),
   with the `.mstory` package, scene properties, US and UK spelling, recovery at launch, Close
   and Open Recent. Called 0.5.0, not 0.4.1, because a tag must be on main and main already
-  carries those features. Release PR to MReview, rehearsal, then the tag request.
+  carries those features. Published 2026-10-21 (tag `v0.5.0` on `0b861b8`).
 
 ### Deferred (the owner, 2026-10-20)
 
@@ -261,9 +261,9 @@ wait for a decision above.
 9. **M5, production I** L. Spec: [production-spec.md](production-spec.md), section 3, with its
    order of PRs. Done: scene numbering (letter inserts, start, from the caret, I and O, edit one
    number), omit and unomit, revision sets, revision mode with Mark and Clear Revised and
-   deletion marks. Next: left and right margins, revision sets (name, mark, colour), revision mode, mark and clear,
-   deleted-text markers, revisions drawn in the editor and the PDF, the revised-pages header,
-   revised-pages-only and range PDFs, clean copies. Kept in the `.mstory` package (decision 1).
+   deletion marks, revisions drawn in the editor and the PDF with the revised-page header and
+   page colours. Next: revised-pages-only and range PDFs, clean copies, left and right scene
+   number margins, marking new paragraphs and joins, revision mode kept in the file. Kept in the `.mstory` package (decision 1).
 10. **M6, production II and reports** L. Spec: [production-spec.md](production-spec.md),
    section 4. Locked pages as imported, then lock pages, A-pages, lock
    and unlock; scene, location, character and cast reports with CSV; plain-text export; the

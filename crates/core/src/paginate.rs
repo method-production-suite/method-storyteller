@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::inline::Run;
 use crate::layout::{Align, ElementStyle, Layout};
-use crate::model::{ElementKind, Script, TitlePage};
+use crate::model::{ElementKind, RevisionSet, Revisions, Script, ShowRevisions, TitlePage};
 use crate::wrap::{self, StyledChar};
 
 /// Hard cap on output pages, a guard against pathological layouts.
@@ -38,9 +38,19 @@ pub struct PageLine {
     /// Index of the element this line belongs to.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub element: Option<usize>,
+    /// Revision sets with revised text or a deletion mark on this line: the margin marks it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub marks: Vec<u32>,
 }
 
 impl PageLine {
+    fn new(row: u16, col: u16, chars: &[StyledChar], role: LineRole, element: Option<usize>) -> Self {
+        let mut marks: Vec<u32> = chars.iter().flat_map(|sc| sc.revised.into_iter().chain(sc.deleted)).collect();
+        marks.sort_unstable();
+        marks.dedup();
+        PageLine { row, col, runs: wrap::runs(chars), role, element, marks }
+    }
+
     pub fn text(&self) -> String {
         self.runs.iter().map(|run| run.text.as_str()).collect()
     }
@@ -51,6 +61,13 @@ pub struct Page {
     /// 1-based page number; 0 for the title page.
     pub number: u32,
     pub lines: Vec<PageLine>,
+}
+
+impl Page {
+    /// The set a revised page is issued in: the latest shown set with a mark on it.
+    pub fn revision<'a>(&self, revisions: &'a Revisions, show: ShowRevisions) -> Option<&'a RevisionSet> {
+        revisions.latest(self.lines.iter().flat_map(|line| &line.marks), show)
+    }
 }
 
 /// A scene heading's position in the paginated script.
@@ -270,7 +287,7 @@ fn block_for(script: &Script, index: usize, layout: &Layout, style: ElementStyle
         Some(fdx) => crate::fdx::paragraph_style(fdx, style),
         None => style,
     };
-    let mut source = wrap::styled_chars(&element.text, element.kind.is_caps() || style.caps);
+    let mut source = wrap::revised_chars(&element.text, element.kind.is_caps() || style.caps, &element.revised, &element.deletions);
     if layout.auto_contd && element.kind == ElementKind::Character && auto_contd_at(script, index) {
         source.extend(wrap::unstyled(&format!(" {}", layout.contd)));
     }
@@ -484,7 +501,7 @@ impl<'a> PageBuilder<'a> {
 
     fn push_line(&mut self, col: u16, chars: &[StyledChar], role: LineRole, element: Option<usize>, row_offset: u16) {
         let row = self.layout.body_top.saturating_add(self.used).saturating_add(row_offset);
-        self.lines.push(PageLine { row, col, runs: wrap::runs(chars), role, element });
+        self.lines.push(PageLine::new(row, col, chars, role, element));
     }
 
     fn place_block(&mut self, block: &Block, script: &Script, element_pages: &mut [u32], page: u32) {
@@ -520,13 +537,13 @@ impl<'a> PageBuilder<'a> {
         let cue_col = speech.cue.lines.first().map_or(speech.cue.style.left, |line| line.col);
         let role = if speech.contd { LineRole::Contd } else { LineRole::Element(ElementKind::Character) };
         if speech.contd && !cue.iter().map(|sc| sc.c).collect::<String>().contains(self.layout.contd.trim_matches(['(', ')'])) {
-            cue.push(StyledChar { c: ' ', style: Default::default() });
+            cue.push(StyledChar::new(' ', Default::default()));
             cue.extend(wrap::unstyled(&self.layout.contd));
         }
         if cue_above {
             // One row above the body, like Final Draft's continued cue.
             let line_row = self.layout.body_top.saturating_sub(1);
-            self.lines.push(PageLine { row: line_row, col: cue_col, runs: wrap::runs(&cue), role, element: Some(speech.cue.element) });
+            self.lines.push(PageLine::new(line_row, cue_col, &cue, role, Some(speech.cue.element)));
         } else {
             self.push_line(cue_col, &cue, role, Some(speech.cue.element), row);
             row += 1;
@@ -587,13 +604,7 @@ impl<'a> PageBuilder<'a> {
             let len = u16::try_from(label.len()).unwrap_or(u16::MAX);
             lines.insert(
                 0,
-                PageLine {
-                    row: self.layout.page_number_row,
-                    col: self.layout.page_number_right.saturating_sub(len),
-                    runs: wrap::runs(&label),
-                    role: LineRole::PageNumber,
-                    element: None,
-                },
+                PageLine::new(self.layout.page_number_row, self.layout.page_number_right.saturating_sub(len), &label, LineRole::PageNumber, None),
             );
         }
         lines.sort_by_key(|line| (line.row, line.col));
@@ -795,7 +806,7 @@ pub fn title_page(title: &TitlePage, layout: &Layout) -> Option<Page> {
     let centered = |value: Option<&str>, gap_after: u16, row: &mut u16, lines: &mut Vec<PageLine>| {
         let Some(value) = value.filter(|v| !v.trim().is_empty()) else { return };
         for line in layout_lines(&wrap::styled_chars(value, false), center, false) {
-            lines.push(PageLine { row: *row, col: line.col, runs: wrap::runs(&line.chars), role: LineRole::Title, element: None });
+            lines.push(PageLine::new(*row, line.col, &line.chars, LineRole::Title, None));
             *row = row.saturating_add(1);
         }
         *row = row.saturating_add(gap_after);
@@ -814,7 +825,7 @@ pub fn title_page(title: &TitlePage, layout: &Layout) -> Option<Page> {
     if !left_text.is_empty() {
         for (index, line) in left_lines.into_iter().enumerate() {
             let row = start.saturating_add(u16::try_from(index).unwrap_or(0));
-            lines.push(PageLine { row, col: line.col, runs: wrap::runs(&line.chars), role: LineRole::Title, element: None });
+            lines.push(PageLine::new(row, line.col, &line.chars, LineRole::Title, None));
         }
     }
     if let Some(date) = title.get("Draft date") {
@@ -823,7 +834,7 @@ pub fn title_page(title: &TitlePage, layout: &Layout) -> Option<Page> {
         let start = bottom.saturating_sub(u16::try_from(date_lines.len()).unwrap_or(0)).saturating_add(1);
         for (index, line) in date_lines.into_iter().enumerate() {
             let row = start.saturating_add(u16::try_from(index).unwrap_or(0));
-            lines.push(PageLine { row, col: line.col, runs: wrap::runs(&line.chars), role: LineRole::Title, element: None });
+            lines.push(PageLine::new(row, line.col, &line.chars, LineRole::Title, None));
         }
     }
     lines.sort_by_key(|line| (line.row, line.col));

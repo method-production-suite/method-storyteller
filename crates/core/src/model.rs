@@ -498,6 +498,34 @@ impl Revisions {
     pub fn set(&self, id: u32) -> Option<&RevisionSet> {
         self.sets.iter().find(|s| s.id == id)
     }
+
+    /// Of the sets `ids` that `show` shows, the latest (the last in [`Revisions::sets`]): the
+    /// one whose mark a line, or whose name and colour a page, carries.
+    pub fn latest<'a>(&self, ids: impl IntoIterator<Item = &'a u32>, show: ShowRevisions) -> Option<&RevisionSet> {
+        let ids: Vec<u32> = ids.into_iter().copied().collect();
+        self.sets.iter().rev().find(|set| ids.contains(&set.id) && show.shows(set.id, self.active))
+    }
+}
+
+/// Which revisions show, on screen and on the page (View > Show Revisions).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ShowRevisions {
+    /// The active set only.
+    Active,
+    #[default]
+    All,
+    None,
+}
+
+impl ShowRevisions {
+    pub fn shows(self, set: u32, active: Option<u32>) -> bool {
+        match self {
+            ShowRevisions::Active => active == Some(set),
+            ShowRevisions::All => true,
+            ShowRevisions::None => false,
+        }
+    }
 }
 
 /// The standard order of revision colours, with each page colour: the first round, then

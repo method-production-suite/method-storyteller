@@ -23,6 +23,9 @@ pub struct Run {
     /// A `[[note]]`: kept in the document, not printed.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub note: bool,
+    /// On a printed page: the revision set the text was changed in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revised: Option<u32>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -145,7 +148,7 @@ pub fn parse(source: &str) -> Vec<Run> {
             last.text.push_str(text);
             return;
         }
-        runs.push(Run { text: text.to_string(), style, note });
+        runs.push(Run { text: text.to_string(), style, note, revised: None });
     };
     for (index, token) in tokens.iter().enumerate() {
         match token {
@@ -381,6 +384,12 @@ fn printed(source: &str) -> Vec<(usize, usize, Style)> {
     out
 }
 
+/// Each printed character's bytes in `source`, `start..end` (markup and notes left out): where
+/// a revision's span of printed characters lies in the markup.
+pub fn printed_bytes(source: &str) -> Vec<(usize, usize)> {
+    printed(source).into_iter().map(|(start, end, _)| (start, end)).collect()
+}
+
 /// How many printed characters come before byte `byte` of `source` (markup and notes don't
 /// count): the place a selection in the editor is in the printed text revisions refer to.
 pub fn printed_before(source: &str, byte: usize) -> usize {
@@ -482,7 +491,7 @@ fn rewrite(source: &str, want: &[Style]) -> String {
             let style = styles.next().copied().unwrap_or(run.style);
             match runs.last_mut() {
                 Some(last) if !last.note && last.style == style => last.text.push(c),
-                _ => runs.push(Run { text: c.to_string(), style, note: false }),
+                _ => runs.push(Run { text: c.to_string(), style, note: false, revised: None }),
             }
         }
     }
@@ -494,7 +503,7 @@ mod tests {
     use super::*;
 
     fn styled(text: &str, bold: bool, italic: bool, underline: bool) -> Run {
-        Run { text: text.into(), style: Style { bold, italic, underline }, note: false }
+        Run { text: text.into(), style: Style { bold, italic, underline }, note: false, revised: None }
     }
 
     #[test]

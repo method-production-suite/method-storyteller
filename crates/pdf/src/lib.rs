@@ -1,8 +1,9 @@
 //! PDF export: paginated screenplay pages drawn with Courier Prime (embedded and subset) through
 //! `craft-pdf` (Krilla). Text stays selectable; every scene gets a bookmark.
 
+use craft_pdf::write::backend::color::rgb;
 use craft_pdf::write::backend::destination::XyzDestination;
-use craft_pdf::write::backend::geom::{PathBuilder, Point, Size, Transform};
+use craft_pdf::write::backend::geom::{PathBuilder, Point, Rect, Size, Transform};
 use craft_pdf::write::backend::outline::{Outline, OutlineNode};
 use craft_pdf::write::backend::page::PageSettings;
 use craft_pdf::write::backend::paint::{Fill, Stroke};
@@ -10,7 +11,8 @@ use craft_pdf::write::backend::text::{Font, TextDirection};
 use craft_pdf::write::{self, Metadata, WriteError, Writer};
 use storyteller_core::Script;
 use storyteller_core::inline::{self, Style};
-use storyteller_core::layout::{Layout, POINTS_PER_COLUMN, POINTS_PER_ROW, WRAP_ADVANCE_POINTS};
+use storyteller_core::layout::{Layout, POINTS_PER_COLUMN, POINTS_PER_ROW, REVISION_MARK_INCHES, WRAP_ADVANCE_POINTS};
+use storyteller_core::model::ShowRevisions;
 use storyteller_core::paginate::{Page, Paginated, paginate};
 
 /// Courier Prime, SIL Open Font License 1.1 (see `assets/fonts/OFL.txt`).
@@ -63,6 +65,30 @@ impl Fonts {
 pub struct PdfOptions {
     /// Producer/creator string, such as `Method Storyteller 0.1.0`.
     pub creator: String,
+    /// Which revisions print their marks and header label.
+    pub revisions: ShowRevisions,
+    /// Revised pages in their set's page colour; otherwise every page stays white.
+    pub coloured_pages: bool,
+}
+
+/// A `#RRGGBB` colour.
+fn colour(hex: &str) -> Option<rgb::Color> {
+    let hex = hex.strip_prefix('#').filter(|h| h.len() == 6)?;
+    let byte = |i: usize| hex.get(i..i + 2).and_then(|h| u8::from_str_radix(h, 16).ok());
+    Some(rgb::Color::new(byte(0)?, byte(2)?, byte(4)?))
+}
+
+/// Draw text with its left edge at `x` and baseline at `y`. Lines hold as many characters as
+/// Final Draft fits (see `WRAP_ADVANCE_POINTS`), so text is drawn that much narrower than
+/// Courier's 7.2 points per character.
+fn draw(surface: &mut craft_pdf::write::backend::surface::Surface<'_>, fonts: &Fonts, style: Style, text: &str, x: f32, y: f32) {
+    if text.trim().is_empty() {
+        return;
+    }
+    let squeeze = WRAP_ADVANCE_POINTS / POINTS_PER_COLUMN;
+    surface.push_transform(&Transform::from_scale(squeeze, 1.0));
+    surface.draw_text(Point::from_xy(x / squeeze, y), fonts.get(style), FONT_SIZE, text, false, TextDirection::Auto);
+    surface.pop();
 }
 
 /// Paginate and export a script.
@@ -91,10 +117,37 @@ pub fn render(script: &Script, paginated: &Paginated, layout: &Layout, options: 
         for page in &pages {
             let mut pdf_page = document.start_page_with(PageSettings::new(size));
             let mut surface = pdf_page.surface();
+            let revision = if page.number > 0 { page.revision(&script.revisions, options.revisions) } else { None };
+            if let Some(paper) = revision.filter(|_| options.coloured_pages).and_then(|set| set.page_color.as_deref()).and_then(colour)
+                && let Some(rect) = Rect::from_xywh(0.0, 0.0, width, height)
+            {
+                let mut path = PathBuilder::new();
+                path.push_rect(rect);
+                if let Some(path) = path.finish() {
+                    surface.set_fill(Some(Fill { paint: paper.into(), ..Fill::default() }));
+                    surface.draw_path(&path);
+                }
+            }
             surface.set_fill(Some(Fill::default()));
-            // Lines hold as many characters as Final Draft fits (see `WRAP_ADVANCE_POINTS`), so
-            // text is drawn that much narrower than Courier's 7.2 points per character.
-            let squeeze = WRAP_ADVANCE_POINTS / POINTS_PER_COLUMN;
+            // The set's name and date under the page number, right-aligned with it.
+            if let Some(set) = revision {
+                let chars = set.name.chars().count() as f32;
+                let x = f32::from(layout.page_number_right) * POINTS_PER_COLUMN - chars * WRAP_ADVANCE_POINTS;
+                let y = f32::from(layout.page_number_row.saturating_add(1)) * POINTS_PER_ROW + BASELINE;
+                draw(&mut surface, &fonts, Style::default(), &set.name, x, y);
+            }
+            // Each line with a shown revision gets its set's mark in the margin, once a row.
+            let mut marked_rows = Vec::new();
+            for line in &page.lines {
+                if marked_rows.contains(&line.row) {
+                    continue;
+                }
+                if let Some(set) = script.revisions.latest(&line.marks, options.revisions) {
+                    marked_rows.push(line.row);
+                    let y = f32::from(line.row) * POINTS_PER_ROW + BASELINE;
+                    draw(&mut surface, &fonts, Style::default(), &set.mark, REVISION_MARK_INCHES * 72.0, y);
+                }
+            }
             for line in &page.lines {
                 let start = f32::from(line.col) * POINTS_PER_COLUMN;
                 let mut offset = 0.0;
@@ -102,11 +155,7 @@ pub fn render(script: &Script, paginated: &Paginated, layout: &Layout, options: 
                 for run in &line.runs {
                     let x = start + offset * WRAP_ADVANCE_POINTS;
                     let chars = run.text.chars().count() as f32;
-                    if !run.text.trim().is_empty() {
-                        surface.push_transform(&Transform::from_scale(squeeze, 1.0));
-                        surface.draw_text(Point::from_xy(x / squeeze, y), fonts.get(run.style), FONT_SIZE, &run.text, false, TextDirection::Auto);
-                        surface.pop();
-                    }
+                    draw(&mut surface, &fonts, run.style, &run.text, x, y);
                     if run.style.underline && chars > 0.0 {
                         let mut path = PathBuilder::new();
                         path.move_to(x, y + 1.5);
