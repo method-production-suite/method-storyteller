@@ -51,6 +51,9 @@
     <LockedPage PageNumber="1" Position="0"/>
     <LockedPage PageNumber="1A" Position="40"/>
   </LockedPages>
+  <DeletedText>
+    <DeletedTextLocation Offset="30" RevisionID="1"/>
+  </DeletedText>
   <Revisions ActiveSet="1" RevisionMode="Yes">
     <Revision Color="#00000000FFFF" ID="1" Mark="*" Name="Blue Rev." PageColor="#C6C6EDEDFEFE"/>
   </Revisions>

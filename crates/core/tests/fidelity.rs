@@ -62,6 +62,10 @@ fn revised(s: &Script) -> String {
     format!("{:?}", s.elements.iter().map(|e| &e.revised).collect::<Vec<_>>())
 }
 
+fn deletions(s: &Script) -> String {
+    format!("{:?}", s.elements.iter().map(|e| &e.deletions).collect::<Vec<_>>())
+}
+
 fn locked_pages(s: &Script) -> String {
     format!("{:?}", s.elements.iter().map(|e| e.page_starts.iter().map(|p| (p.at, &p.label)).collect::<Vec<_>>()).collect::<Vec<_>>())
 }
@@ -142,6 +146,12 @@ const ROWS: &[Row] = &[
     },
     Row { what: "Revised text", fidelity: Exact, how: "`Text@RevisionID` and `text@revision`", check: Some(revised) },
     Row {
+        what: "Deleted-text marks",
+        fidelity: Exact,
+        how: "`DeletedText` (`Offset` counts like note ranges) and our `method_storyteller_deletion`; OSF's own `marks` are kept as read",
+        check: Some(deletions),
+    },
+    Row {
         what: "Locked pages and A-pages",
         fidelity: Exact,
         how: "`LockedPages` (`Position` counts like note ranges) and `pages_locked` with `para@page_number`; a page starting inside a paragraph carries `method_storyteller_page`",
@@ -197,6 +207,12 @@ const ROWS: &[Row] = &[
         check: None,
     },
     Row {
+        what: "Omitted scenes",
+        fidelity: Approximated,
+        how: "the heading, its number and the scene it keeps go both ways (`StorytellerOmitted`, `method_storyteller_omitted`); a file's own `OmittedScene` wrapper stays in `.fdx`",
+        check: None,
+    },
+    Row {
         what: "OSF page margins, keep-with-next, header and footer styles",
         fidelity: NotMapped,
         how: "`.fdx` has no place: they ride along in `StorytellerOsf` and come back to OSF",
@@ -206,12 +222,6 @@ const ROWS: &[Row] = &[
         what: "`.fdx` shortcuts, outline levels, hidden text, scene CONTINUEDs, header margins",
         fidelity: NotMapped,
         how: "OSF has no place: they ride along in `fdx_xml`, `fdx_page_layout`, `fdx_mores` and come back to `.fdx`",
-        check: None,
-    },
-    Row {
-        what: "Deleted-text marks",
-        fidelity: NotMapped,
-        how: "`DeletedText` and OSF `marks` are kept in their own format; converting them waits for M5's revision mode",
         check: None,
     },
     Row {
@@ -231,12 +241,6 @@ const ROWS: &[Row] = &[
         what: "Scene page and length",
         fidelity: NotMapped,
         how: "`.fdx` caches them and OSF does not; written from our pagination on every `.fdx` save",
-        check: None,
-    },
-    Row {
-        what: "Omitted scenes",
-        fidelity: NotMapped,
-        how: "the `.fdx` `OmittedScene` wrapper is kept in `.fdx`; OSF has no omitted flag, so only the heading text goes",
         check: None,
     },
 ];
@@ -281,6 +285,7 @@ const DOC: &str = r##"<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
   <TitlePage><Content><Paragraph Alignment="Center" Type="Text"><Text>THE STATION</Text></Paragraph></Content></TitlePage>
   <SpellCheckIgnoreLists><IgnoredRanges/><IgnoredWords><Word>Mara</Word></IgnoredWords></SpellCheckIgnoreLists>
   <MoresAndContinueds><DialogueBreaks AutomaticCharacterContinueds="Yes" DialogueBottom="(MORE)" DialogueTop="(CONT'D)"/></MoresAndContinueds>
+  <DeletedText><DeletedTextLocation Offset="30" RevisionID="1"/></DeletedText>
   <LockedPages><LockedPage PageNumber="1" Position="0"/><LockedPage PageNumber="1A" Position="40"/></LockedPages>
   <Revisions ActiveSet="1" RevisionMode="Yes"><Revision Color="#00000000FFFF" ID="1" Mark="*" Name="Blue Rev." PageColor="#C6C6EDEDFEFE"/></Revisions>
   <ScriptNotes><ScriptNote Color="#0000FFFF0000" Range="26,31" WriterName="A. Writer"><Paragraph><Text>Which set?</Text></Paragraph></ScriptNote></ScriptNotes>
