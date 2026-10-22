@@ -63,13 +63,13 @@ with `lipo`, as the release does; `aarch64-apple-darwin` alone is quicker for a 
 
 ```bash
 cargo xtask bundle-macos --target universal-apple-darwin
-open "target/bundle/macos/Method Storyteller.app"
+open "$CARGO_TARGET_DIR/bundle/macos/Method Storyteller.app"   # or target/ without it
 cargo xtask dmg-macos           # optional: the disk image, from the bundle above
 ```
 
 `--sign "<Developer ID Application identity>"` signs with the hardened runtime and a secure
 timestamp instead, ready to notarize; `--no-build` packages the binary already in
-`target/`.
+the build folder.
 
 ### The icon
 
@@ -89,7 +89,7 @@ From an up-to-date `main` with a clean tree (`0.2.0` stands for the new version)
    follows, and write `docs/releases/0.2.0.md` from the skeleton.
 3. `cargo xtask ci`, and the Intel slice under Rosetta on an Apple silicon Mac:
    `cargo test --locked --workspace --target x86_64-apple-darwin`, then `arch -x86_64
-   target/x86_64-apple-darwin/debug/method-storyteller --version` and one headless launch
+   "$CARGO_TARGET_DIR/x86_64-apple-darwin/debug/method-storyteller" --version` and one headless launch
    of the app. Open a pull request with those changes (MReview reviews it). Merge it when
    it is approved and green.
 4. Rehearse: Actions > release > Run workflow on `main`, the tag left empty. It builds,

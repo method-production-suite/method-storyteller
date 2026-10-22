@@ -15,7 +15,7 @@ every picture is drawn by the offscreen gallery (`gallery` in `crates/app/src/sc
 | Contrast for every pair, held by a test | `theme::tests::every_pair_meets_wcag_aa` |
 | Dark mode, surface by surface | BRAND.md, "Dark mode, surface by surface" |
 | Empty and error states in the family voice | `crates/app/src/messages.rs`, with tests |
-| A gallery of 13 surfaces in both themes | `gallery`, writing `target/gallery/` |
+| A gallery of 14 surfaces in both themes | `gallery`, writing `gallery/` in the build folder |
 
 ## Left to do
 
@@ -55,7 +55,7 @@ BRAND.md says nothing in the app names a colour of its own. Two places do today:
 ### 3. The contact sheet
 
 One picture for the owner to look over: every gallery shot, light beside dark, in a grid,
-each labelled with its name (`target/gallery/contact-sheet.png`). It is the "design pass (D)"
+each labelled with its name (`gallery/contact-sheet.png` in the build folder). It is the "design pass (D)"
 check in the roadmap's Waiting on the owner, so looking at it takes minutes and opens nothing.
 
 ### 4. BRAND.md catches up
