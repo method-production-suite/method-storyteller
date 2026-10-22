@@ -1,7 +1,8 @@
 //! Packaging: `cargo xtask version`, `bundle-macos`, `dmg-macos`, `package-linux` and
 //! `package-windows`. The release workflow (`.github/workflows/release.yml`) runs these; they
-//! also run on a developer's machine. Everything lands in `target/bundle/<platform>/` under the
-//! suite's version-free names. Releasing: docs/RELEASING.md.
+//! also run on a developer's machine. Everything lands in `bundle/<platform>/` in the build
+//! folder ([`crate::target_dir`]: cargo's target directory, the shared cache locally) under
+//! the suite's version-free names. Releasing: docs/RELEASING.md.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -92,7 +93,7 @@ fn bundle_dir(platform: &str) -> PathBuf {
 }
 
 /// The universal Mac target: both slices built, then joined with `lipo -create` into
-/// `target/universal-apple-darwin/release/` (SUITE-STANDARDS.md §3).
+/// `universal-apple-darwin/release/` in the build folder (SUITE-STANDARDS.md §3).
 pub const UNIVERSAL: &str = "universal-apple-darwin";
 /// The two slices of [`UNIVERSAL`].
 pub const MAC_SLICES: [&str; 2] = ["aarch64-apple-darwin", "x86_64-apple-darwin"];
@@ -199,7 +200,7 @@ const DOCUMENT_KINDS: [&str; 4] = ["osf", "fountain", "fdx", "mstory"];
 const OPEN_KINDS: usize = 3;
 
 /// `cargo xtask bundle-macos [--target <triple>] [--sign <identity>] [--no-build]`: builds
-/// `target/bundle/macos/Method Storyteller.app` and signs it, with the Developer ID identity
+/// `bundle/macos/Method Storyteller.app` in the build folder and signs it, with the Developer ID identity
 /// (hardened runtime and a secure timestamp, ready to notarize) or ad hoc without one.
 pub fn bundle_macos(options: &Options) -> Result<(), String> {
     if !cfg!(target_os = "macos") {
@@ -240,7 +241,7 @@ pub fn bundle_macos(options: &Options) -> Result<(), String> {
 }
 
 /// `cargo xtask dmg-macos [--sign <identity>]`: puts the bundle made by `bundle-macos` (and a
-/// link to /Applications) into `target/bundle/macos/Method-Storyteller-macOS.dmg`, signed
+/// link to /Applications) into `bundle/macos/Method-Storyteller-macOS.dmg` in the build folder, signed
 /// with the identity when one is given.
 pub fn dmg_macos(options: &Options) -> Result<(), String> {
     if !cfg!(target_os = "macos") {

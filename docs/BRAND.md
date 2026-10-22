@@ -202,7 +202,8 @@ Body text needs 4.5:1 (AA); borders that carry meaning need 3:1. The test
 
 The app follows the system's light or dark setting. Each surface was checked in both, in the
 offscreen gallery (`cargo test -p method-storyteller --release gallery -- --ignored` writes
-`target/gallery/<surface>-<theme>.png`):
+`gallery/<surface>-<theme>.png` in the build folder: cargo's target directory, the shared
+cache locally):
 
 | Surface | Dark mode |
 |---|---|
