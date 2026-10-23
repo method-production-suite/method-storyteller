@@ -8,7 +8,7 @@ use storyteller_core::model::{Element, ElementKind, Revised, Script, ShowRevisio
 use storyteller_core::paginate::{PageSelection, Paginated, paginate};
 
 fn scene(number: &str, action: &str) -> Vec<Element> {
-    let mut heading = Element::new(ElementKind::SceneHeading, &format!("INT. ROOM {number} - DAY"));
+    let mut heading = Element::new(ElementKind::SceneHeading, format!("INT. ROOM {number} - DAY"));
     heading.scene_number = Some(number.into());
     vec![heading, Element::new(ElementKind::Action, action)]
 }
