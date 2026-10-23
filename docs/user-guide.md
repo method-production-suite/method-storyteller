@@ -55,7 +55,12 @@ Revision Mode on, what you change is marked in the active set. Revised text show
 ink, each changed line gets the set's mark in the right margin, and a revised page carries the
 set's name and date under its page number, on screen and in the PDF. View > Show All Revision
 Sets, Show Active Revision Set and Hide Revisions choose which marks show. View > Revised Page
-Colours shows revised pages in their set's colour; exported PDFs stay white.
+Colours shows revised pages in their set's colour.
+
+File > Export PDF… (⌘E) issues all pages, revised pages only, a page range such as `12-18, 22A`
+or the pages of a range of scenes such as `12-15`. **Clean copy** prints the same pages with no
+marks, labels or colours; **Coloured revised pages** prints revised pages in their set's colour
+(otherwise every page is white, for coloured paper).
 
 ## Save and export
 

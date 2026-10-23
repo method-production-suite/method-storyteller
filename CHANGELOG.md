@@ -7,6 +7,10 @@ for its own version in Help > What's New, once after an update.
 
 ### New
 
+- File > Export PDF… issues all pages, revised pages only, a page range (`12-18, 22A`) or the
+  pages of a range of scenes (`12-15`), as a clean copy with no marks, or on coloured revised
+  pages.
+
 - Revisions show on screen and print: revised text in its set's ink, the set's mark in the
   right margin of every changed line (and where text was taken out), and the set's name and
   date under the page number. View > Show All Revision Sets, Show Active Revision Set and Hide

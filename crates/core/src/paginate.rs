@@ -64,6 +64,11 @@ pub struct Page {
 }
 
 impl Page {
+    /// The page's number as printed, such as `12`.
+    pub fn label(&self) -> String {
+        self.number.to_string()
+    }
+
     /// The set a revised page is issued in: the latest shown set with a mark on it.
     pub fn revision<'a>(&self, revisions: &'a Revisions, show: ShowRevisions) -> Option<&'a RevisionSet> {
         revisions.latest(self.lines.iter().flat_map(|line| &line.marks), show)
@@ -92,6 +97,97 @@ impl Paginated {
     pub fn page_count(&self) -> usize {
         self.pages.len()
     }
+
+    /// The pages a selection issues, as indexes into [`Paginated::pages`], in order. Each part
+    /// given narrows the pages: a page range, a scene range, revised pages only.
+    pub fn select(&self, selection: &PageSelection, revisions: &Revisions, show: ShowRevisions) -> Result<Vec<usize>, String> {
+        let mut chosen: Vec<bool> = vec![true; self.pages.len()];
+        if let Some(spec) = selection.pages.as_deref().filter(|s| !s.trim().is_empty()) {
+            let labels: Vec<String> = self.pages.iter().map(Page::label).collect();
+            let mut wanted = vec![false; self.pages.len()];
+            for (from, to) in ranges(spec, &labels, "page")? {
+                wanted.iter_mut().take(to + 1).skip(from).for_each(|w| *w = true);
+            }
+            chosen.iter_mut().zip(wanted).for_each(|(c, w)| *c &= w);
+        }
+        if let Some(spec) = selection.scenes.as_deref().filter(|s| !s.trim().is_empty()) {
+            let labels: Vec<String> =
+                self.scenes.iter().enumerate().map(|(i, scene)| scene.number.clone().unwrap_or_else(|| (i + 1).to_string())).collect();
+            let mut wanted = vec![false; self.pages.len()];
+            for (from, to) in ranges(spec, &labels, "scene")? {
+                for scene in from..=to {
+                    let (first, last) = self.scene_pages(scene);
+                    wanted.iter_mut().take(last + 1).skip(first).for_each(|w| *w = true);
+                }
+            }
+            chosen.iter_mut().zip(wanted).for_each(|(c, w)| *c &= w);
+        }
+        if selection.revised_only {
+            for (c, page) in chosen.iter_mut().zip(&self.pages) {
+                *c &= page.revision(revisions, show).is_some();
+            }
+        }
+        Ok(chosen.iter().enumerate().filter(|(_, c)| **c).map(|(i, _)| i).collect())
+    }
+
+    /// The first and last page index scene `index` prints on: up to the page where the next
+    /// scene starts, unless that page opens with the next scene.
+    fn scene_pages(&self, index: usize) -> (usize, usize) {
+        let page_index = |page: u32| usize::try_from(page).ok().and_then(|p| p.checked_sub(1)).unwrap_or(0);
+        let Some(scene) = self.scenes.get(index) else { return (0, 0) };
+        let first = page_index(scene.page);
+        let last = match self.scenes.get(index + 1) {
+            None => self.pages.len().saturating_sub(1),
+            Some(next) => {
+                let at = page_index(next.page);
+                let opens = self.pages.get(at).and_then(|p| p.lines.iter().filter_map(|l| l.element).min()).is_some_and(|e| e >= next.element);
+                if opens { at.saturating_sub(1) } else { at }
+            }
+        };
+        (first, last.max(first))
+    }
+}
+
+/// Which pages File > Export PDF… issues (docs/production-spec.md §3.6).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PageSelection {
+    /// Page labels and ranges, such as `12-18, 22A`.
+    pub pages: Option<String>,
+    /// Scene numbers and ranges, such as `12-15` (scenes count from 1 when unnumbered).
+    pub scenes: Option<String>,
+    /// Only pages with a shown revision.
+    pub revised_only: bool,
+}
+
+impl PageSelection {
+    /// Every page, with the title page.
+    pub fn is_all(&self) -> bool {
+        !self.revised_only && [&self.pages, &self.scenes].iter().all(|s| s.as_deref().is_none_or(|s| s.trim().is_empty()))
+    }
+}
+
+/// `12-18, 22A` as inclusive index ranges into `labels`, matched without regard to case. A range
+/// runs by position, so `12-13` takes in `12A`.
+fn ranges(spec: &str, labels: &[String], what: &str) -> Result<Vec<(usize, usize)>, String> {
+    let find = |label: &str| {
+        let label = label.trim();
+        labels.iter().position(|l| l.eq_ignore_ascii_case(label)).ok_or_else(|| format!("there is no {what} {label}"))
+    };
+    let mut out = Vec::new();
+    for part in spec.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+        let range = match part.split_once(['-', '\u{2013}']) {
+            Some((from, to)) => (find(from)?, find(to)?),
+            None => (find(part)?, find(part)?),
+        };
+        if range.0 > range.1 {
+            return Err(format!("the {what} range {part} runs backwards"));
+        }
+        out.push(range);
+    }
+    if out.is_empty() {
+        return Err(format!("no {what}s were named"));
+    }
+    Ok(out)
 }
 
 #[derive(Clone, Debug)]

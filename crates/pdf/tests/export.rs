@@ -3,6 +3,7 @@
 use storyteller_core::fountain;
 use storyteller_core::layout::Layout;
 use storyteller_core::model::{Element, ElementKind, Revised, Script, ShowRevisions};
+use storyteller_core::paginate::PageSelection;
 use storyteller_pdf::{PdfOptions, export};
 
 fn fixture() -> Script {
@@ -97,5 +98,43 @@ fn revision_marks_and_label_print_when_pdftotext_is_available() {
     assert!(marked[0].contains("The pump stops dead."), "{shown}");
     let hidden = text(&PdfOptions { revisions: ShowRevisions::None, ..PdfOptions::default() });
     assert!(!hidden.contains("Revision") && !hidden.contains('*'), "{hidden}");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// Revised pages only, a page range and a clean copy, read back with poppler's tools when
+/// they are installed.
+#[test]
+fn issued_pages_and_clean_copies_when_pdftotext_is_available() {
+    let Ok(output) = std::process::Command::new("pdftotext").arg("-v").output() else { return };
+    if !output.status.success() && output.stderr.is_empty() {
+        return;
+    }
+    let mut script = revised_script();
+    script.elements.insert(0, Element::new(ElementKind::PageBreak, ""));
+    script.elements.insert(0, Element::new(ElementKind::Action, "The first page, untouched."));
+    script.title_page.set("Title", "Pump House");
+    let dir = std::env::temp_dir().join(format!("storyteller-pdf-issue-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let text = |options: &PdfOptions| {
+        let path = dir.join("issued.pdf");
+        std::fs::write(&path, export(&script, &Layout::default(), options).unwrap()).unwrap();
+        let out = std::process::Command::new("pdftotext").arg("-layout").arg(&path).arg("-").output().unwrap();
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    };
+    let pages = |text: &str| text.matches('\u{c}').count();
+    let all = text(&PdfOptions::default());
+    assert_eq!(pages(&all), 3, "title page and two pages: {all}");
+    let revised = text(&PdfOptions { selection: PageSelection { revised_only: true, ..PageSelection::default() }, ..PdfOptions::default() });
+    assert_eq!(pages(&revised), 1, "{revised}");
+    assert!(revised.contains("The pump stops dead.") && revised.contains("Blue Revision 10/01/26"), "{revised}");
+    let first = text(&PdfOptions { selection: PageSelection { pages: Some("1".into()), ..PageSelection::default() }, ..PdfOptions::default() });
+    assert!(first.contains("The first page") && !first.contains("Pump House") && pages(&first) == 1, "{first}");
+    let clean = text(&PdfOptions { clean: true, coloured_pages: true, ..PdfOptions::default() });
+    assert_eq!(pages(&clean), 3);
+    assert!(clean.contains("The pump stops dead.") && !clean.contains("Revision") && !clean.contains('*'), "{clean}");
+    // Nothing matches: an error, not an empty file.
+    let none =
+        PdfOptions { selection: PageSelection { pages: Some("1".into()), revised_only: true, ..PageSelection::default() }, ..PdfOptions::default() };
+    assert!(export(&script, &Layout::default(), &none).is_err());
     let _ = std::fs::remove_dir_all(dir);
 }

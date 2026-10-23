@@ -162,6 +162,26 @@ struct NumberingDraft {
     error: Option<String>,
 }
 
+/// File > Export PDF…: which pages to issue, and how (docs/production-spec.md §3.6).
+#[derive(Default)]
+struct ExportDraft {
+    which: ExportPages,
+    pages: String,
+    scenes: String,
+    clean: bool,
+    colour: bool,
+    error: Option<String>,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+enum ExportPages {
+    #[default]
+    All,
+    Revised,
+    Pages,
+    Scenes,
+}
+
 /// Production > Edit Scene Number….
 struct SceneNumberDraft {
     heading: usize,
@@ -252,6 +272,7 @@ pub struct StorytellerApp {
     /// Production > Characters: the character table is open.
     characters: bool,
     numbering: Option<NumberingDraft>,
+    export_pdf: Option<ExportDraft>,
     revisions: Option<RevisionsDraft>,
     scene_number: Option<SceneNumberDraft>,
     find: Option<find_bar::FindBar>,
@@ -372,6 +393,7 @@ impl StorytellerApp {
             scene_dialog: None,
             characters: false,
             numbering: None,
+            export_pdf: None,
             revisions: None,
             scene_number: None,
             find: None,
@@ -468,7 +490,7 @@ impl StorytellerApp {
             "file.save_as" => {
                 self.save(true);
             }
-            "file.export_pdf" => self.export(FileFormat::Pdf),
+            "file.export_pdf" => self.export_pdf = Some(ExportDraft::default()),
             "file.export_fdx" => self.export(FileFormat::Fdx),
             "file.export_fountain" => self.export(FileFormat::Fountain),
             "file.export_osf" => self.export(FileFormat::Osf),
@@ -959,14 +981,18 @@ impl StorytellerApp {
         }
     }
 
-    fn export(&mut self, format: FileFormat) {
+    /// Asks where to save an export, named after the script.
+    fn export_path(&self, format: FileFormat) -> Option<PathBuf> {
         let stem =
             self.session.path.as_ref().and_then(|p| p.file_stem()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "Untitled".into());
-        let picked = rfd::FileDialog::new()
+        rfd::FileDialog::new()
             .add_filter(format.extension(), &[format.extension()])
             .set_file_name(format!("{stem}.{}", format.extension()))
-            .save_file();
-        if let Some(path) = picked {
+            .save_file()
+    }
+
+    fn export(&mut self, format: FileFormat) {
+        if let Some(path) = self.export_path(format) {
             let id = match format {
                 FileFormat::Pdf => "file.export_pdf",
                 FileFormat::Fdx => "file.export_fdx",
@@ -1905,6 +1931,115 @@ impl StorytellerApp {
         }
     }
 
+    /// File > Export PDF…: all pages, revised pages only, a page range or a scene range; a clean
+    /// copy; coloured revised pages. The choices are checked before asking where to save, and a
+    /// problem shows in the dialog.
+    fn export_pdf_dialog(&mut self, ctx: &egui::Context) {
+        let Some(draft) = &mut self.export_pdf else { return };
+        let mut ok = false;
+        let mut close = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+        egui::Window::new("Export PDF").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_TOP, [0.0, 120.0]).show(ctx, |ui| {
+            let all = ui.radio_value(&mut draft.which, ExportPages::All, "All pages");
+            self.automation.add("dialog.export_pdf.all", "radio", "All pages", &all);
+            let revised = ui.radio_value(&mut draft.which, ExportPages::Revised, "Revised pages only");
+            self.automation.add("dialog.export_pdf.revised", "radio", "Revised pages only", &revised);
+            ui.horizontal(|ui| {
+                let pages = ui.radio_value(&mut draft.which, ExportPages::Pages, "Pages");
+                self.automation.add("dialog.export_pdf.pages", "radio", "Pages", &pages);
+                let text = ui.add(egui::TextEdit::singleline(&mut draft.pages).hint_text("12-18, 22A").desired_width(140.0));
+                self.automation.add("dialog.export_pdf.page_range", "textbox", "Page range", &text);
+                if text.changed() {
+                    draft.which = ExportPages::Pages;
+                }
+            });
+            ui.horizontal(|ui| {
+                let scenes = ui.radio_value(&mut draft.which, ExportPages::Scenes, "Scenes");
+                self.automation.add("dialog.export_pdf.scenes", "radio", "Scenes", &scenes);
+                let text = ui.add(egui::TextEdit::singleline(&mut draft.scenes).hint_text("12-15").desired_width(140.0));
+                self.automation.add("dialog.export_pdf.scene_range", "textbox", "Scene range", &text);
+                if text.changed() {
+                    draft.which = ExportPages::Scenes;
+                }
+            });
+            ui.add_space(theme::SPACE_2);
+            let clean = ui.checkbox(&mut draft.clean, "Clean copy (no revision marks, labels or colours)");
+            self.automation.add("dialog.export_pdf.clean", "checkbox", "Clean copy", &clean);
+            let colour = ui.add_enabled(!draft.clean, egui::Checkbox::new(&mut draft.colour, "Coloured revised pages"));
+            self.automation.add("dialog.export_pdf.colour", "checkbox", "Coloured revised pages", &colour);
+            if let Some(error) = &draft.error {
+                ui.colored_label(ui.visuals().error_fg_color, error);
+            }
+            ui.add_space(theme::SPACE_2);
+            ui.horizontal(|ui| {
+                let export = ui.button("Export…");
+                self.automation.add("dialog.export_pdf.ok", "button", "Export", &export);
+                let cancel = ui.button("Cancel");
+                self.automation.add("dialog.export_pdf.cancel", "button", "Cancel", &cancel);
+                ok |= export.clicked();
+                close |= cancel.clicked();
+            });
+        });
+        if close {
+            self.export_pdf = None;
+            self.refocus();
+            return;
+        }
+        if !ok {
+            return;
+        }
+        draft.error = None;
+        let which = draft.which;
+        let selection = storyteller_core::paginate::PageSelection {
+            pages: Some(draft.pages.clone()).filter(|_| which == ExportPages::Pages),
+            scenes: Some(draft.scenes.clone()).filter(|_| which == ExportPages::Scenes),
+            revised_only: which == ExportPages::Revised,
+        };
+        let mut target = params(&[("clean", json!(draft.clean)), ("colour", json!(draft.colour && !draft.clean))]);
+        // Checked before the save dialog, so a mistyped range is fixed here.
+        let show = self.session.show_revisions;
+        let revisions = self.session.script.revisions.clone();
+        let problem = if matches!(which, ExportPages::Pages | ExportPages::Scenes) && selection.is_all() {
+            Some(if which == ExportPages::Pages { "Name the pages, such as 12-18, 22A." } else { "Name the scenes, such as 12-15." }.to_string())
+        } else {
+            match self.session.paginated().select(&selection, &revisions, show) {
+                Err(error) => Some(sentence(&error)),
+                Ok(chosen) if chosen.is_empty() => Some("No page matches these choices.".into()),
+                Ok(_) => None,
+            }
+        };
+        if let Some(problem) = problem {
+            if let Some(draft) = &mut self.export_pdf {
+                draft.error = Some(problem);
+            }
+            return;
+        }
+        if let Some(pages) = selection.pages {
+            target.insert("pages".into(), json!(pages));
+        }
+        if let Some(scenes) = selection.scenes {
+            target.insert("scenes".into(), json!(scenes));
+        }
+        if selection.revised_only {
+            target.insert("revised_only".into(), json!(true));
+        }
+        let Some(path) = self.export_path(FileFormat::Pdf) else { return };
+        target.insert("path".into(), json!(path.display().to_string()));
+        match self.registry.run("file.export_pdf", &mut self.session, &target) {
+            Ok(outcome) => {
+                self.export_pdf = None;
+                if let Some(message) = outcome.message {
+                    self.status = message;
+                }
+                self.refocus();
+            }
+            Err(error) => {
+                if let Some(draft) = &mut self.export_pdf {
+                    draft.error = Some(error.to_string());
+                }
+            }
+        }
+    }
+
     /// Production > Revisions…: every set with its name, mark and page colour, the active one
     /// chosen, the next in the standard order added, and a set deleted (asking first when it
     /// marks anything). Each change is one Undo.
@@ -2431,6 +2566,7 @@ impl StorytellerApp {
         self.scene_properties_dialog(&ctx);
         self.characters_window(&ctx);
         self.numbering_dialog(&ctx);
+        self.export_pdf_dialog(&ctx);
         self.revisions_window(&ctx);
         self.scene_number_dialog(&ctx);
         self.help_windows(&ctx);
@@ -2440,6 +2576,13 @@ impl StorytellerApp {
             self.run_command(&ctx, &id);
         }
     }
+}
+
+/// A message from the engine as a sentence: `there is no page 9` reads `There is no page 9.`
+fn sentence(text: &str) -> String {
+    let mut chars = text.chars();
+    let first: String = chars.next().map(|c| c.to_uppercase().collect()).unwrap_or_default();
+    format!("{first}{}.", chars.as_str())
 }
 
 fn params(pairs: &[(&str, Value)]) -> Map<String, Value> {

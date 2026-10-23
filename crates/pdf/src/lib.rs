@@ -13,7 +13,7 @@ use storyteller_core::Script;
 use storyteller_core::inline::{self, Style};
 use storyteller_core::layout::{Layout, POINTS_PER_COLUMN, POINTS_PER_ROW, REVISION_MARK_INCHES, WRAP_ADVANCE_POINTS};
 use storyteller_core::model::ShowRevisions;
-use storyteller_core::paginate::{Page, Paginated, paginate};
+use storyteller_core::paginate::{Page, PageSelection, Paginated, paginate};
 
 /// Courier Prime, SIL Open Font License 1.1 (see `assets/fonts/OFL.txt`).
 pub const COURIER_PRIME_REGULAR: &[u8] = include_bytes!("../../../assets/fonts/CourierPrime-Regular.ttf");
@@ -31,6 +31,9 @@ pub enum PdfError {
     Write(#[from] WriteError),
     #[error("the page size is invalid")]
     PageSize,
+    /// The pages chosen to issue cannot be found, or none matches.
+    #[error("{0}")]
+    Selection(String),
 }
 
 struct Fonts {
@@ -69,6 +72,10 @@ pub struct PdfOptions {
     pub revisions: ShowRevisions,
     /// Revised pages in their set's page colour; otherwise every page stays white.
     pub coloured_pages: bool,
+    /// Which pages to issue: all of them (with the title page), a range, revised only.
+    pub selection: PageSelection,
+    /// A clean copy: the same pages with no marks, no header label and no colours.
+    pub clean: bool,
 }
 
 /// A `#RRGGBB` colour.
@@ -109,7 +116,15 @@ pub fn render(script: &Script, paginated: &Paginated, layout: &Layout, options: 
         let mut writer = Writer::new(Default::default(), metadata);
         let document = writer.document_mut();
 
-        let pages: Vec<&Page> = paginated.title_page.iter().chain(paginated.pages.iter()).collect();
+        // Pages are chosen with the revisions shown on screen; a clean copy then prints them bare.
+        let chosen = paginated.select(&options.selection, &script.revisions, options.revisions).map_err(PdfError::Selection)?;
+        if chosen.is_empty() && !paginated.pages.is_empty() {
+            return Err(PdfError::Selection("no page matches the choices".into()));
+        }
+        let show = if options.clean { ShowRevisions::None } else { options.revisions };
+        let coloured = options.coloured_pages && !options.clean;
+        let title_page = paginated.title_page.as_ref().filter(|_| options.selection.is_all());
+        let pages: Vec<&Page> = title_page.into_iter().chain(chosen.iter().filter_map(|&i| paginated.pages.get(i))).collect();
         if pages.is_empty() {
             // An empty script still produces one blank page.
             document.start_page_with(PageSettings::new(size)).finish();
@@ -117,8 +132,8 @@ pub fn render(script: &Script, paginated: &Paginated, layout: &Layout, options: 
         for page in &pages {
             let mut pdf_page = document.start_page_with(PageSettings::new(size));
             let mut surface = pdf_page.surface();
-            let revision = if page.number > 0 { page.revision(&script.revisions, options.revisions) } else { None };
-            if let Some(paper) = revision.filter(|_| options.coloured_pages).and_then(|set| set.page_color.as_deref()).and_then(colour)
+            let revision = if page.number > 0 { page.revision(&script.revisions, show) } else { None };
+            if let Some(paper) = revision.filter(|_| coloured).and_then(|set| set.page_color.as_deref()).and_then(colour)
                 && let Some(rect) = Rect::from_xywh(0.0, 0.0, width, height)
             {
                 let mut path = PathBuilder::new();
@@ -142,7 +157,7 @@ pub fn render(script: &Script, paginated: &Paginated, layout: &Layout, options: 
                 if marked_rows.contains(&line.row) {
                     continue;
                 }
-                if let Some(set) = script.revisions.latest(&line.marks, options.revisions) {
+                if let Some(set) = script.revisions.latest(&line.marks, show) {
                     marked_rows.push(line.row);
                     let y = f32::from(line.row) * POINTS_PER_ROW + BASELINE;
                     draw(&mut surface, &fonts, Style::default(), &set.mark, REVISION_MARK_INCHES * 72.0, y);
@@ -175,10 +190,12 @@ pub fn render(script: &Script, paginated: &Paginated, layout: &Layout, options: 
             pdf_page.finish();
         }
 
-        let offset = usize::from(paginated.title_page.is_some());
+        // Each scene's bookmark goes to the page it starts on, when that page is issued.
+        let offset = usize::from(title_page.is_some());
         let mut outline = Outline::new();
         for scene in &paginated.scenes {
-            let Some(page_index) = usize::try_from(scene.page).ok().and_then(|p| p.checked_sub(1)).map(|p| p + offset) else { continue };
+            let start = usize::try_from(scene.page).ok().and_then(|p| p.checked_sub(1));
+            let Some(page_index) = start.and_then(|p| chosen.iter().position(|&c| c == p)).map(|p| p + offset) else { continue };
             let label = match &scene.number {
                 Some(number) => format!("{number}. {}", scene.heading),
                 None => scene.heading.clone(),

@@ -123,6 +123,9 @@ fn save_open_export_round_trip() {
     run(&registry, &mut s, "file.export_pdf", json!({ "path": pdf, "revisions": "none", "colour": true }));
     assert!(std::fs::read(&pdf).unwrap().starts_with(b"%PDF-"));
     assert!(registry.run("file.export_pdf", &mut s, json!({ "path": pdf, "revisions": "blue" }).as_object().unwrap()).is_err());
+    run(&registry, &mut s, "file.export_pdf", json!({ "path": pdf, "pages": "1", "clean": true }));
+    let missing = registry.run("file.export_pdf", &mut s, json!({ "path": pdf, "pages": "999" }).as_object().unwrap()).unwrap_err();
+    assert!(missing.to_string().contains("there is no page 999"), "{missing}");
     // Opening something hostile fails cleanly.
     let junk = dir.path().join("junk.fdx");
     std::fs::write(&junk, b"<FinalDraft><Content></Oops>").unwrap();
