@@ -923,6 +923,10 @@ fn all_commands() -> Vec<Command> {
                     param("path", Path, true, "Destination .pdf"),
                     param("revisions", String, false, "Revisions to print: active, all or none; the view's choice when omitted"),
                     param("colour", Bool, false, "Print revised pages in their set's page colour (white when omitted)"),
+                    param("pages", String, false, "Pages to issue, such as 12-18, 22A; every page when omitted"),
+                    param("scenes", String, false, "Scenes whose pages to issue, such as 12-15"),
+                    param("revised_only", Bool, false, "Only pages with a shown revision"),
+                    param("clean", Bool, false, "A clean copy: no marks, no header label, no colours"),
                 ]
             },
             enabled: always,
@@ -932,8 +936,18 @@ fn all_commands() -> Vec<Command> {
                     Some(show) => show_revisions("revisions", &show)?,
                     None => s.show_revisions,
                 };
-                let options =
-                    storyteller_pdf::PdfOptions { revisions, coloured_pages: opt_bool(p, "colour")?.unwrap_or(false), ..Default::default() };
+                let selection = storyteller_core::paginate::PageSelection {
+                    pages: opt_string(p, "pages")?,
+                    scenes: opt_string(p, "scenes")?,
+                    revised_only: opt_bool(p, "revised_only")?.unwrap_or(false),
+                };
+                let options = storyteller_pdf::PdfOptions {
+                    revisions,
+                    coloured_pages: opt_bool(p, "colour")?.unwrap_or(false),
+                    selection,
+                    clean: opt_bool(p, "clean")?.unwrap_or(false),
+                    ..Default::default()
+                };
                 files::save_pdf(&s.script, &path, &s.layout, &options)?;
                 Ok(Outcome::message(files::saved_message("Exported", &path, &s.script, FileFormat::Pdf)))
             },

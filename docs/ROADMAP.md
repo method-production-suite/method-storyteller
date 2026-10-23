@@ -101,6 +101,14 @@ says otherwise.
    2026-10-20:** a script scenes file (`.mscenes`, JSON, `method-script-scenes` version 1),
    specified in [production-spec.md](production-spec.md) section 4.4 and in Method Schedule's
    EXCHANGE.md. Built on that agreement; reversible until the writer ships.
+24. **Show Revisions as three menu items** (§3.5). The spec has one View > Show Revisions
+    submenu; the menus have no submenus yet. **Built on the recommendation: three checked
+    items** (Show All Revision Sets, Show Active Revision Set, Hide Revisions), moved into a
+    submenu if the menus gain them.
+25. **Combining Export PDF choices** (§3.6). **Built on the recommendation: each choice
+    narrows the pages** (a page range of revised pages only, say); the title page prints only
+    with all pages. Through the control interface the choices combine; the dialog offers one
+    at a time.
 12. **Rank for `.osf` in the Finder.** **Decided by the owner, 2026-10-18: Default**, like
    `.fountain` and `.fdx`: open formats, so the app claims none of them as their owner.
 
@@ -262,8 +270,9 @@ wait for a decision above.
    order of PRs. Done: scene numbering (letter inserts, start, from the caret, I and O, edit one
    number), omit and unomit, revision sets, revision mode with Mark and Clear Revised and
    deletion marks, revisions drawn in the editor and the PDF with the revised-page header and
-   page colours. Next: revised-pages-only and range PDFs, clean copies, left and right scene
-   number margins, marking new paragraphs and joins, revision mode kept in the file. Kept in the `.mstory` package (decision 1).
+   page colours, File > Export PDF… with revised pages only, page and scene ranges, clean
+   copies and coloured pages. Next: left and right scene number margins, marking new
+   paragraphs and joins, revision mode kept in the file. Kept in the `.mstory` package (decision 1).
 10. **M6, production II and reports** L. Spec: [production-spec.md](production-spec.md),
    section 4. Locked pages as imported, then lock pages, A-pages, lock
    and unlock; scene, location, character and cast reports with CSV; plain-text export; the

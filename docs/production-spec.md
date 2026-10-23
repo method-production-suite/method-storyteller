@@ -166,6 +166,16 @@ File > Export PDF… gains:
 
 Command: `file.export_pdf` gains `pages`, `scenes`, `revised_only`, `clean` and `colour`.
 
+Built (M5 item 6): `Paginated::select` turns a `PageSelection` into the pages to issue. Page and
+scene ranges match labels without regard to case and run by position, so `12-13` takes in a
+`12A` (locked pages' labels come with M6; today a page's label is its number). A scene's pages
+run from its first to the page where the next scene starts, unless that page opens with the
+next scene; unnumbered scenes count from 1. Each choice given narrows the pages, and the title
+page prints only with all of them. Pages are chosen by the revisions shown; a clean copy then
+prints them with no marks, label or colour. An unknown label, a backwards range or a choice
+that matches no page is an error in words (`there is no page 99`), shown in the dialog before
+the save panel opens. Bookmarks keep the scenes whose first page is issued.
+
 ### 3.7 M5 data and files
 
 Everything in 3.1 to 3.5 already has a place in both formats, apart from the omitted-scene

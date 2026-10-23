@@ -15,7 +15,7 @@ every picture is drawn by the offscreen gallery (`gallery` in `crates/app/src/sc
 | Contrast for every pair, held by a test | `theme::tests::every_pair_meets_wcag_aa` |
 | Dark mode, surface by surface | BRAND.md, "Dark mode, surface by surface" |
 | Empty and error states in the family voice | `crates/app/src/messages.rs`, with tests |
-| A gallery of 14 surfaces in both themes | `gallery`, writing `gallery/` in the build folder |
+| A gallery of 15 surfaces in both themes | `gallery`, writing `gallery/` in the build folder |
 
 ## Left to do
 
@@ -39,6 +39,7 @@ in light and dark:
 | `spelling` | Edit > Spelling… with suggestions |
 | `picker` | The element picker on an empty line |
 | `revised-page` | A Pink revised page: coloured paper, revised text, margin marks, the header label (in the gallery) |
+| `export-pdf` | File > Export PDF… with its page choices (in the gallery) |
 
 ### 2. Colours the app names itself
 
@@ -51,6 +52,9 @@ BRAND.md says nothing in the app names a colour of its own. Two places do today:
   light one.
 - **The act row.** It draws in the strong text colour by hand. It becomes the `ink-soft`
   token, the one section labels use.
+- **Text boxes in dialogs.** A single-line text box shows only its hint text, with no
+  visible frame (seen in `export-pdf` and Number Scenes). It needs a 3:1 border against the
+  dialog in both themes.
 
 ### 3. The contact sheet
 
