@@ -7,6 +7,9 @@ for its own version in Help > What's New, once after an update.
 
 ### New
 
+- Production > Number Scenes… chooses whether scene numbers print in the left margin, the
+  right margin or both; the choice is kept in the script.
+
 - File > Export PDF… issues all pages, revised pages only, a page range (`12-18, 22A`) or the
   pages of a range of scenes (`12-15`), as a clean copy with no marks, or on coloured revised
   pages.

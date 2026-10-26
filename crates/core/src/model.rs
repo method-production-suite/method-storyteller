@@ -556,6 +556,26 @@ pub fn revision_color(n: usize) -> (String, Option<&'static str>) {
 }
 
 impl Script {
+    /// Whether scene numbers print in the left and in the right margin (both unless the
+    /// script's format says otherwise).
+    pub fn scene_number_margins(&self) -> (bool, bool) {
+        let page = self.format.page.as_ref();
+        (page.and_then(|p| p.numbers_left).unwrap_or(true), page.and_then(|p| p.numbers_right).unwrap_or(true))
+    }
+
+    /// Sets the scene number margins; returns whether anything changed.
+    pub fn set_scene_number_margins(&mut self, left: bool, right: bool) -> bool {
+        if self.scene_number_margins() == (left, right) {
+            return false;
+        }
+        let page = self.format.page.get_or_insert_with(Default::default);
+        page.numbers_left = Some(left);
+        page.numbers_right = Some(right);
+        true
+    }
+}
+
+impl Script {
     /// Adds the next set in the standard order (`White` first), named for its colour and
     /// `date` (`Blue Revision 10/21/26`), with the mark `*`, and makes it the active one.
     /// Returns its id.

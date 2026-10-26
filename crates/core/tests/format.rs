@@ -240,3 +240,48 @@ fn an_unnamed_style_stays_where_it_was() {
     let xml = osf::write(&script);
     assert!(xml.contains(r#"<style basestylename="Action" italic="1"/>"#), "{xml}");
 }
+
+/// Scene numbers in one margin only: read from `SceneNumberOptions`, kept through OSF, printed on
+/// that side alone (docs/production-spec.md §3.1).
+#[test]
+fn scene_number_margins_travel_and_print() {
+    use storyteller_core::model::{Element, ElementKind};
+    use storyteller_core::paginate::{LineRole, paginate};
+    let options = r#"<SceneNumberOptions LeftLocation="0.75" NumberScheme="1A" RightLocation="7.38" ShowNumbersOnLeft="No" ShowNumbersOnRight="Yes"><FontSpec Font="Courier Final Draft" Size="12"/></SceneNumberOptions>"#;
+    let script = with_sections(options);
+    assert_eq!(script.scene_number_margins(), (false, true));
+    // Unchanged: the section is written back as it was.
+    assert!(fdx::write(&script).contains(options));
+    // Through OSF and back, the same.
+    let back = fdx::parse(&fdx::write(&osf::parse(&osf::write(&script)).unwrap())).unwrap();
+    assert_eq!(back.scene_number_margins(), (false, true));
+    assert!(fdx::write(&back).contains("NumberScheme=\"1A\""));
+    // Changed: written from the model, the rest of the section kept.
+    let mut changed = script.clone();
+    assert!(changed.set_scene_number_margins(true, false));
+    assert!(!changed.set_scene_number_margins(true, false));
+    let written = fdx::write(&changed);
+    assert!(
+        written.contains("ShowNumbersOnLeft=\"Yes\"") && written.contains("ShowNumbersOnRight=\"No\"") && written.contains("NumberScheme=\"1A\""),
+        "{written}"
+    );
+    let osf_text = osf::write(&changed);
+    assert!(osf_text.contains("method_storyteller_scene_numbers=\"left\""), "{osf_text}");
+    assert_eq!(osf::parse(&osf_text).unwrap().scene_number_margins(), (true, false));
+    // A script that never said keeps both, and writes no section.
+    let plain = with_sections("");
+    assert_eq!(plain.scene_number_margins(), (true, true));
+    assert!(!fdx::write(&plain).contains("SceneNumberOptions"));
+    assert!(!osf::write(&plain).contains("method_storyteller_scene_numbers"));
+    // On the page: only the right-hand number.
+    let mut heading = Element::new(ElementKind::SceneHeading, "INT. ROOM - DAY");
+    heading.scene_number = Some("7".into());
+    let mut page_script = Script { elements: vec![heading], ..Script::default() };
+    let sides = |s: &Script| {
+        let pages = paginate(s, &Layout::default());
+        pages.pages[0].lines.iter().filter(|l| l.role == LineRole::SceneNumber).map(|l| l.col).collect::<Vec<_>>()
+    };
+    assert_eq!(sides(&page_script).len(), 2);
+    page_script.set_scene_number_margins(false, true);
+    assert_eq!(sides(&page_script), [Layout::default().scene_number_right]);
+}

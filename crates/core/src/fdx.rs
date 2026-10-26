@@ -515,7 +515,7 @@ pub fn write_with_layout(script: &Script, layout: &Layout) -> String {
     let mut title_written = false;
     let format_same = script.fdx.as_ref().and_then(|d| d.format.as_ref()) == Some(&script.format);
     let mut ignored_written = false;
-    let (mut elements_written, mut layout_written, mut mores_written) = (false, false, false);
+    let (mut elements_written, mut layout_written, mut mores_written, mut numbers_written) = (false, false, false, false);
     for section in sections {
         match section {
             // A changed format is written from the model, all element settings where the first was.
@@ -536,6 +536,12 @@ pub fn write_with_layout(script: &Script, layout: &Layout) -> String {
                     out.push_str(&format!("  {}\n", crate::format::fdx_mores(page)));
                 }
                 mores_written = true;
+            }
+            FdxSection::Raw(xml) if !format_same && section_is(xml, "SceneNumberOptions") => {
+                if let Some(page) = script.format.page.as_ref().filter(|_| !numbers_written) {
+                    out.push_str(&format!("  {}\n", crate::format::fdx_scene_numbers(page)));
+                }
+                numbers_written = true;
             }
             FdxSection::Raw(xml) if section_is(xml, "ScriptNotes") => {
                 if ranged_same {
@@ -632,6 +638,10 @@ pub fn write_with_layout(script: &Script, layout: &Layout) -> String {
             }
             if !mores_written {
                 out.push_str(&format!("  {}\n", crate::format::fdx_mores(page)));
+            }
+            // Written only when a margin is said, so a file that never had the section stays without it.
+            if !numbers_written && (page.numbers_left.is_some() || page.numbers_right.is_some() || !page.fdx_scene_numbers.is_empty()) {
+                out.push_str(&format!("  {}\n", crate::format::fdx_scene_numbers(page)));
             }
         }
     }

@@ -46,7 +46,8 @@ typing.
 
 File > Title Page (⌘⇧T) sets the title, credit, author, contact and the other title page fields.
 Production > Number Scenes numbers every scene; Production > Remove Scene Numbers takes them off.
-View > Show Scene Numbers shows or hides them.
+View > Show Scene Numbers shows or hides them. In Number Scenes, **Show in the left margin** and
+**Show in the right margin** choose where they print; the choice is kept in the script.
 
 ## Revisions
 

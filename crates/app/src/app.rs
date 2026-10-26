@@ -159,6 +159,9 @@ struct NumberingDraft {
     keep_existing: bool,
     from_caret: bool,
     skip_io: bool,
+    /// Print the numbers in the left and the right margin (a script setting).
+    left: bool,
+    right: bool,
     error: Option<String>,
 }
 
@@ -645,6 +648,8 @@ impl StorytellerApp {
                     keep_existing: numbered,
                     from_caret: false,
                     skip_io: self.prefs.get().general.skip_io_letters,
+                    left: self.session.script.scene_number_margins().0,
+                    right: self.session.script.scene_number_margins().1,
                     error: None,
                 });
             }
@@ -1881,6 +1886,11 @@ impl StorytellerApp {
             self.automation.add("dialog.numbering.from_caret", "checkbox", "From the current scene on", &from);
             let skip = ui.checkbox(&mut draft.skip_io, "Leave out the letters I and O");
             self.automation.add("dialog.numbering.skip_io", "checkbox", "Leave out the letters I and O", &skip);
+            ui.add_space(theme::SPACE_2);
+            let left = ui.checkbox(&mut draft.left, "Show in the left margin");
+            self.automation.add("dialog.numbering.left", "checkbox", "Show in the left margin", &left);
+            let right = ui.checkbox(&mut draft.right, "Show in the right margin");
+            self.automation.add("dialog.numbering.right", "checkbox", "Show in the right margin", &right);
             if let Some(error) = &draft.error {
                 ui.colored_label(ui.visuals().error_fg_color, error);
             }
@@ -1913,7 +1923,15 @@ impl StorytellerApp {
             ("skip_io", json!(draft.skip_io)),
         ]);
         let skip_io = draft.skip_io;
+        let margins = params(&[("left", json!(draft.left)), ("right", json!(draft.right))]);
         self.prefs.update(|p| p.general.skip_io_letters = skip_io);
+        // The margins are their own Undo step, before the numbers.
+        if let Err(error) = self.registry.run("scene.number_margins", &mut self.session, &margins) {
+            if let Some(draft) = &mut self.numbering {
+                draft.error = Some(error.to_string());
+            }
+            return;
+        }
         match self.registry.run("scene.number", &mut self.session, &target) {
             Ok(outcome) => {
                 self.numbering = None;

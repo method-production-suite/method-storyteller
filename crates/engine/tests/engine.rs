@@ -123,6 +123,12 @@ fn save_open_export_round_trip() {
     run(&registry, &mut s, "file.export_pdf", json!({ "path": pdf, "revisions": "none", "colour": true }));
     assert!(std::fs::read(&pdf).unwrap().starts_with(b"%PDF-"));
     assert!(registry.run("file.export_pdf", &mut s, json!({ "path": pdf, "revisions": "blue" }).as_object().unwrap()).is_err());
+    // Scene number margins are a script setting, one Undo.
+    assert_eq!(run(&registry, &mut s, "scene.number_margins", json!({ "left": false }))["value"], json!({ "left": false, "right": true }));
+    assert_eq!(s.script.scene_number_margins(), (false, true));
+    assert!(s.dirty);
+    s.undo();
+    assert_eq!(s.script.scene_number_margins(), (true, true));
     run(&registry, &mut s, "file.export_pdf", json!({ "path": pdf, "pages": "1", "clean": true }));
     let missing = registry.run("file.export_pdf", &mut s, json!({ "path": pdf, "pages": "999" }).as_object().unwrap()).unwrap_err();
     assert!(missing.to_string().contains("there is no page 999"), "{missing}");

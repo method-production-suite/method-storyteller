@@ -56,6 +56,7 @@ fn bare_format(script: &Script) -> storyteller_core::Format {
     if let Some(page) = format.page.as_mut() {
         page.fdx_page_layout.clear();
         page.fdx_mores.clear();
+        page.fdx_scene_numbers.clear();
         page.osf_settings.clear();
     }
     for element in &mut format.elements {

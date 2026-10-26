@@ -52,7 +52,14 @@ Production > Number Scenes… opens a dialog:
 - **Remove numbers.**
 - **Show in the left margin**, **Show in the right margin** (both on by default; a script
   setting, kept in the element settings both formats share). *Not in the first PR: View > Scene
-  Numbers shows both or neither for now.*
+  Numbers shows both or neither for now.* Built since: `PageFormat::numbers_left` and
+  `numbers_right`, read from and written to `.fdx` `SceneNumberOptions` (`ShowNumbersOnLeft`,
+  `ShowNumbersOnRight`; the rest of the section kept, and written back unchanged when they
+  are). OSF has no place for them, so its `settings` carries
+  `method_storyteller_scene_numbers` (`left`, `right` or `none`, said only when one is off)
+  with the `.fdx` section beside it. The page, the PDF and the editor print only the chosen
+  sides; `scene.number_margins` (`left`, `right`, one Undo) sets them, and the Number Scenes
+  dialog has the two checkboxes. View > Show Scene Numbers still shows or hides both.
 
 Production > Edit Scene Number… sets or clears one scene's number by hand. Two scenes may not
 share a number: the dialog says which scene has it.
