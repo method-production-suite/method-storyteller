@@ -621,8 +621,13 @@ impl<'a> PageBuilder<'a> {
         let chars = wrap::unstyled(number);
         let len = u16::try_from(chars.len()).unwrap_or(u16::MAX);
         let left = self.layout.scene_number_left_end.saturating_sub(len);
-        self.push_line(left, &chars, LineRole::SceneNumber, Some(element), 0);
-        self.push_line(self.layout.scene_number_right, &chars, LineRole::SceneNumber, Some(element), 0);
+        let (on_left, on_right) = script.scene_number_margins();
+        if on_left {
+            self.push_line(left, &chars, LineRole::SceneNumber, Some(element), 0);
+        }
+        if on_right {
+            self.push_line(self.layout.scene_number_right, &chars, LineRole::SceneNumber, Some(element), 0);
+        }
     }
 
     /// Lay out a speech starting at the current row; returns its height.

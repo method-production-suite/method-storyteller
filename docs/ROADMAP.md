@@ -271,7 +271,7 @@ wait for a decision above.
    number), omit and unomit, revision sets, revision mode with Mark and Clear Revised and
    deletion marks, revisions drawn in the editor and the PDF with the revised-page header and
    page colours, File > Export PDF… with revised pages only, page and scene ranges, clean
-   copies and coloured pages. Next: left and right scene number margins, marking new
+   copies and coloured pages, scene numbers in the left or right margin. Next: marking new
    paragraphs and joins, revision mode kept in the file. Kept in the `.mstory` package (decision 1).
 10. **M6, production II and reports** L. Spec: [production-spec.md](production-spec.md),
    section 4. Locked pages as imported, then lock pages, A-pages, lock

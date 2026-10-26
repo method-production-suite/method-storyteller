@@ -393,7 +393,17 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                             && layout.show_scene_numbers
                             && let Some(number) = &element.scene_number
                         {
-                            scene_numbers(ui, response.rect, number, layout.scene_number_left_end, layout.scene_number_right, col, &font, ink);
+                            let sides = session.script.scene_number_margins();
+                            scene_numbers(
+                                ui,
+                                response.rect,
+                                number,
+                                sides,
+                                (layout.scene_number_left_end, layout.scene_number_right),
+                                col,
+                                &font,
+                                ink,
+                            );
                         }
                         if !shown.is_empty() {
                             let mark_x = column_left + REVISION_MARK_INCHES * PX_PER_INCH * zoom;
@@ -601,13 +611,27 @@ fn page_break_marker(ui: &mut Ui, page: u32, row: f32, font: &FontId, color: Col
     );
 }
 
+/// A scene's number in the margins the script prints it in.
 #[allow(clippy::too_many_arguments)]
-fn scene_numbers(ui: &Ui, rect: Rect, number: &str, left_end: u16, right: u16, col: f32, font: &FontId, color: Color32) {
+fn scene_numbers(
+    ui: &Ui,
+    rect: Rect,
+    number: &str,
+    (on_left, on_right): (bool, bool),
+    (left_end, right): (u16, u16),
+    col: f32,
+    font: &FontId,
+    color: Color32,
+) {
     let page_left = ui.min_rect().left();
     let painter = ui.painter();
     let top = rect.top();
-    painter.text(pos2(page_left + f32::from(left_end) * col, top), egui::Align2::RIGHT_TOP, number, font.clone(), color);
-    painter.text(pos2(page_left + f32::from(right) * col, top), egui::Align2::LEFT_TOP, number, font.clone(), color);
+    if on_left {
+        painter.text(pos2(page_left + f32::from(left_end) * col, top), egui::Align2::RIGHT_TOP, number, font.clone(), color);
+    }
+    if on_right {
+        painter.text(pos2(page_left + f32::from(right) * col, top), egui::Align2::LEFT_TOP, number, font.clone(), color);
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

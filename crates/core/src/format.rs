@@ -58,11 +58,17 @@ pub struct PageFormat {
     pub contd: Option<String>,
     /// Add `contd` when the same character speaks again in a scene.
     pub auto_contd: Option<bool>,
+    /// Scene numbers print in the left and in the right margin (both when not said).
+    pub numbers_left: Option<bool>,
+    pub numbers_right: Option<bool>,
     /// `.fdx` `PageLayout` and `MoresAndContinueds` as read, the base for writing them.
     #[serde(skip)]
     pub fdx_page_layout: String,
     #[serde(skip)]
     pub fdx_mores: String,
+    /// `.fdx` `SceneNumberOptions` as read, the base for writing it.
+    #[serde(skip)]
+    pub fdx_scene_numbers: String,
     /// OSF `settings` as read, the base for writing them.
     #[serde(skip)]
     pub osf_settings: String,
@@ -354,6 +360,12 @@ pub(crate) fn from_fdx<'a>(sections: impl Iterator<Item = &'a str>) -> Format {
                 page.auto_contd = breaks.and_then(|b| b.get("AutomaticCharacterContinueds")).map(|v| truthy(Some(v)));
                 page.fdx_mores = xml.to_string();
             }
+            "SceneNumberOptions" => {
+                let page = format.page.get_or_insert_with(PageFormat::default);
+                page.numbers_left = node.get("ShowNumbersOnLeft").map(|v| truthy(Some(v)));
+                page.numbers_right = node.get("ShowNumbersOnRight").map(|v| truthy(Some(v)));
+                page.fdx_scene_numbers = xml.to_string();
+            }
             _ => {}
         }
     }
@@ -464,6 +476,15 @@ pub(crate) fn fdx_page_layout(page: &PageFormat) -> String {
     node.to_xml()
 }
 
+/// The `SceneNumberOptions`, from the one the page came with brought up to date.
+pub(crate) fn fdx_scene_numbers(page: &PageFormat) -> String {
+    let mut node = Node::parse(&page.fdx_scene_numbers).filter(|n| n.name == "SceneNumberOptions").unwrap_or_else(|| Node::new("SceneNumberOptions"));
+    for (key, value) in [("ShowNumbersOnLeft", page.numbers_left), ("ShowNumbersOnRight", page.numbers_right)] {
+        node.set(key, value.map(|v| if v { "Yes" } else { "No" }.to_string()), |v| Some(truthy(Some(v))) == value);
+    }
+    node.to_xml()
+}
+
 /// The `MoresAndContinueds`, from the one the page came with brought up to date.
 pub(crate) fn fdx_mores(page: &PageFormat) -> String {
     let mut node = Node::parse(&page.fdx_mores).filter(|n| n.name == "MoresAndContinueds").unwrap_or_else(|| Node::new("MoresAndContinueds"));
@@ -478,6 +499,9 @@ pub(crate) fn fdx_mores(page: &PageFormat) -> String {
 
 // ---------------------------------------------------------------------------------------------
 // Open Screenplay Format
+
+/// Our attribute on OSF `settings` for the scene number margins: `left`, `right` or `none`.
+const NUMBERS_ATTR: &str = "method_storyteller_scene_numbers";
 
 /// The attribute carrying `.fdx` settings through an OSF document.
 const FDX_ATTR: &str = "fdx_xml";
@@ -516,8 +540,11 @@ pub(crate) fn from_osf(settings: Option<&str>, styles: Option<&str>) -> Result<F
             more: osf_get(a, "more_text").map(str::to_string),
             contd: osf_get(a, "cont_text").map(bracketed),
             auto_contd: osf_get(a, "dialogue_continues").map(|v| truthy(Some(v))),
+            numbers_left: osf_get(a, NUMBERS_ATTR).map(|v| v == "left" || v == "both"),
+            numbers_right: osf_get(a, NUMBERS_ATTR).map(|v| v == "right" || v == "both"),
             fdx_page_layout: osf_get(a, "fdx_page_layout").unwrap_or_default().to_string(),
             fdx_mores: osf_get(a, "fdx_mores").unwrap_or_default().to_string(),
+            fdx_scene_numbers: osf_get(a, "fdx_scene_numbers").unwrap_or_default().to_string(),
             osf_settings: raw.to_string(),
         });
     }
@@ -540,6 +567,16 @@ pub(crate) fn from_osf(settings: Option<&str>, styles: Option<&str>) -> Result<F
             page.left = None;
             page.right = None;
         }
+    }
+    // Scene number margins an `.fdx` said come back as it said them (OSF says only when one is off).
+    if let Some(page) = format.page.as_mut()
+        && !page.fdx_scene_numbers.is_empty()
+        && page.numbers_left.is_none()
+        && page.numbers_right.is_none()
+    {
+        let fdx = from_fdx([page.fdx_scene_numbers.as_str()].into_iter()).page.unwrap_or_default();
+        page.numbers_left = fdx.numbers_left;
+        page.numbers_right = fdx.numbers_right;
     }
     let page = format.page.clone().unwrap_or_default();
     let margin_left = page.left.unwrap_or(OSF_LEFT);
@@ -696,11 +733,21 @@ pub(crate) fn osf_settings(page: &PageFormat, base: &str) -> String {
     if let Some(auto) = page.auto_contd {
         set(&mut node, "dialogue_continues", Some(auto.to_string()), &|v| truthy(Some(v)) == auto);
     }
-    let bare = PageFormat { fdx_page_layout: String::new(), fdx_mores: String::new(), ..page.clone() };
+    // OSF has no place for the scene number margins: our own attribute, said only when one is off.
+    let sides = match (page.numbers_left.unwrap_or(true), page.numbers_right.unwrap_or(true)) {
+        (true, true) => None,
+        (true, false) => Some("left"),
+        (false, true) => Some("right"),
+        (false, false) => Some("none"),
+    };
+    node.set(NUMBERS_ATTR, sides.map(str::to_string), |v| Some(v) == sides);
+    let bare = PageFormat { fdx_page_layout: String::new(), fdx_mores: String::new(), fdx_scene_numbers: String::new(), ..page.clone() };
     let layout = Some(page.fdx_page_layout.clone()).filter(|x| !x.is_empty() && *x != fdx_page_layout(&bare));
     node.set("fdx_page_layout", layout, |v| v == page.fdx_page_layout);
     let mores = Some(page.fdx_mores.clone()).filter(|x| !x.is_empty() && *x != fdx_mores(&bare));
     node.set("fdx_mores", mores, |v| v == page.fdx_mores);
+    let numbers = Some(page.fdx_scene_numbers.clone()).filter(|x| !x.is_empty() && *x != fdx_scene_numbers(&bare));
+    node.set("fdx_scene_numbers", numbers, |v| v == page.fdx_scene_numbers);
     node.to_xml()
 }
 

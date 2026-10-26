@@ -1915,6 +1915,27 @@ fn all_commands() -> Vec<Command> {
             },
         },
         Command {
+            id: "scene.number_margins",
+            label: "Scene Number Margins",
+            menu: "",
+            shortcut: None,
+            params: const {
+                &[param("left", Bool, false, "Print scene numbers in the left margin"), param("right", Bool, false, "Print them in the right margin")]
+            },
+            enabled: always,
+            run: |s, p| {
+                let (left, right) = s.script.scene_number_margins();
+                let (left, right) = (opt_bool(p, "left")?.unwrap_or(left), opt_bool(p, "right")?.unwrap_or(right));
+                let mut changed = s.script.clone();
+                if changed.set_scene_number_margins(left, right) {
+                    s.checkpoint(EditKind::Other);
+                    s.script = changed;
+                    s.invalidate_layout();
+                }
+                Ok(Outcome::value(json!({ "left": left, "right": right })))
+            },
+        },
+        Command {
             id: "scene.set_number",
             label: "Edit Scene Number",
             menu: "",
