@@ -52,6 +52,8 @@ const SCENE_MARKER: &str = "method_storyteller_scene";
 const OMITTED_MARKER: &str = "method_storyteller_omitted";
 /// Our element for a place revised text was deleted, which OSF's own marks may not say.
 const DELETION_MARKER: &str = "method_storyteller_deletion";
+/// Revision mode on, an attribute of the revision list (other apps ignore it).
+const MODE_ATTRIBUTE: &str = "method_storyteller_revision_mode";
 
 /// The element name a raw section starts with, compared loosely.
 fn top_name(raw: &str) -> String {
@@ -774,7 +776,10 @@ fn read_revisions(top: &[TopLevel]) -> Revisions {
         }
         for (tag, attributes) in tags(&section.raw) {
             match key(&tag).as_str() {
-                "revisioncolors" => revisions.fdx_attributes = unprefixed("fdx_", &attributes),
+                "revisioncolors" => {
+                    revisions.mode = get(&attributes, MODE_ATTRIBUTE).is_some_and(|m| m.trim().eq_ignore_ascii_case("yes"));
+                    revisions.fdx_attributes = unprefixed("fdx_", &attributes);
+                }
                 "revisioncolor" if revisions.sets.len() < MAX_ELEMENTS => {
                     let palette = get(&attributes, "color_name").and_then(|n| PALETTE.iter().find(|(p, _)| p.eq_ignore_ascii_case(n.trim())));
                     revisions.sets.push(RevisionSet {
@@ -805,6 +810,9 @@ fn revision_colors(revisions: &Revisions, spelling: Spelling) -> String {
         ("revision_colors", "revision_color", "color_name", "color_index")
     };
     let mut out = format!("<{list}");
+    if revisions.mode {
+        write_attr(MODE_ATTRIBUTE, "yes", &mut out);
+    }
     let bare = Revisions { fdx_attributes: Vec::new(), ..revisions.clone() };
     if !revisions.fdx_attributes.is_empty() && revisions.fdx_attributes != revisions_attributes(&bare) {
         for (k, v) in prefixed("fdx_", &revisions.fdx_attributes) {
@@ -1440,7 +1448,7 @@ pub fn write(script: &Script) -> String {
             if !title_written {
                 write_title_page(&script.title_page, spelling, &mut out);
             }
-            if !revisions_same && !lists_written && !script.revisions.sets.is_empty() {
+            if !revisions_same && !lists_written && (!script.revisions.sets.is_empty() || script.revisions.mode) {
                 out.push_str(&format!("  <lists>{}</lists>\n", revision_colors(&script.revisions, spelling)));
             }
             if !format_same
@@ -1474,7 +1482,7 @@ pub fn write(script: &Script) -> String {
             out.push('\n');
             write_paragraphs(script, Spelling::Snake, true, &mut out);
             write_title_page(&script.title_page, Spelling::Snake, &mut out);
-            if !script.revisions.sets.is_empty() || !script.revisions.fdx_attributes.is_empty() {
+            if !script.revisions.sets.is_empty() || script.revisions.mode || !script.revisions.fdx_attributes.is_empty() {
                 out.push_str(&format!("  <lists>{}</lists>\n", revision_colors(&script.revisions, Spelling::Snake)));
             }
             if !script.spelling_ignored.is_empty() {

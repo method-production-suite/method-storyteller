@@ -40,7 +40,7 @@ named factually here; how other apps behave is not described.
 | Page breaks | exact | `StartsNewPage` and `pagebreakbefore` |
 | Title page fields | exact | `TitlePage` paragraphs and bookmarked `titlepage` paragraphs |
 | Script notes: text, range, colour, author, all three `.fdx` forms | exact | OSF `note` (plain) plus `method_storyteller_note`; ranges count printed characters, one per paragraph break |
-| Revision sets: name, mark, mark colour, page colour, active set | exact | `Revisions` and `revision_colors`, `settings@revision`; colours OSF has no place for ride on `method_storyteller_` attributes |
+| Revision sets: name, mark, mark colour, page colour, active set, revision mode | exact | `Revisions` (`RevisionMode`) and `revision_colors`, `settings@revision`; colours and revision mode, which OSF has no place for, ride on `method_storyteller_` attributes |
 | Revised text | exact | `Text@RevisionID` and `text@revision` |
 | Deleted-text marks | exact | `DeletedText` (`Offset` counts like note ranges) and our `method_storyteller_deletion`; OSF's own `marks` are kept as read |
 | Locked pages and A-pages | exact | `LockedPages` (`Position` counts like note ranges) and `pages_locked` with `para@page_number`; a page starting inside a paragraph carries `method_storyteller_page` |

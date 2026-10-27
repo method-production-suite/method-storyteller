@@ -130,8 +130,11 @@ out leaves a deletion mark (`Element::deletions`). Marks follow their text throu
 an Enter split and a Backspace join. `.fdx` reads and writes the `DeletedText` list
 (`DeletedTextLocation Offset RevisionID`, offsets in the whole script, as read while
 unchanged); OSF carries them as `<method_storyteller_deletion at set/>`. The corpus keeps all
-19,525 deletion marks through `.fdx` to OSF to `.fdx`. Not yet: marking a new paragraph from
-Enter or a paste, the join itself, and keeping revision mode on in the file.
+19,525 deletion marks through `.fdx` to OSF to `.fdx`. A paragraph Enter splits off, one
+`element.insert` adds and every paragraph a paste makes are revised whole; a Backspace join
+leaves a deletion mark where the break was. Revision mode is kept in the file (`.fdx`
+`RevisionMode="Yes"`, OSF `method_storyteller_revision_mode="yes"` on the revision list, so
+the `.mstory` package too), and turning it on or off is one Undo.
 
 *Decision S2, shortcuts.* ⌘] and ⌘[ are the familiar keys for Mark and Clear Revised. Built on
 the recommendation: use them, since nothing in the app takes them.

@@ -50,8 +50,6 @@ pub struct Session {
     lengths: Option<Vec<SceneLength>>,
     /// The writer's learned words (see [`crate::spell::Personal`]); the app fills them from its settings.
     pub spelling: crate::spell::Personal,
-    /// Revision mode: every change is marked in the active revision set (docs/production-spec.md §3.4).
-    pub revision_mode: bool,
     /// View > Show Revisions; the app keeps it in its settings (§3.5).
     pub show_revisions: storyteller_core::model::ShowRevisions,
     /// View > Revised Page Colours: revised pages on screen in their set's page colour.
@@ -85,7 +83,6 @@ impl Session {
             paginated: None,
             lengths: None,
             spelling: crate::spell::Personal::default(),
-            revision_mode: false,
             show_revisions: Default::default(),
             page_colours: false,
         }
@@ -190,9 +187,10 @@ impl Session {
         self.lengths.as_deref().unwrap_or_default()
     }
 
-    /// The set a change is marked in now: the active one, in revision mode.
+    /// The set a change is marked in now: the active one, in revision mode (kept in the script,
+    /// so a file saved in revision mode opens in it).
     pub fn marking_set(&self) -> Option<u32> {
-        if self.revision_mode { self.script.revisions.active } else { None }
+        if self.script.revisions.mode { self.script.revisions.active } else { None }
     }
 
     /// How many edits the session has recorded (see [`Session::checkpoint`]).

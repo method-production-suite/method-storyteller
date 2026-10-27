@@ -161,12 +161,14 @@ says otherwise.
   with the `.mstory` package, scene properties, US and UK spelling, recovery at launch, Close
   and Open Recent. Called 0.5.0, not 0.4.1, because a tag must be on main and main already
   carries those features. Published 2026-10-21 (tag `v0.5.0` on `0b861b8`).
-- **v0.6.0, the first production release:** scene numbering that keeps numbers, margins for
+- **v0.6.0, the production-draft release:** scene numbering that keeps numbers, margins for
   them, omitted scenes, revision sets, revision mode, revisions on screen and in print, and
   issuing chosen pages. May tag before 2026-11-06: the owner approved clipboard-win 5.4.3 for
   release v0.6.0 (2026-10-27), and the release check honours that override for the tag v0.6.0
-  only. Release PR to MReview, rehearsal, then the tag request; the tag needs the owner's yes.
-  The override line comes out on 2026-11-06.
+  only. Release PR merged (#112, #113); the rehearsal on `4f7198f` passed (run 40519904548:
+  every build, notarisation and Gatekeeper). **Waiting: the owner's yes to tag and publish
+  v0.6.0 on `4f7198f`**, asked through MOrg on 2026-10-27. The override line comes out on
+  2026-11-06.
 
 ### Deferred (the owner, 2026-10-20)
 
@@ -277,8 +279,8 @@ wait for a decision above.
    number), omit and unomit, revision sets, revision mode with Mark and Clear Revised and
    deletion marks, revisions drawn in the editor and the PDF with the revised-page header and
    page colours, File > Export PDF… with revised pages only, page and scene ranges, clean
-   copies and coloured pages, scene numbers in the left or right margin. Next: marking new
-   paragraphs and joins, revision mode kept in the file. Kept in the `.mstory` package (decision 1).
+   copies and coloured pages, scene numbers in the left or right margin, new paragraphs and joins
+   marked, revision mode kept in the file. M5 is done; kept in the `.mstory` package (decision 1).
 10. **M6, production II and reports** L. Spec: [production-spec.md](production-spec.md),
    section 4. Locked pages as imported, then lock pages, A-pages, lock
    and unlock; scene, location, character and cast reports with CSV; plain-text export; the

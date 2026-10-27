@@ -5,6 +5,13 @@ for its own version in Help > What's New, once after an update.
 
 ## Unreleased
 
+### New
+
+- In revision mode a new paragraph is marked whole, whether Enter splits it off or a paste
+  makes it, and joining two paragraphs with Backspace leaves a mark where they met.
+- Revision mode is kept in the script: a file saved with it on opens with it on, in `.fdx`,
+  `.osf` and `.mstory`. Turning it on or off is one Undo.
+
 ## 0.6.0
 
 ### New
