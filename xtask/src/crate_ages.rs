@@ -56,9 +56,24 @@ fn an_owner_approved_override_holds_for_its_named_release_only() {
     assert_eq!(honoured(&run(py, &f, false, None)), ["foo 1.2.3", "parley 0.7.0", "rustls 0.23.46"]);
     // A release honours the override only when it is the release named.
     assert_eq!(honoured(&run(py, &f, true, Some("v0.6.0"))), ["foo 1.2.3", "rustls 0.23.46"]);
-    for other in [Some("v0.6.1"), Some("v0.5.0"), Some("v0.6.0-rc.1"), None] {
+    for other in [Some("v0.6.1"), Some("v0.5.0"), Some("v0.6.0-rc.1"), Some(""), None] {
         assert_eq!(honoured(&run(py, &f, true, other)), ["rustls 0.23.46"], "{other:?}");
     }
+}
+
+#[test]
+fn the_release_named_ends_where_the_version_does() {
+    let Some(py) = python() else {
+        eprintln!("skipped: no Python 3.11 or later on PATH");
+        return;
+    };
+    // A pre-release is its own release, not v0.6.0.
+    let f = scratch("rc.txt", "foo 1.2.3   # owner-approved override, the owner, 2026-10-27, release v0.6.0-rc1\n");
+    assert!(honoured(&run(py, &f, true, Some("v0.6.0"))).is_empty());
+    assert_eq!(honoured(&run(py, &f, true, Some("v0.6.0-rc1"))), ["foo 1.2.3"]);
+    // A fourth number names no release at all.
+    let f = scratch("four.txt", "foo 1.2.3   # owner-approved override, the owner, 2026-10-27, release v0.6.0.1\n");
+    assert!(!run(py, &f, true, Some("v0.6.0")).status.success());
 }
 
 #[test]

@@ -50,7 +50,9 @@ EXCEPTIONS = pathlib.Path(__file__).with_name("crate-age-exceptions.txt")
 
 
 OWNER_APPROVED = "owner-approved override"
-RELEASE = re.compile(r"\brelease (v\d+\.\d+\.\d+)\b")
+# The version's end is anchored, so "release v0.6.0-rc1" names v0.6.0-rc1 and "release v0.6.0.1"
+# names no release, neither of them v0.6.0.
+RELEASE = re.compile(r"\brelease (v\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)(?![\w.+-])")
 
 
 def release_honoured(reason, tag):
