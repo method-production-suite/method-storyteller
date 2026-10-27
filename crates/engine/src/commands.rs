@@ -615,6 +615,11 @@ fn paste_screenplay(s: &mut Session, index: usize, start: usize, end: usize, tex
         rest.normalize();
         pasted.push(rest);
     }
+    // In revision mode every paragraph the paste makes is new, so each is revised whole.
+    let mark = s.marking_set();
+    for element in &mut pasted {
+        element.mark_whole(mark);
+    }
     let last = at + count - 1;
     let caret = pasted.get(count - 1).map_or(0, |e| e.text.len());
     for (n, element) in pasted.into_iter().enumerate() {
@@ -675,6 +680,8 @@ pub fn enter(session: &mut Session, index: usize, offset: usize) -> Result<Enter
         let (text, _) = flow::convert_text(&tail, element.kind, next_kind);
         fresh.text = text;
         caret = usize::from(next_kind == ElementKind::Parenthetical);
+        // In revision mode the paragraph Enter makes is new, so it is revised whole.
+        fresh.mark_whole(session.marking_set());
     }
     insert(session, index + 1, fresh)?;
     session.caret = Caret { element: index + 1, offset: caret };
@@ -733,11 +740,16 @@ pub fn merge_previous(session: &mut Session, index: usize) -> Result<bool, Comma
         return Ok(false);
     }
     session.checkpoint(EditKind::Other);
+    // In revision mode the join is marked: a deletion mark where the paragraph break was.
+    let mark = session.marking_set().filter(|s| *s != 0);
     let mut current = session.script.elements.remove(index);
     let previous_index = index - 1;
     let Some(previous) = session.script.elements.get_mut(previous_index) else { return Ok(false) };
     if previous.kind == ElementKind::PageBreak {
         session.script.elements.remove(previous_index);
+        if let Some(set) = mark {
+            current.mark_deletion(0, set);
+        }
         session.script.elements.insert(previous_index, current);
         session.caret = Caret { element: previous_index, offset: 0 };
         return Ok(true);
@@ -758,6 +770,9 @@ pub fn merge_previous(session: &mut Session, index: usize) -> Result<bool, Comma
     // The joined paragraph's revised text and notes come along, where its text now sits.
     let joined_at = u32::try_from(inline::plain(previous.text.get(..at).unwrap_or_default()).chars().count()).unwrap_or(u32::MAX);
     previous.absorb_anchors(&mut current, joined_at);
+    if let Some(set) = mark {
+        previous.mark_deletion(joined_at, set);
+    }
     session.caret = Caret { element: previous_index, offset: at };
     Ok(true)
 }
@@ -1483,6 +1498,7 @@ fn all_commands() -> Vec<Command> {
                 if s.layout.style(kind).caps {
                     element.text = element.text.to_uppercase();
                 }
+                element.mark_whole(s.marking_set());
                 s.checkpoint(EditKind::Other);
                 let len = element.text.len();
                 insert(s, after + 1, element)?;
@@ -1839,13 +1855,16 @@ fn all_commands() -> Vec<Command> {
             params: const { &[param("on", Bool, false, "On or off (default: the other way)")] },
             enabled: always,
             run: |s, p| {
-                let on = opt_bool(p, "on")?.unwrap_or(!s.revision_mode);
-                if on && s.script.revisions.active.is_none() {
-                    // The first set, so changes have somewhere to be marked.
+                let on = opt_bool(p, "on")?.unwrap_or(!s.script.revisions.mode);
+                // Kept in the file, so turning it on or off is an edit with its own Undo.
+                if on != s.script.revisions.mode {
                     s.checkpoint(EditKind::Other);
-                    s.script.add_revision_set(&today_short());
+                    if on && s.script.revisions.active.is_none() {
+                        // The first set, so changes have somewhere to be marked.
+                        s.script.add_revision_set(&today_short());
+                    }
+                    s.script.revisions.mode = on;
                 }
-                s.revision_mode = on;
                 let set = s.script.revisions.active.and_then(|id| s.script.revisions.set(id)).map(|set| set.name.clone()).unwrap_or_default();
                 Ok(Outcome::message(if on { format!("Revision mode: changes are marked in {set}") } else { "Revision mode is off".to_string() }))
             },

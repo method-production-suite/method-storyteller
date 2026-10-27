@@ -55,7 +55,7 @@ fn notes(s: &Script) -> String {
 
 fn revision_sets(s: &Script) -> String {
     let sets: Vec<_> = s.revisions.sets.iter().map(|r| (r.id, &r.name, &r.mark, &r.color, &r.page_color)).collect();
-    format!("{:?} {sets:?}", s.revisions.active)
+    format!("{:?} {} {sets:?}", s.revisions.active, s.revisions.mode)
 }
 
 fn revised(s: &Script) -> String {
@@ -139,9 +139,9 @@ const ROWS: &[Row] = &[
         check: Some(notes),
     },
     Row {
-        what: "Revision sets: name, mark, mark colour, page colour, active set",
+        what: "Revision sets: name, mark, mark colour, page colour, active set, revision mode",
         fidelity: Exact,
-        how: "`Revisions` and `revision_colors`, `settings@revision`; colours OSF has no place for ride on `method_storyteller_` attributes",
+        how: "`Revisions` (`RevisionMode`) and `revision_colors`, `settings@revision`; colours and revision mode, which OSF has no place for, ride on `method_storyteller_` attributes",
         check: Some(revision_sets),
     },
     Row { what: "Revised text", fidelity: Exact, how: "`Text@RevisionID` and `text@revision`", check: Some(revised) },

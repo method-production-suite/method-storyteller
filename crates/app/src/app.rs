@@ -1295,7 +1295,7 @@ impl StorytellerApp {
             "prefs.new_osf" => Some(self.preferred_extension() == "osf"),
             "prefs.smart_quotes" => Some(self.prefs.get().general.smart_quotes),
             "app.characters" => Some(self.characters),
-            "revisions.mode" => Some(self.session.revision_mode),
+            "revisions.mode" => Some(self.session.script.revisions.mode),
             "prefs.spelling_us" => Some(self.prefs.get().general.spelling_language != "en_GB"),
             "prefs.spelling_uk" => Some(self.prefs.get().general.spelling_language == "en_GB"),
             "prefs.check_spelling" => Some(self.prefs.get().view.check_spelling),

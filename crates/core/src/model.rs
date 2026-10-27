@@ -482,6 +482,10 @@ pub struct RevisionSet {
 pub struct Revisions {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub active: Option<u32>,
+    /// Revision mode: changes are marked in the active set (docs/production-spec.md §3.4). Kept
+    /// in the file: `.fdx` `RevisionMode`, OSF `method_storyteller_revision_mode`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub mode: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sets: Vec<RevisionSet>,
     /// Attributes of Final Draft's `Revisions` element (`RevisionMode`, `Location` …), in file order.
@@ -491,7 +495,7 @@ pub struct Revisions {
 
 impl Revisions {
     pub fn is_empty(&self) -> bool {
-        self.active.is_none() && self.sets.is_empty() && self.fdx_attributes.is_empty()
+        self.active.is_none() && !self.mode && self.sets.is_empty() && self.fdx_attributes.is_empty()
     }
 
     /// The set with this id.
@@ -921,8 +925,23 @@ impl Element {
         let edit = Edit::between(&old, &new);
         if edit.new_tail > edit.prefix {
             self.mark_range(edit.prefix, edit.new_tail, Some(set));
-        } else if edit.old_tail > edit.prefix && !self.deletions.iter().any(|d| d.at == edit.prefix && d.set == set) {
-            self.deletions.push(Deletion { at: edit.prefix, set });
+        } else if edit.old_tail > edit.prefix {
+            self.mark_deletion(edit.prefix, set);
+        }
+    }
+
+    /// Marks the whole paragraph as revised in `set`: a paragraph that is new in revision mode
+    /// (docs/production-spec.md §3.4).
+    pub fn mark_whole(&mut self, set: Option<u32>) {
+        let Some(set) = set.filter(|s| *s != 0) else { return };
+        let len = u32::try_from(crate::inline::plain(&self.text).chars().count()).unwrap_or(u32::MAX);
+        self.mark_range(0, len, Some(set));
+    }
+
+    /// Leaves a deletion mark in `set` at printed character `at`, once.
+    pub fn mark_deletion(&mut self, at: u32, set: u32) {
+        if set != 0 && !self.deletions.iter().any(|d| d.at == at && d.set == set) {
+            self.deletions.push(Deletion { at, set });
             self.deletions.sort_by_key(|d| (d.at, d.set));
         }
     }

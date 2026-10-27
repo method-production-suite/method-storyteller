@@ -57,6 +57,32 @@ fn new_sets_are_kept_by_fdx_and_osf() {
 }
 
 #[test]
+fn revision_mode_is_kept_by_fdx_and_osf() {
+    let mut script: Script = fountain::parse("INT. HUT - DAY\n\nRain.\n").unwrap();
+    script.add_revision_set("10/21/26");
+    script.revisions.mode = true;
+    let written = fdx::write(&script);
+    assert!(written.contains("RevisionMode=\"Yes\""));
+    for (name, back) in [("fdx", fdx::parse(&written).unwrap()), ("osf", osf::parse(&osf::write(&script)).unwrap())] {
+        assert!(back.revisions.mode, "{name}");
+        // Turned off in a file that was read, and on again.
+        let mut off = back.clone();
+        off.revisions.mode = false;
+        let again = if name == "fdx" { fdx::parse(&fdx::write(&off)).unwrap() } else { osf::parse(&osf::write(&off)).unwrap() };
+        assert!(!again.revisions.mode, "{name}");
+        let mut on = again.clone();
+        on.revisions.mode = true;
+        let again = if name == "fdx" { fdx::parse(&fdx::write(&on)).unwrap() } else { osf::parse(&osf::write(&on)).unwrap() };
+        assert!(again.revisions.mode, "{name}");
+    }
+    // A file that says No keeps saying it; one that never said leaves it out.
+    let off = fdx::parse(&written.replace("RevisionMode=\"Yes\"", "RevisionMode=\"No\"")).unwrap();
+    assert!(!off.revisions.mode && fdx::write(&off).contains("RevisionMode=\"No\""));
+    script.revisions.mode = false;
+    assert!(!fdx::write(&script).contains("RevisionMode"));
+}
+
+#[test]
 fn edits_in_revision_mode_are_marked_and_deletions_leave_a_mark() {
     use storyteller_core::model::{Deletion, Element, ElementKind};
     let mut element = Element::new(ElementKind::Action, "Rain falls.");

@@ -877,11 +877,50 @@ fn revision_sets_are_added_changed_and_deleted_one_undo_each() {
 }
 
 #[test]
+fn revision_mode_marks_new_paragraphs_whole_and_marks_joins() {
+    use storyteller_core::{Deletion, Revised};
+    let registry = Registry::new();
+    let mut s = Session::new(storyteller_core::fountain::parse("INT. HUT - DAY\n\nRain falls. Wind rises.\n").unwrap());
+    // Out of revision mode nothing is marked.
+    run(&registry, &mut s, "flow.enter", json!({ "index": 1, "offset": "Rain falls.".len() }));
+    assert!(s.script.elements[2].revised.is_empty());
+    run(&registry, &mut s, "element.merge_previous", json!({ "index": 2 }));
+    assert!(s.script.elements[1].deletions.is_empty());
+    assert_eq!(s.script.elements[1].text, "Rain falls.Wind rises.");
+    run(&registry, &mut s, "element.set_text", json!({ "index": 1, "text": "Rain falls. Wind rises." }));
+
+    run(&registry, &mut s, "revisions.mode", json!({}));
+    let white = s.script.revisions.active.unwrap();
+    // Enter splits off a paragraph that is new: it is revised whole; the one it left is not.
+    run(&registry, &mut s, "flow.enter", json!({ "index": 1, "offset": "Rain falls.".len() }));
+    assert_eq!(s.script.elements[2].text, "Wind rises.");
+    assert_eq!(s.script.elements[2].revised, [Revised { from: 0, to: 11, set: white }]);
+    assert!(s.script.elements[1].revised.is_empty());
+    // Backspace joins it back: its marks come along and the join itself is marked.
+    run(&registry, &mut s, "element.merge_previous", json!({ "index": 2 }));
+    assert_eq!(s.script.elements[1].revised, [Revised { from: 11, to: 22, set: white }]);
+    assert_eq!(s.script.elements[1].deletions, [Deletion { at: 11, set: white }]);
+    run(&registry, &mut s, "edit.undo", json!({}));
+    assert!(s.script.elements[1].deletions.is_empty() && s.script.elements.len() == 3, "one Undo");
+    // An inserted paragraph is revised whole.
+    let index =
+        run(&registry, &mut s, "element.insert", json!({ "index": 2, "kind": "action", "text": "Thunder." }))["value"]["index"].as_u64().unwrap();
+    assert_eq!(s.script.elements[index as usize].revised, [Revised { from: 0, to: 8, set: white }]);
+    // So is every paragraph a paste makes, the text after the paste included.
+    run(&registry, &mut s, "edit.paste_screenplay", json!({ "index": 1, "start": "Rain".len(), "text": "MARA\nGo.\n\nShe runs." }));
+    let marked: Vec<_> = s.script.elements.iter().map(|e| (e.text.as_str(), !e.revised.is_empty())).collect();
+    assert_eq!(
+        marked[1..],
+        [("Rain", false), ("MARA", true), ("Go.", true), ("She runs.", true), ("falls.", true), ("Wind rises.", true), ("Thunder.", true)]
+    );
+}
+
+#[test]
 fn revision_mode_marks_typing_and_mark_and_clear_act_on_a_range() {
     let registry = Registry::new();
     let mut s = Session::new(storyteller_core::fountain::parse("INT. HUT - DAY\n\nRain **falls**.\n").unwrap());
     let out = run(&registry, &mut s, "revisions.mode", json!({}));
-    assert!(s.revision_mode);
+    assert!(s.script.revisions.mode);
     assert_eq!(s.script.revisions.sets.len(), 1, "a first set, so there is somewhere to mark");
     assert!(out["message"].as_str().unwrap_or_default().starts_with("Revision mode: changes are marked in White Revision"));
     let white = s.script.revisions.active.unwrap();

@@ -1760,6 +1760,7 @@ fn read_revisions(xml: &str) -> Revisions {
     let mut revisions = Revisions::default();
     if let Some((_, root)) = tags.first() {
         revisions.active = number(get(root, "ActiveSet"));
+        revisions.mode = get(root, "RevisionMode").is_some_and(|m| m.trim().eq_ignore_ascii_case("Yes"));
         revisions.fdx_attributes = root.clone();
     }
     for (_, attributes) in tags.iter().skip(1).filter(|(name, _)| name == "Revision").take(MAX_ELEMENTS) {
@@ -1801,6 +1802,9 @@ pub(crate) fn revision_set_attributes(set: &RevisionSet) -> Vec<(String, String)
 pub(crate) fn revisions_attributes(revisions: &Revisions) -> Vec<(String, String)> {
     let mut attributes = revisions.fdx_attributes.clone();
     keep_or_set(&mut attributes, "ActiveSet", revisions.active.map(|a| a.to_string()), |v| number(Some(v)) == revisions.active);
+    // Written when on, or when the file said it either way.
+    let mode = (revisions.mode || get(&attributes, "RevisionMode").is_some()).then(|| (if revisions.mode { "Yes" } else { "No" }).to_string());
+    keep_or_set(&mut attributes, "RevisionMode", mode, |v| v.trim().eq_ignore_ascii_case("Yes") == revisions.mode);
     attributes
 }
 
