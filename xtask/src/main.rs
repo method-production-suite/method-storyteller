@@ -6,6 +6,8 @@
 //! release (see `updater.rs`).
 
 mod corpus;
+#[cfg(test)]
+mod crate_ages;
 mod package;
 #[cfg(test)]
 mod release_workflow;

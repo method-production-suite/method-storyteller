@@ -130,10 +130,14 @@ jobs:
           { echo "tag=$tag"; echo "ref=$tag"; echo "version=$version"; echo "rehearsal=false"; } >> "$GITHUB_OUTPUT"
       - name: Every locked crate is at least 14 days old, apart from security fixes
         # SUITE-STANDARDS.md §6: main may list a young crate in scripts/crate-age-exceptions.txt
-        # while it ages out, but no release ships one; a listed security fix (RUSTSEC) may.
+        # while it ages out, but no release ships one; a listed security fix (RUSTSEC) may, and
+        # an owner-approved override for this release's tag only. The tag is v<version>, which
+        # the step above matched to the pushed tag, or the version a rehearsal rehearses.
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
         run: |
           set -euo pipefail
-          python3 scripts/check-crate-ages.py --release \
+          python3 scripts/check-crate-ages.py --release --tag "v$VERSION" \
             --allow-git https://github.com/storytold/craft-libs \
             --allow-git https://github.com/method-production-suite/method-libs
 
