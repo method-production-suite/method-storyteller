@@ -5,6 +5,8 @@ for its own version in Help > What's New, once after an update.
 
 ## Unreleased
 
+## 0.6.0
+
 ### New
 
 - Production > Number Scenes… chooses whether scene numbers print in the left margin, the
