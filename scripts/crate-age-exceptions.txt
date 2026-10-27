@@ -3,8 +3,9 @@
 # - a security fix that cannot wait: name its RUSTSEC id; releases may ship it;
 # - a version that cannot be pinned back: give the date it turns 14 days old; main stays
 #   green, but no release ships it (the release workflow runs the check with --release);
-# - the owner's override for a named release: start the reason "owner-approved override",
-#   then who approved it, when, and for which release; releases may ship it.
+# - the owner's override for one named release: start the reason "owner-approved override",
+#   then who approved it, when, and "release vX.Y.Z"; the release workflow honours it for that
+#   tag only (--tag), and a rehearsal for the version it rehearses.
 # Remove a line once the version is 14 days old.
 clipboard-win 5.4.3   # owner-approved override, the owner, 2026-10-27, release v0.6.0 ("Yes: owner-approved override for clipboard-win 5.4.3 in Method Storyteller 0.6.0, Method Reader 1.0.0 and the next Method Launcher release, so they can release before 2026-11-06."); from 5.4.1, a bounds fix in raw::get_html (Windows only, no RUSTSEC id); 14 days old on 2026-11-06
 rustls-webpki 0.103.16   # security fix RUSTSEC-2026-0382 (rustls-webpki below 0.103.16), the updater's TLS; listed 2026-10-20, 14 days old on 2026-11-03

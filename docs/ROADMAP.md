@@ -161,9 +161,10 @@ says otherwise.
   with the `.mstory` package, scene properties, US and UK spelling, recovery at launch, Close
   and Open Recent. Called 0.5.0, not 0.4.1, because a tag must be on main and main already
   carries those features. Published 2026-10-21 (tag `v0.5.0` on `0b861b8`).
-- **The next release (0.6.0: M5's production features):** not before 2026-11-06, when
-  clipboard-win 5.4.3 turns 14 days old (the owner, 2026-10-26), unless the owner approves an
-  override naming that release. Then: the release PR to MReview, a rehearsal, the tag request.
+- **The next release (0.6.0: M5's production features):** may tag before 2026-11-06: the owner
+  approved clipboard-win 5.4.3 for release v0.6.0 (2026-10-27), and the release check honours
+  that override for the tag v0.6.0 only. The tag itself still needs the owner's yes. Then: the
+  release PR to MReview, a rehearsal, the tag request. The override line comes out on 2026-11-06.
 
 ### Deferred (the owner, 2026-10-20)
 
