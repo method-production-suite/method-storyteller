@@ -11,6 +11,10 @@ for its own version in Help > What's New, once after an update.
   makes it, and joining two paragraphs with Backspace leaves a mark where they met.
 - Revision mode is kept in the script: a file saved with it on opens with it on, in `.fdx`,
   `.osf` and `.mstory`. Turning it on or off is one Undo.
+- A script whose pages are locked in an Open Screenplay Format file keeps those pages: what
+  no longer fits flows onto A-pages (`12A`), a page that lost text stays short, and pages whose
+  text fits on one print as `7-8`. Pages locked in an `.fdx` file are kept and saved back, and
+  will print the same way once their positions are read reliably.
 
 ## 0.6.0
 

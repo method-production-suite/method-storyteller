@@ -42,6 +42,13 @@ struct FileResult {
     /// recorded page matches the locked page they sit on: (headings, matching).
     locks: (usize, usize),
     lock_pages: (usize, usize),
+    /// Paginated with the locks: (pages, pages printed with a locked number, A-pages or
+    /// combined pages added), and scene headings printed on the page Final Draft recorded,
+    /// compared as labels such as `12A`: (headings, matching, matching with the locks ignored).
+    locked_print: (usize, usize, usize),
+    locked_scenes: (usize, usize, usize),
+    /// Locks read inside a paragraph: (read, landing at a word start).
+    lock_words: (usize, usize),
     /// The page layout and element settings, and the layout they paginate with, the same after
     /// `.fdx` to OSF and after `.fdx` to OSF to `.fdx`.
     format_kept: bool,
@@ -117,10 +124,14 @@ fn page_number(label: &str) -> Option<u32> {
 
 /// The page Final Draft recorded for a scene heading, from its kept `SceneProperties`.
 fn cached_page(children: &str) -> Option<u32> {
+    page_number(&cached_label(children)?)
+}
+
+/// That page as Final Draft printed it, such as `12A`.
+fn cached_label(children: &str) -> Option<String> {
     let properties = children.find("<SceneProperties").map(|at| children.get(at..).unwrap_or_default())?;
     let tag = properties.get(..properties.find('>')?)?;
-    let value = tag.split(" Page=\"").nth(1)?.split('"').next()?;
-    page_number(value)
+    Some(tag.split(" Page=\"").nth(1)?.split('"').next()?.trim().to_string())
 }
 
 /// The length Final Draft recorded for a scene, in eighths (`1 2/8` is 10).
@@ -197,6 +208,36 @@ fn measure(fdx_path: &Path, pdf: Option<&Path>) -> Result<FileResult, String> {
 
     let paginated = paginate::paginate(&script, &Layout::for_script(&script));
     result.pages = paginated.page_count() + usize::from(paginated.title_page.is_some());
+    if script.pages_locked() {
+        // Imported locks paginate as unlocked for now; measure them kept, to see where they stand.
+        let paginated = paginate::paginate_with(&script, &Layout::for_script(&script), true);
+        // A page cannot start inside a word: locks read inside a paragraph should land on a word.
+        for element in &script.elements {
+            let plain: Vec<char> = storyteller_core::inline::plain(&element.text).chars().collect();
+            for start in element.page_starts.iter().filter(|p| p.at > 0) {
+                let at = usize::try_from(start.at).unwrap_or(usize::MAX);
+                result.lock_words.0 += 1;
+                result.lock_words.1 += usize::from(at >= plain.len() || plain.get(at - 1).is_some_and(|c| c.is_whitespace()));
+            }
+        }
+        let locked: std::collections::HashSet<&str> = script.elements.iter().flat_map(|e| &e.page_starts).map(|p| p.label.as_str()).collect();
+        let labels: Vec<String> = paginated.pages.iter().map(|p| p.label()).collect();
+        let mut unlocked = script.clone();
+        unlocked.elements.iter_mut().for_each(|e| e.page_starts.clear());
+        let unlocked = paginate::paginate(&unlocked, &Layout::for_script(&unlocked));
+        let kept = labels.iter().filter(|l| locked.contains(l.as_str())).count();
+        result.locked_print = (labels.len(), kept, labels.len() - kept);
+        for scene in &paginated.scenes {
+            let Some(expected) = script.elements.get(scene.element).and_then(|e| e.fdx.as_ref()).and_then(|f| cached_label(&f.children)) else {
+                continue;
+            };
+            let ours = usize::try_from(scene.page).ok().and_then(|p| p.checked_sub(1)).and_then(|p| labels.get(p));
+            result.locked_scenes.0 += 1;
+            result.locked_scenes.1 += usize::from(ours.is_some_and(|l| l.eq_ignore_ascii_case(&expected)));
+            let plain = unlocked.scenes.iter().find(|s| s.element == scene.element).map(|s| s.page.to_string());
+            result.locked_scenes.2 += usize::from(plain.is_some_and(|l| l.eq_ignore_ascii_case(&expected)));
+        }
+    }
     for (index, scene) in paginated.scenes.iter().enumerate() {
         let Some(element) = script.elements.get(scene.element) else { continue };
         if element.kind != ElementKind::SceneHeading {
@@ -258,6 +299,8 @@ pub fn run(root: &Path) -> Result<(), String> {
     let (mut revised, mut sets) = ((0usize, 0usize), (0usize, 0usize));
     let mut deleted = (0usize, 0usize);
     let (mut locked, mut lock_pages, mut locked_files) = ((0usize, 0usize), (0usize, 0usize), 0usize);
+    let (mut locked_print, mut locked_scenes) = ((0usize, 0usize, 0usize), (0usize, 0usize, 0usize));
+    let mut lock_words = (0usize, 0usize);
     let (mut formats, mut layouts) = (0usize, 0usize);
     let mut ignored = (0usize, 0usize);
     for (n, (fdx_path, pdf)) in entries.iter().enumerate() {
@@ -292,6 +335,9 @@ pub fn run(root: &Path) -> Result<(), String> {
                 locked.1 += r.locks.1;
                 lock_pages.0 += r.lock_pages.0;
                 lock_pages.1 += r.lock_pages.1;
+                locked_print = (locked_print.0 + r.locked_print.0, locked_print.1 + r.locked_print.1, locked_print.2 + r.locked_print.2);
+                lock_words = (lock_words.0 + r.lock_words.0, lock_words.1 + r.lock_words.1);
+                locked_scenes = (locked_scenes.0 + r.locked_scenes.0, locked_scenes.1 + r.locked_scenes.1, locked_scenes.2 + r.locked_scenes.2);
                 if let Some(kept) = r.sets_kept {
                     sets.0 += 1;
                     sets.1 += usize::from(kept);
@@ -327,6 +373,18 @@ pub fn run(root: &Path) -> Result<(), String> {
     println!(
         "locked pages: {locked_files} files, {} pages read, {} the same after .fdx to OSF to .fdx; scene headings on the locked page Final Draft recorded {}/{}",
         locked.0, locked.1, lock_pages.1, lock_pages.0
+    );
+    println!(
+        "locked pagination (kept, though imported locks paginate unlocked for now): {} locks inside a paragraph, {} at a word start; {} pages, {} printed with a locked number, {} A-pages or combined pages added; scene headings on the page Final Draft printed {}/{} ({}/{} with the locks ignored)",
+        lock_words.0,
+        lock_words.1,
+        locked_print.0,
+        locked_print.1,
+        locked_print.2,
+        locked_scenes.1,
+        locked_scenes.0,
+        locked_scenes.2,
+        locked_scenes.0
     );
     println!(
         "revisions: {} revised spans read, {} the same after .fdx to OSF to .fdx; {} deletion marks read, {} the same; revision sets the same in {}/{} files",

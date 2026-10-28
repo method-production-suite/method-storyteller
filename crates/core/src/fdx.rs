@@ -332,9 +332,8 @@ fn escaped(text: &str) -> String {
 /// A scene heading's children with its `SceneProperties` page and length set from our own
 /// pagination, and its title, summary and colour from the scene's, when they changed: updated
 /// in place when the file had one, otherwise added first.
-fn scene_children(children: &str, page: u32, eighths: u32, meta: &SceneMeta) -> String {
+fn scene_children(children: &str, page: &str, eighths: u32, meta: &SceneMeta) -> String {
     let length = paginate::format_eighths(eighths);
-    let page = page.to_string();
     let Some((start, tag_end, end)) = scene_properties(children) else {
         let mut tag = format!("<SceneProperties Length=\"{length}\" Page=\"{page}\" Title=\"{}\"", escaped(&meta.title));
         if let Some(color) = &meta.color {
@@ -349,7 +348,7 @@ fn scene_children(children: &str, page: u32, eighths: u32, meta: &SceneMeta) -> 
     };
     let before = children.get(..start).unwrap_or_default();
     let after = children.get(end..).unwrap_or_default();
-    let mut tag = set_tag_attr(&set_tag_attr(children.get(start..tag_end).unwrap_or_default(), "Length", &length), "Page", &page);
+    let mut tag = set_tag_attr(&set_tag_attr(children.get(start..tag_end).unwrap_or_default(), "Length", &length), "Page", page);
     let mut inner = children.get(tag_end..end).unwrap_or_default().to_string();
     let read = scene_meta(children);
     if read == *meta {
@@ -390,7 +389,7 @@ fn remove_tag_attr(tag: &str, name: &str) -> String {
     }
 }
 
-fn write_paragraph(element: &Element, scene: Option<(u32, u32)>, new_page: bool, indent: &str, out: &mut String) {
+fn write_paragraph(element: &Element, scene: Option<(&str, u32)>, new_page: bool, indent: &str, out: &mut String) {
     out.push_str(indent);
     out.push_str("<Paragraph");
     write_attr("Type", &fdx_type(element), out);
@@ -450,8 +449,16 @@ pub fn write(script: &Script) -> String {
 /// starts on and its length in eighths from paginating with `layout`, as Final Draft records them.
 pub fn write_with_layout(script: &Script, layout: &Layout) -> String {
     let paginated = paginate::paginate(script, layout);
-    let scenes: std::collections::HashMap<usize, (u32, u32)> =
-        paginate::scene_lengths(script, &paginated, layout).into_iter().map(|s| (s.element, (s.page, s.eighths))).collect();
+    // The page as printed: `12A` in a script whose pages are locked.
+    let label = |page: u32| {
+        usize::try_from(page)
+            .ok()
+            .and_then(|p| p.checked_sub(1))
+            .and_then(|p| paginated.pages.get(p))
+            .map_or_else(|| page.to_string(), paginate::Page::label)
+    };
+    let scenes: std::collections::HashMap<usize, (String, u32)> =
+        paginate::scene_lengths(script, &paginated, layout).into_iter().map(|s| (s.element, (label(s.page), s.eighths))).collect();
     let mut out = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>\n");
     match script.fdx.as_ref().filter(|d| !d.root_attributes.is_empty()) {
         Some(document) => {
@@ -490,7 +497,7 @@ pub fn write_with_layout(script: &Script, layout: &Layout) -> String {
                 continue;
             }
         }
-        write_paragraph(element, scenes.get(&index).copied(), new_page, "    ", &mut out);
+        write_paragraph(element, scenes.get(&index).map(|(page, eighths)| (page.as_str(), *eighths)), new_page, "    ", &mut out);
         new_page = false;
         index += 1;
     }

@@ -209,6 +209,23 @@ Pagination honours `page_starts`. Each locked page starts where it started when 
 This alone makes imported shooting scripts print with the right numbers, before any authoring
 tool exists. It is measured against the corpus files with locked pages (5 files, 470 pages).
 
+Built (M6 item 7): `paginate` cuts the script where each locked page starts. That can be
+between paragraphs, inside one, or inside a speech, which then ends its page with (MORE) and
+goes on with (CONT'D). Each locked page then fills from its start:
+- What no longer fits goes onto `12A`, `12B`.
+- A page whose text has gone stays short.
+- A page whose text all fits on the page before, with no page break between them, prints with
+  it as `7-8`. An empty page always does.
+- The printed number, `Page::label`, and an `.fdx` scene's `SceneProperties@Page` use the
+  locked numbers.
+
+*Measured, and held back.* Locks read from `.fdx` land inside a word in 312 of the 381 cases
+where they fall inside a paragraph, so where `Position` starts such a page is not understood
+yet. Honouring them as read would add 191 pages to the corpus's 470. Until that is settled,
+those locks are kept and written back, but the script paginates as unlocked. The corpus run
+measures them kept (`paginate_with`). The full findings and the test that settles it are in
+[research/locked-pages.md](research/locked-pages.md).
+
 ### 4.2 Locking
 
 - Production > Lock Pages freezes the current page breaks into `page_starts`. It asks to turn

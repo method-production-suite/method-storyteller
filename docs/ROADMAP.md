@@ -140,8 +140,11 @@ says otherwise.
   (alternates, tags in text, A-page locks), A-page and A-scene lettering edge cases, pagination
   cases the corpus lacks (dual dialogue at a break, scene CONTINUED, stacked CONT'D, line-spacing
   presets), any break threshold the PDFs leave ambiguous, the undocumented Tab and Shift-Tab
-  keys, revision output details, and the outline elements of older versions. Prepared files
-  and a click list come before the session.
+  keys, revision output details, and the outline elements of older versions. A ninth (added
+  2026-10-28): how a locked page's `Position` counts, from a small locked script saved after
+  each of a few known edits ([research/locked-pages.md](research/locked-pages.md)); until then
+  locks read from `.fdx` are kept but paginate as unlocked. Prepared files and a click list
+  come before the session.
 - **The design pass (D).** Look at the contact sheet ([design-pass.md](design-pass.md), section 3)
   once it is drawn, or for now the offscreen pictures of the icon, the editor and every panel
   in light and dark, and say what feels off. Nothing needs the app open on your screen.
@@ -281,9 +284,12 @@ wait for a decision above.
    copies and coloured pages, scene numbers in the left or right margin, new paragraphs and joins
    marked, revision mode kept in the file. M5 is done; kept in the `.mstory` package (decision 1).
 10. **M6, production II and reports** L. Spec: [production-spec.md](production-spec.md),
-   section 4. Locked pages as imported, then lock pages, A-pages, lock
-   and unlock; scene, location, character and cast reports with CSV; plain-text export; the
-   structured export Method Schedule reads.
+   section 4. Done: pagination keeps locked pages (A-pages, short pages, pages printed
+   together as `7-8`, pages starting inside a paragraph or a speech), for locks made here and
+   OSF's; locks read from `.fdx` wait on how their positions count
+   ([research/locked-pages.md](research/locked-pages.md)). Next: lock and unlock pages; scene,
+   location, character and cast reports with CSV; plain-text export; the structured export
+   Method Schedule reads.
 11. **D, the design pass** M (new, owner 2026-10-18). What is done and what is left:
    [design-pass.md](design-pass.md). Matched to the family (Method Budget's and
     Method Schedule's BRAND.md), every step pictured offscreen in light and dark:
