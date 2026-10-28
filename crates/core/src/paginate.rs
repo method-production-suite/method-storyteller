@@ -846,7 +846,7 @@ fn fill(
 /// after the combined `7-8`.
 fn next_label(label: &str) -> String {
     let label = label.rsplit('-').next().unwrap_or(label);
-    let last = label.chars().last().filter(|c| ('A'..'Z').contains(c));
+    let last = label.chars().last().filter(|c| ('A'..='Y').contains(c));
     match (last, last.and_then(|c| label.strip_suffix(c))) {
         (Some(c), Some(stem)) => format!("{stem}{}", char::from_u32(u32::from(c) + 1).unwrap_or('Z')),
         _ => format!("{label}A"),
@@ -875,7 +875,7 @@ enum Cut {
     Before,
     /// The page starts inside it: the part before, the part after, and how many printed
     /// characters of the element the part after leaves out.
-    Inside(Group, Group, u32),
+    Inside(Box<(Group, Group)>, u32),
 }
 
 /// Cuts `group` where a page starts `at` printed characters into element `element`, which the
@@ -890,21 +890,21 @@ fn cut(group: &Group, element: usize, at: u32) -> Cut {
             let top = block.with_source(block.source.get(..at_usize).unwrap_or(&[]).to_vec());
             let mut rest = block.with_source(block.source.get(start..).unwrap_or(&[]).to_vec());
             rest.space_before = 0;
-            Cut::Inside(Group::Block(top), Group::Block(rest), u32::try_from(start).unwrap_or(u32::MAX))
+            Cut::Inside(Box::new((Group::Block(top), Group::Block(rest))), u32::try_from(start).unwrap_or(u32::MAX))
         }
         Group::Speech(speech) => {
             let Some(part) = speech.parts.iter().position(|p| p.element == element) else { return Cut::Before };
             let source = speech.parts.get(part).map_or(&[][..], |p| p.source.as_slice());
             if at == 0 && part > 0 {
                 let (top, rest) = speech_halves(speech, part, None);
-                return Cut::Inside(Group::Speech(top), Group::Speech(rest), 0);
+                return Cut::Inside(Box::new((Group::Speech(top), Group::Speech(rest))), 0);
             }
             if at == 0 || at_usize >= source.len() {
                 return Cut::Before;
             }
             let start = after(source);
             let (top, rest) = speech_halves(speech, part, Some((at_usize, start)));
-            Cut::Inside(Group::Speech(top), Group::Speech(rest), u32::try_from(start).unwrap_or(u32::MAX))
+            Cut::Inside(Box::new((Group::Speech(top), Group::Speech(rest))), u32::try_from(start).unwrap_or(u32::MAX))
         }
         _ => Cut::Before,
     }
@@ -947,7 +947,8 @@ fn locked_segments(script: &Script, groups: Vec<Group>) -> Vec<(Option<String>, 
                         open(&mut segments, label);
                         queue.push_front(group);
                     }
-                    Cut::Inside(top, rest, consumed) => {
+                    Cut::Inside(parts, consumed) => {
+                        let (top, rest) = *parts;
                         if let Some((_, groups)) = segments.last_mut() {
                             groups.push(top);
                         }
@@ -974,7 +975,7 @@ fn locked_segments(script: &Script, groups: Vec<Group>) -> Vec<(Option<String>, 
 /// Paginates a script whose pages are locked: each locked page starts where it did; what no
 /// longer fits flows onto A-pages (`12A`), a page whose text has gone stays short, and a page
 /// whose text all fits on the page before prints with it as one page (`7-8`).
-fn paginate_locked<'a>(script: &Script, layout: &'a Layout, groups: Vec<Group>, pages: &mut Vec<Page>, element_pages: &mut [u32]) {
+fn paginate_locked(script: &Script, layout: &Layout, groups: Vec<Group>, pages: &mut Vec<Page>, element_pages: &mut [u32]) {
     let mut page = PageBuilder::new(layout, None);
     // Whether `page` is a locked page itself, not one of its A-pages.
     let mut on_locked = false;
