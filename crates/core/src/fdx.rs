@@ -1097,6 +1097,7 @@ impl Importer {
             })
             .collect();
         placed.sort_by_key(|(position, _)| *position);
+        let mut pages: Vec<(u32, usize, PageStart)> = Vec::new();
         for (position, attributes) in placed {
             let mut kept = attributes.clone();
             for (key, value) in &mut kept {
@@ -1104,16 +1105,23 @@ impl Importer {
                     value.clear();
                 }
             }
-            if ours {
-                kept.clear();
-            }
             let after = starts.partition_point(|(_, s)| *s <= position);
             let Some(&(index, start)) = starts.get(after.saturating_sub(1)) else { continue };
-            let page = PageStart {
-                at: position.saturating_sub(start),
-                label: get(&attributes, "PageNumber").unwrap_or_default().to_string(),
-                fdx_attributes: kept,
-            };
+            let label = get(&attributes, "PageNumber").unwrap_or_default().to_string();
+            pages.push((position, index, PageStart { at: position.saturating_sub(start), label, fdx_attributes: kept }));
+        }
+        // The marker is trusted only while the text agrees: every page starts a paragraph or a
+        // word. Another app that kept the marker but moved the pages leaves some inside a word.
+        let starts_a_word = |index: usize, at: u32| {
+            let Some(element) = self.elements.get(index) else { return false };
+            let plain: Vec<char> = inline::plain(&element.text).chars().collect();
+            let at = usize::try_from(at).unwrap_or(usize::MAX);
+            at == 0 || at >= plain.len() || plain.get(at - 1).is_some_and(|c| c.is_whitespace())
+        };
+        if ours && pages.iter().all(|(_, index, page)| starts_a_word(*index, page.at)) {
+            pages.iter_mut().for_each(|(_, _, page)| page.fdx_attributes.clear());
+        }
+        for (position, index, page) in pages {
             self.document.locked_pages.push((position, page.clone()));
             if let Some(element) = self.elements.get_mut(index) {
                 element.page_starts.push(page);
