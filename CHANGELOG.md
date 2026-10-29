@@ -19,6 +19,11 @@ for its own version in Help > What's New, once after an update.
   mode with it; Production > Unlock All Pages numbers the pages straight through again. Both ask
   first and are one Undo, and locked pages saved as `.fdx` stay locked when opened again.
 
+### Security
+
+- The secure connection the update check uses carries four more fixes from its library
+  (RUSTSEC-2026-0346 to -0349). None of them reached the way the app uses it.
+
 ## 0.6.0
 
 ### New

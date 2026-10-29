@@ -14,16 +14,6 @@ ignore = [
     { id = "RUSTSEC-2026-0370", reason = "zvariant: Linux accessibility bridge in accesskit_unix (eframe)" },
     { id = "RUSTSEC-2026-0371", reason = "zbus_names: Linux accessibility bridge in accesskit_unix (eframe)" },
     { id = "RUSTSEC-2026-0372", reason = "zvariant_derive: Linux accessibility bridge in accesskit_unix (eframe)" },
-    # Fixed in rustls 0.23.46, too new for the 14-day cooldown until the expiry below; the lock
-    # keeps 0.23.45 (method-libs does the same). Then `cargo update -p rustls --precise 0.23.46`
-    # and delete these four lines; scripts/check-ignore-expiry.py fails CI once the date has
-    # passed while they are still here. None reaches the updater, which is ureq with rustls on
-    # the ring provider and nothing else, and which stays inactive until Storyteller has a key.
-    # ignore-expires: 2026-10-28
-    { id = "RUSTSEC-2026-0346", reason = "no Debug formatting of rustls session values; bump rustls to 0.23.46 by the expiry above" },
-    { id = "RUSTSEC-2026-0347", reason = "ECH is not enabled by ureq; bump rustls to 0.23.46 by the expiry above" },
-    { id = "RUSTSEC-2026-0348", reason = "rustls brotli feature not enabled; bump rustls to 0.23.46 by the expiry above" },
-    { id = "RUSTSEC-2026-0349", reason = "ring provider has no post-quantum groups to downgrade from; bump rustls to 0.23.46 by the expiry above" },
 ]
 
 [licenses]
