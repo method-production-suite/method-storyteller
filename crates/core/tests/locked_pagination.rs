@@ -200,3 +200,38 @@ fn pages_locked_here_stay_locked_through_fdx() {
     assert_eq!(labels(&after), labels(&before));
     assert_eq!(fdx::write(&back), xml, "writing is stable");
 }
+
+#[test]
+fn the_marker_is_not_trusted_when_a_page_starts_inside_a_word() {
+    use storyteller_core::{fdx, paginate::lock_pages};
+    let sentence = "Rain on the glass, then on the roof, then everywhere at once. ";
+    let mut script = script((0..10).map(|_| action(sentence.repeat(7).trim_end())).collect());
+    let layout = Layout::default();
+    let before = paginate(&script, &layout);
+    lock_pages(&mut script, &before);
+    let xml = fdx::write(&script);
+    // Another app kept the marker but moved page 2 by two characters, into a word.
+    let moved = regex_lite_shift(&xml, "2");
+    let back = fdx::parse(&moved).unwrap();
+    assert!(back.elements.iter().flat_map(|e| &e.page_starts).all(|p| !p.fdx_attributes.is_empty()), "not trusted");
+    assert!(paginate(&back, &layout).pages.iter().all(|p| p.locked.is_none()), "paginates unlocked");
+    // Written back as it came (nothing changed), it is distrusted again on the next read.
+    let again = fdx::parse(&fdx::write(&back)).unwrap();
+    assert!(paginate(&again, &layout).pages.iter().all(|p| p.locked.is_none()));
+}
+
+/// `xml` with the `Position` of the locked page numbered `label` moved two characters on.
+fn regex_lite_shift(xml: &str, label: &str) -> String {
+    xml.lines()
+        .map(|line| {
+            if !line.contains(&format!(r#"PageNumber="{label}""#)) {
+                return line.to_string();
+            }
+            let start = line.find(r#"Position=""#).unwrap() + r#"Position=""#.len();
+            let end = start + line[start..].find('"').unwrap();
+            let position: u32 = line[start..end].parse().unwrap();
+            format!("{}{}{}", &line[..start], position + 2, &line[end..])
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
