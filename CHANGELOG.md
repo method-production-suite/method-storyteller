@@ -16,6 +16,11 @@ for its own version in Help > What's New, once after an update.
   text fits on one print as `7-8`. Pages locked in an `.fdx` file are kept and saved back, and
   will print the same way once their positions are read reliably.
 
+### Security
+
+- The secure connection the update check uses carries four more fixes from its library
+  (RUSTSEC-2026-0346 to -0349). None of them reached the way the app uses it.
+
 ## 0.6.0
 
 ### New
