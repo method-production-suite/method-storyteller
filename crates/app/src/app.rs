@@ -153,6 +153,15 @@ struct RevisionsDraft {
     error: Option<String>,
 }
 
+/// Production > Lock Pages and Unlock All Pages ask first (docs/production-spec.md §4.2).
+enum PagesConfirm {
+    /// Lock the pages, turning on revision mode with them when asked to.
+    Lock {
+        revision_mode: bool,
+    },
+    UnlockAll,
+}
+
 /// Production > Number Scenes….
 struct NumberingDraft {
     start: String,
@@ -275,6 +284,7 @@ pub struct StorytellerApp {
     /// Production > Characters: the character table is open.
     characters: bool,
     numbering: Option<NumberingDraft>,
+    pages_confirm: Option<PagesConfirm>,
     export_pdf: Option<ExportDraft>,
     revisions: Option<RevisionsDraft>,
     scene_number: Option<SceneNumberDraft>,
@@ -396,6 +406,7 @@ impl StorytellerApp {
             scene_dialog: None,
             characters: false,
             numbering: None,
+            pages_confirm: None,
             export_pdf: None,
             revisions: None,
             scene_number: None,
@@ -641,6 +652,9 @@ impl StorytellerApp {
             "app.revisions" => self.revisions = Some(RevisionsDraft::default()),
             "app.mark_revised" => self.mark_selection(ctx, "revisions.mark"),
             "app.clear_revised" => self.mark_selection(ctx, "revisions.clear"),
+            // A locked script is a production draft: offer revision mode with the locks.
+            "pages.lock" => self.pages_confirm = Some(PagesConfirm::Lock { revision_mode: !self.session.script.revisions.mode }),
+            "pages.unlock_all" => self.pages_confirm = Some(PagesConfirm::UnlockAll),
             "scene.number" => {
                 let numbered = self.session.script.scene_indices().iter().any(|&h| self.session.element(h).is_some_and(|e| e.scene_number.is_some()));
                 self.numbering = Some(NumberingDraft {
@@ -1870,6 +1884,66 @@ impl StorytellerApp {
 
     /// Production > Number Scenes…: start number, keep existing (letters for new scenes), from
     /// the caret's scene on, and whether I and O are left out.
+    fn pages_confirm_dialog(&mut self, ctx: &egui::Context) {
+        let Some(confirm) = &mut self.pages_confirm else { return };
+        let mut go = false;
+        let mut close = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+        let (title, action) = match confirm {
+            PagesConfirm::Lock { .. } => ("Lock Pages", "Lock"),
+            PagesConfirm::UnlockAll => ("Unlock All Pages", "Unlock"),
+        };
+        egui::Window::new(title).collapsible(false).resizable(false).anchor(egui::Align2::CENTER_TOP, [0.0, 120.0]).show(ctx, |ui| {
+            match confirm {
+                PagesConfirm::Lock { revision_mode } => {
+                    ui.label(
+                        "Each page keeps its number from now on. New text flows onto A-pages, such as 12A, and a page that loses text stays short.",
+                    );
+                    if !self.session.script.revisions.mode {
+                        let mode = ui.checkbox(revision_mode, "Turn on revision mode too");
+                        self.automation.add("dialog.lock_pages.revision_mode", "checkbox", "Turn on revision mode too", &mode);
+                    }
+                }
+                PagesConfirm::UnlockAll => {
+                    ui.label("The pages will number straight through again, and A-pages go. Edit > Undo puts the locks back.");
+                }
+            }
+            ui.add_space(theme::SPACE_2);
+            ui.horizontal(|ui| {
+                let yes = ui.button(action);
+                self.automation.add("dialog.pages_confirm.ok", "button", action, &yes);
+                let cancel = ui.button("Cancel");
+                self.automation.add("dialog.pages_confirm.cancel", "button", "Cancel", &cancel);
+                go |= yes.clicked();
+                close |= cancel.clicked();
+            });
+        });
+        if close {
+            self.pages_confirm = None;
+            self.refocus();
+            return;
+        }
+        if !go {
+            return;
+        }
+        let run = match self.pages_confirm.take() {
+            Some(PagesConfirm::Lock { revision_mode }) => {
+                self.registry.run("pages.lock", &mut self.session, &params(&[("revision_mode", json!(revision_mode))]))
+            }
+            Some(PagesConfirm::UnlockAll) => self.registry.run("pages.unlock_all", &mut self.session, &Map::new()),
+            None => return,
+        };
+        match run {
+            Ok(outcome) => {
+                if let Some(message) = outcome.message {
+                    self.status = message;
+                }
+            }
+            Err(error) => self.status = error.to_string(),
+        }
+        self.refocus();
+        ctx.request_repaint();
+    }
+
     fn numbering_dialog(&mut self, ctx: &egui::Context) {
         let Some(draft) = &mut self.numbering else { return };
         let mut ok = false;
@@ -2584,6 +2658,7 @@ impl StorytellerApp {
         self.scene_properties_dialog(&ctx);
         self.characters_window(&ctx);
         self.numbering_dialog(&ctx);
+        self.pages_confirm_dialog(&ctx);
         self.export_pdf_dialog(&ctx);
         self.revisions_window(&ctx);
         self.scene_number_dialog(&ctx);

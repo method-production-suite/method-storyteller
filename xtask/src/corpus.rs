@@ -49,6 +49,9 @@ struct FileResult {
     locked_scenes: (usize, usize, usize),
     /// Locks read inside a paragraph: (read, landing at a word start).
     lock_words: (usize, usize),
+    /// Locking the pages as they print now, then paginating: (pages, the same page by page),
+    /// for scripts that were not locked.
+    relocked: (usize, usize),
     /// The page layout and element settings, and the layout they paginate with, the same after
     /// `.fdx` to OSF and after `.fdx` to OSF to `.fdx`.
     format_kept: bool,
@@ -208,6 +211,17 @@ fn measure(fdx_path: &Path, pdf: Option<&Path>) -> Result<FileResult, String> {
 
     let paginated = paginate::paginate(&script, &Layout::for_script(&script));
     result.pages = paginated.page_count() + usize::from(paginated.title_page.is_some());
+    if !script.pages_locked() {
+        // Lock Pages freezes the breaks as they are: paginating again changes nothing.
+        let mut locked = script.clone();
+        paginate::lock_pages(&mut locked, &paginated);
+        let again = paginate::paginate(&locked, &Layout::for_script(&locked));
+        let same = |a: &paginate::Page, b: &paginate::Page| a.label() == b.label() && a.lines == b.lines;
+        result.relocked = (paginated.pages.len(), paginated.pages.iter().zip(&again.pages).filter(|(a, b)| same(a, b)).count());
+        if again.pages.len() != paginated.pages.len() {
+            result.relocked.1 = result.relocked.1.min(paginated.pages.len().saturating_sub(1));
+        }
+    }
     if script.pages_locked() {
         // Imported locks paginate as unlocked for now; measure them kept, to see where they stand.
         let paginated = paginate::paginate_with(&script, &Layout::for_script(&script), true);
@@ -301,6 +315,7 @@ pub fn run(root: &Path) -> Result<(), String> {
     let (mut locked, mut lock_pages, mut locked_files) = ((0usize, 0usize), (0usize, 0usize), 0usize);
     let (mut locked_print, mut locked_scenes) = ((0usize, 0usize, 0usize), (0usize, 0usize, 0usize));
     let mut lock_words = (0usize, 0usize);
+    let mut relocked = (0usize, 0usize);
     let (mut formats, mut layouts) = (0usize, 0usize);
     let mut ignored = (0usize, 0usize);
     for (n, (fdx_path, pdf)) in entries.iter().enumerate() {
@@ -336,6 +351,7 @@ pub fn run(root: &Path) -> Result<(), String> {
                 lock_pages.0 += r.lock_pages.0;
                 lock_pages.1 += r.lock_pages.1;
                 locked_print = (locked_print.0 + r.locked_print.0, locked_print.1 + r.locked_print.1, locked_print.2 + r.locked_print.2);
+                relocked = (relocked.0 + r.relocked.0, relocked.1 + r.relocked.1);
                 lock_words = (lock_words.0 + r.lock_words.0, lock_words.1 + r.lock_words.1);
                 locked_scenes = (locked_scenes.0 + r.locked_scenes.0, locked_scenes.1 + r.locked_scenes.1, locked_scenes.2 + r.locked_scenes.2);
                 if let Some(kept) = r.sets_kept {
@@ -386,6 +402,7 @@ pub fn run(root: &Path) -> Result<(), String> {
         locked_scenes.2,
         locked_scenes.0
     );
+    println!("locking: {} pages locked as they print, {} the same page by page when paginated locked", relocked.0, relocked.1);
     println!(
         "revisions: {} revised spans read, {} the same after .fdx to OSF to .fdx; {} deletion marks read, {} the same; revision sets the same in {}/{} files",
         revised.0, revised.1, deleted.0, deleted.1, sets.1, sets.0

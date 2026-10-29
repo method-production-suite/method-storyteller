@@ -916,6 +916,30 @@ fn revision_mode_marks_new_paragraphs_whole_and_marks_joins() {
 }
 
 #[test]
+fn lock_pages_and_unlock_all_pages_are_one_undo_each() {
+    let registry = Registry::new();
+    let text: String = (1..=60).map(|i| format!("Line {i}.\n\n")).collect();
+    let mut s = Session::new(storyteller_core::fountain::parse(&format!("INT. HUT - DAY\n\n{text}")).unwrap());
+    let enabled = |s: &Session, id: &str| registry.get(id).is_some_and(|c| (c.enabled)(s));
+    assert!(enabled(&s, "pages.lock") && !enabled(&s, "pages.unlock_all"));
+    let out = run(&registry, &mut s, "pages.lock", json!({ "revision_mode": true }));
+    let pages = out["value"]["pages"].as_u64().unwrap();
+    assert!(pages >= 2);
+    assert_eq!(out["message"], format!("Locked {pages} pages"));
+    assert!(s.script.pages_locked() && s.script.revisions.mode, "locked, in revision mode");
+    assert!(!enabled(&s, "pages.lock") && enabled(&s, "pages.unlock_all"));
+    assert!(registry.run("pages.lock", &mut s, &Default::default()).is_err(), "already locked");
+    run(&registry, &mut s, "edit.undo", json!({}));
+    assert!(!s.script.pages_locked() && !s.script.revisions.mode, "one Undo takes both back");
+    run(&registry, &mut s, "pages.lock", json!({}));
+    assert!(s.script.pages_locked() && !s.script.revisions.mode);
+    assert_eq!(run(&registry, &mut s, "pages.unlock_all", json!({}))["value"]["pages"].as_u64(), Some(pages));
+    assert!(!s.script.pages_locked());
+    run(&registry, &mut s, "edit.undo", json!({}));
+    assert!(s.script.pages_locked());
+}
+
+#[test]
 fn revision_mode_marks_typing_and_mark_and_clear_act_on_a_range() {
     let registry = Registry::new();
     let mut s = Session::new(storyteller_core::fountain::parse("INT. HUT - DAY\n\nRain **falls**.\n").unwrap());

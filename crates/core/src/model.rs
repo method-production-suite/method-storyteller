@@ -1494,6 +1494,12 @@ impl Script {
         self.elements.iter().any(|e| !e.page_starts.is_empty())
     }
 
+    /// Production > Unlock All Pages: every locked page goes, so the pages number straight
+    /// through again. Returns how many there were.
+    pub fn unlock_pages(&mut self) -> usize {
+        self.elements.iter_mut().map(|e| std::mem::take(&mut e.page_starts).len()).sum()
+    }
+
     /// Remove every scene number.
     pub fn clear_scene_numbers(&mut self) {
         for element in &mut self.elements {

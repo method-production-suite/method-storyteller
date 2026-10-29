@@ -1900,6 +1900,49 @@ fn all_commands() -> Vec<Command> {
             run: |s, p| mark_range(s, p, false),
         },
         Command {
+            id: "pages.lock",
+            label: "Lock Pages",
+            menu: "Production/Lock Pages",
+            shortcut: None,
+            params: const { &[param("revision_mode", Bool, false, "Also turn on revision mode, as a locked script is a production draft")] },
+            enabled: |s| !s.script.pages_locked(),
+            run: |s, p| {
+                if s.script.pages_locked() {
+                    return Err(CommandError::Failed("the pages are already locked".into()));
+                }
+                let paginated = storyteller_core::paginate::paginate(&s.script, &s.layout);
+                // One Undo for the locks and the revision mode with them.
+                s.checkpoint(EditKind::Other);
+                if opt_bool(p, "revision_mode")?.unwrap_or(false) && !s.script.revisions.mode {
+                    if s.script.revisions.active.is_none() {
+                        s.script.add_revision_set(&today_short());
+                    }
+                    s.script.revisions.mode = true;
+                }
+                let count = storyteller_core::paginate::lock_pages(&mut s.script, &paginated);
+                Ok(Outcome {
+                    message: Some(format!("Locked {count} {}", if count == 1 { "page" } else { "pages" })),
+                    value: json!({ "pages": count }),
+                })
+            },
+        },
+        Command {
+            id: "pages.unlock_all",
+            label: "Unlock All Pages",
+            menu: "Production/Unlock All Pages",
+            shortcut: None,
+            params: const { &[] },
+            enabled: |s| s.script.pages_locked(),
+            run: |s, _| {
+                if !s.script.pages_locked() {
+                    return Err(CommandError::Failed("no pages are locked".into()));
+                }
+                s.checkpoint(EditKind::Other);
+                let count = s.script.unlock_pages();
+                Ok(Outcome { message: Some("Unlocked all pages; they number straight through".into()), value: json!({ "pages": count }) })
+            },
+        },
+        Command {
             id: "scene.omit",
             label: "Omit Scene",
             menu: "Production/Omit Scene",

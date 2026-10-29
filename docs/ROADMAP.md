@@ -287,7 +287,8 @@ wait for a decision above.
    section 4. Done: pagination keeps locked pages (A-pages, short pages, pages printed
    together as `7-8`, pages starting inside a paragraph or a speech), for locks made here and
    OSF's; locks read from `.fdx` wait on how their positions count
-   ([research/locked-pages.md](research/locked-pages.md)). Next: lock and unlock pages; scene,
+   ([research/locked-pages.md](research/locked-pages.md)); Lock Pages and Unlock All Pages.
+   Next: Lock A-Pages and Unlock A-Pages; scene,
    location, character and cast reports with CSV; plain-text export; the structured export
    Method Schedule reads.
 11. **D, the design pass** M (new, owner 2026-10-18). What is done and what is left:

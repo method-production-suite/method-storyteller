@@ -151,3 +151,52 @@ fn locks_read_from_fdx_paginate_unlocked_for_now() {
     let kept = storyteller_core::paginate::paginate_with(&locked, &Layout::default(), true);
     assert_eq!(labels(&kept), ["1", "1A", "1B"]);
 }
+
+#[test]
+fn lock_pages_freezes_the_breaks_as_they_print() {
+    use storyteller_core::paginate::lock_pages;
+    // Long paragraphs, so pages break inside them.
+    let sentence = "The water climbs another step and nobody moves to stop it. ";
+    let mut elements: Vec<Element> = (0..12).map(|_| action(sentence.repeat(6).trim_end())).collect();
+    elements.insert(6, Element::new(ElementKind::Character, "MARA"));
+    elements.insert(7, Element::new(ElementKind::Dialogue, sentence.repeat(8).trim_end()));
+    let mut script = script(elements);
+    let layout = Layout::default();
+    let before = paginate(&script, &layout);
+    assert_eq!(lock_pages(&mut script, &before), before.pages.len());
+    assert!(script.pages_locked());
+    assert!(script.elements.iter().flat_map(|e| &e.page_starts).any(|p| p.at > 0), "a page starts inside a paragraph");
+    let after = paginate(&script, &layout);
+    assert_eq!(labels(&after), labels(&before));
+    for (a, b) in before.pages.iter().zip(&after.pages) {
+        assert_eq!(a.lines, b.lines, "page {}", a.label());
+    }
+    // New text on page 1 flows onto 1A; page 2 still starts where it did.
+    let page_two = first_text(&after, 1);
+    let grown_text = format!("{} {}", sentence.repeat(30).trim_end(), script.elements[0].text);
+    script.elements[0].set_text(grown_text);
+    let grown = paginate(&script, &layout);
+    assert_eq!(&labels(&grown)[..2], ["1", "1A"]);
+    let two = labels(&grown).iter().position(|l| l == "2").unwrap();
+    assert_eq!(first_text(&grown, two), page_two);
+    assert_eq!(script.unlock_pages(), before.pages.len());
+    assert!(!script.pages_locked());
+}
+
+#[test]
+fn pages_locked_here_stay_locked_through_fdx() {
+    use storyteller_core::{fdx, paginate::lock_pages};
+    let sentence = "Rain on the glass, then on the roof, then everywhere at once. ";
+    let mut script = script((0..10).map(|_| action(sentence.repeat(7).trim_end())).collect());
+    let layout = Layout::default();
+    let before = paginate(&script, &layout);
+    lock_pages(&mut script, &before);
+    let xml = fdx::write(&script);
+    assert!(xml.contains(r#"<LockedPages StorytellerPositions="Yes">"#), "{xml}");
+    let back = fdx::parse(&xml).unwrap();
+    assert!(back.elements.iter().flat_map(|e| &e.page_starts).all(|p| p.fdx_attributes.is_empty()));
+    let after = paginate(&back, &layout);
+    assert!(after.pages.iter().all(|p| p.locked.is_some()), "the locks are honoured");
+    assert_eq!(labels(&after), labels(&before));
+    assert_eq!(fdx::write(&back), xml, "writing is stable");
+}

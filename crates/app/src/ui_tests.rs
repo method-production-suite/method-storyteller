@@ -781,3 +781,28 @@ fn revision_mode_is_a_menu_toggle_and_mark_revised_marks_the_paragraph() {
     harness.run_steps(3);
     assert!(harness.state().session.script.elements[1].revised.is_empty());
 }
+
+#[test]
+fn lock_pages_asks_first_and_offers_revision_mode() {
+    let (mut harness, _file) = harness(SCRIPT);
+    harness.state_mut().queued.push("pages.lock".into());
+    harness.run_steps(3);
+    assert!(!harness.state().session.script.pages_locked(), "nothing happens before the answer");
+    harness.get_by_label("Turn on revision mode too").click();
+    harness.run_steps(2);
+    harness.get_by_label("Lock").click();
+    harness.run_steps(3);
+    let script = &harness.state().session.script;
+    assert!(script.pages_locked());
+    assert!(!script.revisions.mode, "the box was cleared");
+    harness.state_mut().queued.push("pages.unlock_all".into());
+    harness.run_steps(3);
+    harness.get_by_label("Cancel").click();
+    harness.run_steps(3);
+    assert!(harness.state().session.script.pages_locked(), "Cancel keeps the locks");
+    harness.state_mut().queued.push("pages.unlock_all".into());
+    harness.run_steps(3);
+    harness.get_by_label("Unlock").click();
+    harness.run_steps(3);
+    assert!(!harness.state().session.script.pages_locked());
+}
