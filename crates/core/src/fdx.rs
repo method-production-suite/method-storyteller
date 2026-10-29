@@ -1082,6 +1082,8 @@ impl Importer {
         };
         let starts: Vec<(usize, u32)> = self.starts.iter().enumerate().filter_map(|(i, s)| s.map(|s| (i, s))).collect();
         let entries: Vec<Vec<(String, String)>> = tags(&xml).into_iter().skip(1).filter(|(name, _)| name == "LockedPage").map(|(_, a)| a).collect();
+        // Pages this app locked and wrote: their positions are its own, so they are trusted.
+        let ours = tags(&xml).first().is_some_and(|(_, root)| get(root, LOCKS_PLACED_HERE).is_some_and(|v| v == "Yes"));
         if entries.len() > MAX_ELEMENTS {
             return Err(CoreError::TooManyElements);
         }
@@ -1101,6 +1103,9 @@ impl Importer {
                 if key == "Position" {
                     value.clear();
                 }
+            }
+            if ours {
+                kept.clear();
             }
             let after = starts.partition_point(|(_, s)| *s <= position);
             let Some(&(index, start)) = starts.get(after.saturating_sub(1)) else { continue };
@@ -2025,9 +2030,15 @@ pub(crate) fn locked_page_attributes(page: &PageStart, position: Option<u32>) ->
     attributes
 }
 
+/// The `LockedPages` attribute that says this app placed every page (see [`crate::paginate::paginate`]).
+const LOCKS_PLACED_HERE: &str = "StorytellerPositions";
+
 fn write_locked_pages(root: &[(String, String)], pages: &[(u32, &PageStart)], out: &mut String) {
     out.push_str("  <LockedPages");
-    for (key, value) in root {
+    let mut root = root.to_vec();
+    let placed_here = !pages.is_empty() && pages.iter().all(|(_, page)| page.fdx_attributes.is_empty());
+    set_or_remove(&mut root, LOCKS_PLACED_HERE, placed_here.then(|| "Yes".to_string()));
+    for (key, value) in &root {
         write_attr(key, value, out);
     }
     if pages.is_empty() {

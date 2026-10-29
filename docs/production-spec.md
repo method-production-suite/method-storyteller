@@ -237,6 +237,15 @@ measures them kept (`paginate_with`). The full findings and the test that settle
 
 Commands: `pages.lock`, `pages.lock_a_pages`, `pages.unlock_a_pages`, `pages.unlock_all`.
 
+Built (M6 item 8, first half): `pages.lock` (with `revision_mode`, which the app offers in its
+confirmation, one Undo for both) and `pages.unlock_all` (the app asks first; one Undo). Each page
+records where its text starts while paginating (the element, and the printed characters before
+it, through every split), and locking stores exactly that. Locking every unlocked corpus
+script and paginating again gives the same 7,506 pages, line for line. Locks placed here are
+written to `.fdx` with `LockedPages StorytellerPositions="Yes"`, so they stay honoured when the
+file is read again (`.fdx` locks from elsewhere wait, §4.1). Next: Lock A-Pages and Unlock
+A-Pages, which need the lock level kept in the file.
+
 *Decision S3, lettering past Z and merged pages.* The research has only examples (`21A`, `AA`,
 `7BB-9A`). Built on the recommendation: A to Z, then AA to ZZ, and merged pages as `7-8`; the
 parity check settles anything a saved file shows differently.

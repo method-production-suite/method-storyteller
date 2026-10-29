@@ -15,6 +15,9 @@ for its own version in Help > What's New, once after an update.
   no longer fits flows onto A-pages (`12A`), a page that lost text stays short, and pages whose
   text fits on one print as `7-8`. Pages locked in an `.fdx` file are kept and saved back, and
   will print the same way once their positions are read reliably.
+- Production > Lock Pages keeps each page's number from then on, and offers to turn on revision
+  mode with it; Production > Unlock All Pages numbers the pages straight through again. Both ask
+  first and are one Undo, and locked pages saved as `.fdx` stay locked when opened again.
 
 ### Security
 

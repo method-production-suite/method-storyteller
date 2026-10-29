@@ -64,6 +64,9 @@ pub struct Page {
     /// The number a locked script prints, such as `12A` or `7-8` (docs/production-spec.md §4.1).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub locked: Option<String>,
+    /// Where the page's text starts: the element, and its printed characters before the page.
+    #[serde(skip)]
+    pub start: Option<(usize, u32)>,
 }
 
 impl Page {
@@ -211,16 +214,24 @@ struct Block {
     splittable: bool,
     /// The last lines are the scene's cast list, not the element's own text.
     cast_lines: usize,
+    /// Printed characters of the element before this block's text (a block split off a page).
+    from: u32,
 }
 
 impl Block {
     fn new(element: usize, kind: ElementKind, style: ElementStyle, source: Vec<StyledChar>, splittable: bool) -> Self {
         let lines = layout_lines(&source, style, kind == ElementKind::Parenthetical);
-        Block { element, kind, style, space_before: style.space_before, source, lines, splittable, cast_lines: 0 }
+        Block { element, kind, style, space_before: style.space_before, source, lines, splittable, cast_lines: 0, from: 0 }
     }
 
     fn with_source(&self, source: Vec<StyledChar>) -> Self {
-        Block::new(self.element, self.kind, self.style, source, self.splittable)
+        Block { from: self.from, ..Block::new(self.element, self.kind, self.style, source, self.splittable) }
+    }
+
+    /// The text from printed character `start` of this block on, as its own block.
+    fn rest_from(&self, start: usize) -> Self {
+        let from = self.from.saturating_add(u32::try_from(start).unwrap_or(u32::MAX));
+        Block { from, ..self.with_source(self.source.get(start..).unwrap_or(&[]).to_vec()) }
     }
 
     /// Rows the block takes: one a line, with the gaps of a double-spaced element between.
@@ -237,6 +248,10 @@ impl Block {
         let mut rest = self.clone();
         top.lines.truncate(at);
         rest.lines = self.lines.get(at..).unwrap_or(&[]).to_vec();
+        // The rest starts after the top's characters and the spaces the wrap dropped.
+        let taken: usize = top.lines.iter().map(|line| line.chars.len()).sum();
+        let skipped = self.source.get(taken..).unwrap_or(&[]).iter().take_while(|sc| sc.c == ' ').count();
+        rest.from = self.from.saturating_add(u32::try_from(taken + skipped).unwrap_or(u32::MAX));
         top.splittable = false;
         rest.splittable = false;
         (top, rest)
@@ -486,7 +501,7 @@ fn split_block(block: &Block, avail: u16) -> Option<(Block, Block)> {
         if top.height() > avail || top.height() < 2 {
             continue;
         }
-        let mut rest = block.with_source(block.source.get(start..).unwrap_or(&[]).to_vec());
+        let mut rest = block.rest_from(start);
         // Final Draft counts the lines left over in the paragraph as laid out, not re-wrapped.
         if rest.height() < 2 || block.height().saturating_sub(top.height()) < 2 {
             continue;
@@ -506,7 +521,7 @@ fn speech_halves(speech: &Speech, part: usize, inner: Option<(usize, usize)>) ->
             (std::cmp::Ordering::Less, _) => top.parts.push(block.clone()),
             (std::cmp::Ordering::Equal, Some((end, start))) => {
                 top.parts.push(block.with_source(block.source.get(..end).unwrap_or(&[]).to_vec()));
-                rest.parts.push(block.with_source(block.source.get(start..).unwrap_or(&[]).to_vec()));
+                rest.parts.push(block.rest_from(start));
             }
             _ => rest.parts.push(block.clone()),
         }
@@ -590,11 +605,13 @@ struct PageBuilder<'a> {
     items: Vec<(usize, u16, Group)>,
     /// The locked page's number, such as `12` or `12A`.
     label: Option<String>,
+    /// Where the page's text starts (see [`Page::start`]).
+    start: Option<(usize, u32)>,
 }
 
 impl<'a> PageBuilder<'a> {
     fn new(layout: &'a Layout, label: Option<String>) -> Self {
-        PageBuilder { layout, lines: Vec::new(), used: 0, items: Vec::new(), label }
+        PageBuilder { layout, lines: Vec::new(), used: 0, items: Vec::new(), label, start: None }
     }
 
     fn avail(&self) -> u16 {
@@ -675,6 +692,9 @@ impl<'a> PageBuilder<'a> {
     }
 
     fn place(&mut self, group: Group, script: &Script, element_pages: &mut [u32], page: u32) {
+        if self.start.is_none() {
+            self.start = group_start(&group);
+        }
         let lines_before = self.lines.len();
         let used_before = self.used;
         if self.used > 0 {
@@ -716,7 +736,7 @@ impl<'a> PageBuilder<'a> {
             );
         }
         lines.sort_by_key(|line| (line.row, line.col));
-        Page { number, lines, locked: self.label }
+        Page { number, lines, locked: self.label, start: self.start }
     }
 }
 
@@ -869,6 +889,17 @@ fn group_span(group: &Group) -> Option<(usize, usize)> {
     }
 }
 
+/// Where a page that opens with `group` starts: a speech continued from the page before starts
+/// in its first part.
+fn group_start(group: &Group) -> Option<(usize, u32)> {
+    match group {
+        Group::Block(block) => Some((block.element, block.from)),
+        Group::Speech(speech) if speech.contd => speech.parts.first().map(|part| (part.element, part.from)),
+        Group::Speech(speech) | Group::Dual(speech, _) => Some((speech.cue.element, 0)),
+        Group::Break => None,
+    }
+}
+
 /// Where a locked page start falls in a group.
 enum Cut {
     /// The page starts with the group.
@@ -882,13 +913,14 @@ enum Cut {
 /// group prints.
 fn cut(group: &Group, element: usize, at: u32) -> Cut {
     let at_usize = usize::try_from(at).unwrap_or(usize::MAX);
-    // The part after starts past the spaces at the cut.
+    // The part after starts past the spaces at the cut, and the part before ends before them.
     let after = |source: &[StyledChar]| at_usize + source.get(at_usize..).unwrap_or(&[]).iter().take_while(|sc| sc.c == ' ').count();
+    let before = |source: &[StyledChar]| at_usize - source.get(..at_usize).unwrap_or(&[]).iter().rev().take_while(|sc| sc.c == ' ').count();
     match group {
         Group::Block(block) if at > 0 && at_usize < block.source.len() => {
             let start = after(&block.source);
-            let top = block.with_source(block.source.get(..at_usize).unwrap_or(&[]).to_vec());
-            let mut rest = block.with_source(block.source.get(start..).unwrap_or(&[]).to_vec());
+            let top = block.with_source(block.source.get(..before(&block.source)).unwrap_or(&[]).to_vec());
+            let mut rest = block.rest_from(start);
             rest.space_before = 0;
             Cut::Inside(Box::new((Group::Block(top), Group::Block(rest))), u32::try_from(start).unwrap_or(u32::MAX))
         }
@@ -903,7 +935,7 @@ fn cut(group: &Group, element: usize, at: u32) -> Cut {
                 return Cut::Before;
             }
             let start = after(source);
-            let (top, rest) = speech_halves(speech, part, Some((at_usize, start)));
+            let (top, rest) = speech_halves(speech, part, Some((before(source), start)));
             Cut::Inside(Box::new((Group::Speech(top), Group::Speech(rest))), u32::try_from(start).unwrap_or(u32::MAX))
         }
         _ => Cut::Before,
@@ -1005,6 +1037,21 @@ fn paginate_locked(script: &Script, layout: &Layout, groups: Vec<Group>, pages: 
     if !page.items.is_empty() || on_locked {
         flush(&mut page, pages);
     }
+}
+
+/// Production > Lock Pages: each page of `paginated` (the script laid out as it prints now) is
+/// locked where it starts, under the number it prints with (docs/production-spec.md §4.2). Any
+/// locks the script had are replaced. Returns how many pages were locked.
+pub fn lock_pages(script: &mut Script, paginated: &Paginated) -> usize {
+    script.unlock_pages();
+    let mut count = 0;
+    for page in &paginated.pages {
+        let Some((element, at)) = page.start else { continue };
+        let Some(element) = script.elements.get_mut(element) else { continue };
+        element.page_starts.push(crate::model::PageStart { at, label: page.label(), fdx_attributes: Vec::new() });
+        count += 1;
+    }
+    count
 }
 
 /// Paginate a script. A script with locked pages keeps them (docs/production-spec.md §4.1),
@@ -1158,7 +1205,7 @@ pub fn title_page(title: &TitlePage, layout: &Layout) -> Option<Page> {
         }
     }
     lines.sort_by_key(|line| (line.row, line.col));
-    Some(Page { number: 0, lines, locked: None })
+    Some(Page { number: 0, lines, locked: None, start: None })
 }
 
 /// Render pages as plain text grids (one character per cell), for golden tests and the CLI.

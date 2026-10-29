@@ -63,6 +63,11 @@ or the pages of a range of scenes such as `12-15`. **Clean copy** prints the sam
 marks, labels or colours; **Coloured revised pages** prints revised pages in their set's colour
 (otherwise every page is white, for coloured paper).
 
+Production > Lock Pages keeps every page's number from then on, and offers to turn on Revision
+Mode with it. New text flows onto A-pages (`12A`, `12B`), a page that loses text stays short,
+and pages whose text fits on one print together as `7-8`. Production > Unlock All Pages numbers
+the pages straight through again; both are one Undo.
+
 ## Save and export
 
 - **File > Save** (⌘S) saves the script. A new script is saved as Fountain unless you choose
