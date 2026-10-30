@@ -18,6 +18,9 @@ for its own version in Help > What's New, once after an update.
 - Production > Lock Pages keeps each page's number from then on, and offers to turn on revision
   mode with it; Production > Unlock All Pages numbers the pages straight through again. Both ask
   first and are one Undo, and locked pages saved as `.fdx` stay locked when opened again.
+- Production > Lock A-Pages locks the A-pages there are now, so later pages letter around them
+  (`12AA` before a locked `12A`); Production > Unlock A-Pages takes the newest of those locks
+  away. Both are one Undo.
 
 ### Security
 

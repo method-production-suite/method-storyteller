@@ -18,7 +18,7 @@ fn lines(n: usize, word: &str) -> Vec<Element> {
 }
 
 fn lock(element: &mut Element, at: u32, label: &str) {
-    element.page_starts.push(PageStart { at, label: label.into(), fdx_attributes: Vec::new() });
+    element.page_starts.push(PageStart { at, label: label.into(), ..PageStart::default() });
 }
 
 fn script(elements: Vec<Element>) -> Script {
@@ -234,4 +234,39 @@ fn regex_lite_shift(xml: &str, label: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+#[test]
+fn lock_a_pages_adds_a_level_that_new_pages_letter_around() {
+    use storyteller_core::paginate::{lock_a_pages, lock_pages};
+    use storyteller_core::{fdx, osf};
+    let layout = Layout::default();
+    let mut elements = lines(27, "One");
+    elements.extend(lines(27, "Two"));
+    let mut script = script(elements);
+    let first = paginate(&script, &layout);
+    lock_pages(&mut script, &first);
+    assert_eq!(labels(&paginate(&script, &layout)), ["1", "2"]);
+    // Page 1 grows onto 1A, which Lock A-Pages then locks as level 1.
+    script.elements.splice(5..5, lines(10, "Added"));
+    let grown = paginate(&script, &layout);
+    assert_eq!(labels(&grown), ["1", "1A", "2"]);
+    assert_eq!(lock_a_pages(&mut script, &grown), 1);
+    assert_eq!(script.lock_level(), 1);
+    assert_eq!(labels(&paginate(&script, &layout)), ["1", "1A", "2"]);
+    // The level travels through .fdx and OSF.
+    let via_fdx = fdx::parse(&fdx::write(&script)).unwrap();
+    let via_osf = osf::parse(&osf::write(&script)).unwrap();
+    for back in [&via_fdx, &via_osf] {
+        assert_eq!(back.lock_level(), 1);
+        assert_eq!(labels(&paginate(back, &layout)), ["1", "1A", "2"]);
+    }
+    // More text on page 1 cannot become 1A again: it is 1AA, before the locked 1A.
+    script.elements.splice(3..3, lines(10, "More"));
+    assert_eq!(labels(&paginate(&script, &layout)), ["1", "1AA", "1A", "2"]);
+    // Unlock A-Pages takes the level away: page 1 flows on afresh, lettered straight.
+    assert_eq!(script.unlock_a_pages(), 1);
+    assert_eq!(script.lock_level(), 0);
+    assert_eq!(labels(&paginate(&script, &layout)), ["1", "1A", "2"]);
+    assert_eq!(script.unlock_a_pages(), 0, "Lock Pages' own level stays");
 }

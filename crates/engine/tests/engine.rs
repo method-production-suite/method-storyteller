@@ -940,6 +940,28 @@ fn lock_pages_and_unlock_all_pages_are_one_undo_each() {
 }
 
 #[test]
+fn lock_a_pages_and_unlock_a_pages() {
+    let registry = Registry::new();
+    let text: String = (1..=50).map(|i| format!("Line {i}.\n\n")).collect();
+    let mut s = Session::new(storyteller_core::fountain::parse(&format!("INT. HUT - DAY\n\n{text}")).unwrap());
+    let enabled = |s: &Session, id: &str| registry.get(id).is_some_and(|c| (c.enabled)(s));
+    assert!(!enabled(&s, "pages.lock_a_pages") && !enabled(&s, "pages.unlock_a_pages"));
+    run(&registry, &mut s, "pages.lock", json!({}));
+    assert!(registry.run("pages.lock_a_pages", &mut s, &Default::default()).is_err(), "no A-pages yet");
+    // Text added on page 1 flows onto 1A.
+    run(&registry, &mut s, "element.insert", json!({ "index": 2, "kind": "action", "text": "A long new paragraph. ".repeat(40) }));
+    let out = run(&registry, &mut s, "pages.lock_a_pages", json!({}));
+    assert_eq!(out["message"], "Locked 1 A-page");
+    assert_eq!(s.script.lock_level(), 1);
+    assert!(enabled(&s, "pages.unlock_a_pages"));
+    run(&registry, &mut s, "edit.undo", json!({}));
+    assert_eq!(s.script.lock_level(), 0, "one Undo");
+    run(&registry, &mut s, "edit.redo", json!({}));
+    assert_eq!(run(&registry, &mut s, "pages.unlock_a_pages", json!({}))["value"]["pages"], 1);
+    assert!(s.script.pages_locked() && s.script.lock_level() == 0, "Lock Pages' own locks stay");
+}
+
+#[test]
 fn revision_mode_marks_typing_and_mark_and_clear_act_on_a_range() {
     let registry = Registry::new();
     let mut s = Session::new(storyteller_core::fountain::parse("INT. HUT - DAY\n\nRain **falls**.\n").unwrap());

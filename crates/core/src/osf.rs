@@ -546,7 +546,7 @@ fn read_para(
             return Err(CoreError::TooManyElements);
         }
         if label.is_some() && label != *current && ours.is_empty() {
-            element.page_starts.push(PageStart { at: 0, label: label.clone().unwrap_or_default(), fdx_attributes: Vec::new() });
+            element.page_starts.push(PageStart { at: 0, label: label.clone().unwrap_or_default(), ..PageStart::default() });
         }
         element.page_starts.extend(ours);
         *current = element.page_starts.last().map(|p| p.label.clone()).or(label).or(current.take());
@@ -977,6 +977,7 @@ fn page_from(attributes: &[(String, String)]) -> PageStart {
     PageStart {
         at: get(attributes, "at").and_then(|a| a.trim().parse().ok()).unwrap_or(0),
         label: get(attributes, "label").unwrap_or_default().to_string(),
+        level: get(attributes, "level").and_then(|l| l.trim().parse().ok()).unwrap_or(0),
         fdx_attributes: unprefixed("fdx_", attributes),
     }
 }
@@ -993,7 +994,7 @@ fn has_fdx_extras(page: &PageStart) -> bool {
 fn page_number_says_it(starts: &[PageStart], before: Option<&str>) -> bool {
     match starts {
         [] => true,
-        [only] => only.at == 0 && Some(only.label.as_str()) != before && !has_fdx_extras(only),
+        [only] => only.at == 0 && only.level == 0 && Some(only.label.as_str()) != before && !has_fdx_extras(only),
         _ => false,
     }
 }
@@ -1003,6 +1004,9 @@ fn page_element(page: &PageStart) -> String {
     let mut out = format!("<{PAGE_MARKER}");
     write_attr("at", &page.at.to_string(), &mut out);
     write_attr("label", &page.label, &mut out);
+    if page.level > 0 {
+        write_attr("level", &page.level.to_string(), &mut out);
+    }
     if extras {
         for (k, v) in prefixed("fdx_", &page.fdx_attributes) {
             write_attr(&k, &v, &mut out);

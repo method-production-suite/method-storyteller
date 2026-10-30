@@ -1927,6 +1927,52 @@ fn all_commands() -> Vec<Command> {
             },
         },
         Command {
+            id: "pages.lock_a_pages",
+            label: "Lock A-Pages",
+            menu: "Production/Lock A-Pages",
+            shortcut: None,
+            params: const { &[] },
+            enabled: |s| s.script.pages_locked(),
+            run: |s, _| {
+                let paginated = storyteller_core::paginate::paginate(&s.script, &s.layout);
+                if paginated.pages.iter().any(|p| p.locked.is_none()) {
+                    return Err(CommandError::Failed(
+                        "these locked pages came from another app and are not placed reliably yet; Unlock All Pages, then Lock Pages".into(),
+                    ));
+                }
+                let mut locked = s.script.clone();
+                let count = storyteller_core::paginate::lock_a_pages(&mut locked, &paginated);
+                if count == 0 {
+                    return Err(CommandError::Failed("there are no A-pages to lock".into()));
+                }
+                s.checkpoint(EditKind::Other);
+                s.script = locked;
+                Ok(Outcome {
+                    message: Some(format!("Locked {count} A-{}", if count == 1 { "page" } else { "pages" })),
+                    value: json!({ "pages": count }),
+                })
+            },
+        },
+        Command {
+            id: "pages.unlock_a_pages",
+            label: "Unlock A-Pages",
+            menu: "Production/Unlock A-Pages",
+            shortcut: None,
+            params: const { &[] },
+            enabled: |s| s.script.lock_level() > 0,
+            run: |s, _| {
+                if s.script.lock_level() == 0 {
+                    return Err(CommandError::Failed("no A-pages are locked".into()));
+                }
+                s.checkpoint(EditKind::Other);
+                let count = s.script.unlock_a_pages();
+                Ok(Outcome {
+                    message: Some(format!("Unlocked {count} A-{}", if count == 1 { "page" } else { "pages" })),
+                    value: json!({ "pages": count }),
+                })
+            },
+        },
+        Command {
             id: "pages.unlock_all",
             label: "Unlock All Pages",
             menu: "Production/Unlock All Pages",

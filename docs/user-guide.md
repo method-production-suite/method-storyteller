@@ -66,7 +66,9 @@ marks, labels or colours; **Coloured revised pages** prints revised pages in the
 Production > Lock Pages keeps every page's number from then on, and offers to turn on Revision
 Mode with it. New text flows onto A-pages (`12A`, `12B`), a page that loses text stays short,
 and pages whose text fits on one print together as `7-8`. Production > Unlock All Pages numbers
-the pages straight through again; both are one Undo.
+the pages straight through again; both are one Undo. Production > Lock A-Pages locks the A-pages
+there are now too, so later pages letter around them (`12AA` before a locked `12A`), and
+Production > Unlock A-Pages takes the newest of those locks away.
 
 ## Save and export
 
