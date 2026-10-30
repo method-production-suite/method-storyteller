@@ -607,11 +607,13 @@ struct PageBuilder<'a> {
     label: Option<String>,
     /// Where the page's text starts (see [`Page::start`]).
     start: Option<(usize, u32)>,
+    /// The locked numbers, which an A-page never takes.
+    taken: std::rc::Rc<std::collections::HashSet<String>>,
 }
 
 impl<'a> PageBuilder<'a> {
     fn new(layout: &'a Layout, label: Option<String>) -> Self {
-        PageBuilder { layout, lines: Vec::new(), used: 0, items: Vec::new(), label, start: None }
+        PageBuilder { layout, lines: Vec::new(), used: 0, items: Vec::new(), label, start: None, taken: Default::default() }
     }
 
     fn avail(&self) -> u16 {
@@ -752,8 +754,9 @@ fn mark(element_pages: &mut [u32], element: usize, page: u32) {
 /// number with a letter (`12A` after `12`).
 fn flush(page: &mut PageBuilder<'_>, pages: &mut Vec<Page>) {
     let number = u32::try_from(pages.len() + 1).unwrap_or(u32::MAX);
-    let next = page.label.as_deref().map(next_label);
-    let done = std::mem::replace(page, PageBuilder::new(page.layout, next));
+    let next = page.label.as_deref().map(|label| a_page_label(label, &page.taken));
+    let taken = page.taken.clone();
+    let done = std::mem::replace(page, PageBuilder { taken, ..PageBuilder::new(page.layout, next) });
     pages.push(done.finish(number));
 }
 
@@ -871,6 +874,18 @@ fn next_label(label: &str) -> String {
         (Some(c), Some(stem)) => format!("{stem}{}", char::from_u32(u32::from(c) + 1).unwrap_or('Z')),
         _ => format!("{label}A"),
     }
+}
+
+/// The A-page after `label`, never a number already locked: `12A` after `12`; but with `12A`
+/// locked (Lock A-Pages), a page after `12` is `12AA`, then `12AB`.
+fn a_page_label(label: &str, taken: &std::collections::HashSet<String>) -> String {
+    let mut candidate = next_label(label);
+    let mut letters = String::from("A");
+    while taken.contains(&candidate) && letters.len() < 8 {
+        candidate = format!("{}{letters}", label.rsplit('-').next().unwrap_or(label));
+        letters.push('A');
+    }
+    candidate
 }
 
 /// `7` and `8` printed as one page: `7-8`; `7-8` and `9`: `7-9`.
@@ -1008,6 +1023,8 @@ fn locked_segments(script: &Script, groups: Vec<Group>) -> Vec<(Option<String>, 
 /// longer fits flows onto A-pages (`12A`), a page whose text has gone stays short, and a page
 /// whose text all fits on the page before prints with it as one page (`7-8`).
 fn paginate_locked(script: &Script, layout: &Layout, groups: Vec<Group>, pages: &mut Vec<Page>, element_pages: &mut [u32]) {
+    let taken: std::rc::Rc<std::collections::HashSet<String>> =
+        std::rc::Rc::new(script.elements.iter().flat_map(|e| &e.page_starts).map(|p| p.label.clone()).collect());
     let mut page = PageBuilder::new(layout, None);
     // Whether `page` is a locked page itself, not one of its A-pages.
     let mut on_locked = false;
@@ -1029,7 +1046,7 @@ fn paginate_locked(script: &Script, layout: &Layout, groups: Vec<Group>, pages: 
         if !page.items.is_empty() || page.label.is_some() && on_locked {
             flush(&mut page, pages);
         }
-        page = PageBuilder::new(layout, Some(label));
+        page = PageBuilder { taken: taken.clone(), ..PageBuilder::new(layout, Some(label)) };
         let before = pages.len();
         fill(&mut page, segment.into(), script, pages, element_pages, false);
         on_locked = pages.len() == before;
@@ -1048,7 +1065,28 @@ pub fn lock_pages(script: &mut Script, paginated: &Paginated) -> usize {
     for page in &paginated.pages {
         let Some((element, at)) = page.start else { continue };
         let Some(element) = script.elements.get_mut(element) else { continue };
-        element.page_starts.push(crate::model::PageStart { at, label: page.label(), fdx_attributes: Vec::new() });
+        element.page_starts.push(crate::model::PageStart { at, label: page.label(), ..Default::default() });
+        count += 1;
+    }
+    count
+}
+
+/// Production > Lock A-Pages: the A-pages `paginated` (the script as it prints now, locked) has
+/// are locked too, as a new level, so pages added later never take their numbers. Returns how
+/// many were locked.
+pub fn lock_a_pages(script: &mut Script, paginated: &Paginated) -> usize {
+    let taken: std::collections::HashSet<String> = script.elements.iter().flat_map(|e| &e.page_starts).map(|p| p.label.clone()).collect();
+    let level = script.lock_level() + 1;
+    let mut count = 0;
+    for page in &paginated.pages {
+        let label = page.label();
+        if page.locked.is_none() || taken.contains(&label) || label.contains('-') {
+            continue;
+        }
+        let Some((element, at)) = page.start else { continue };
+        let Some(element) = script.elements.get_mut(element) else { continue };
+        element.page_starts.push(crate::model::PageStart { at, label, level, ..Default::default() });
+        element.page_starts.sort_by_key(|p| p.at);
         count += 1;
     }
     count

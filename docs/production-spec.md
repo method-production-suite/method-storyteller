@@ -245,12 +245,18 @@ script and paginating again gives the same 7,506 pages, line for line. Locks pla
 written to `.fdx` with `LockedPages StorytellerPositions="Yes"`, so they stay honoured when the
 file is read again, as long as every page still starts a paragraph or a word (another app
 that kept the marker but moved a page would leave one inside a word; then they are treated as
-`.fdx` locks from elsewhere, which wait, §4.1). Next: Lock A-Pages and Unlock
-A-Pages, which need the lock level kept in the file.
+`.fdx` locks from elsewhere, which wait, §4.1).
+
+Built (second half): each lock keeps its level (`PageStart::level`: 0 for Lock Pages, one more
+per Lock A-Pages; `.fdx` `LockLevel` on the pages placed here, OSF
+`method_storyteller_page@level`). `pages.lock_a_pages` locks the A-pages there are now at the
+next level; `pages.unlock_a_pages` removes the newest level; both one Undo. A new A-page never
+takes a locked number: after `12` it is `12A`, or `12AA`, `12AB` when `12A` is locked.
 
 *Decision S3, lettering past Z and merged pages.* The research has only examples (`21A`, `AA`,
-`7BB-9A`). Built on the recommendation: A to Z, then AA to ZZ, and merged pages as `7-8`; the
-parity check settles anything a saved file shows differently.
+`7BB-9A`). Built on the recommendation: A to Z, and merged pages as `7-8`; a page that would
+take a locked number gets one more letter instead (`12AA` before a locked `12A`). The parity
+check settles anything a saved file shows differently.
 
 ### 4.3 Reports
 

@@ -429,6 +429,10 @@ pub struct ScriptNote {
     pub fdx: Option<Box<FdxNote>>,
 }
 
+fn is_level_zero(level: &u32) -> bool {
+    *level == 0
+}
+
 /// Where a locked page starts, and what it is called.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PageStart {
@@ -436,6 +440,10 @@ pub struct PageStart {
     pub at: u32,
     /// The page number as printed, such as `12` or `12A`.
     pub label: String,
+    /// The lock it belongs to: 0 for Lock Pages, then one more for each Lock A-Pages
+    /// (docs/production-spec.md §4.2). `.fdx` `LockLevel`, OSF `method_storyteller_page@level`.
+    #[serde(default, skip_serializing_if = "is_level_zero")]
+    pub level: u32,
     /// Final Draft `LockedPage` attributes the model does not use, every one in file order.
     #[serde(skip)]
     pub fdx_attributes: Vec<(String, String)>,
@@ -1492,6 +1500,27 @@ impl Script {
     /// Whether the script's pages are locked: some paragraph starts a locked page.
     pub fn pages_locked(&self) -> bool {
         self.elements.iter().any(|e| !e.page_starts.is_empty())
+    }
+
+    /// The newest lock: 0 after Lock Pages, one more for each Lock A-Pages.
+    pub fn lock_level(&self) -> u32 {
+        self.elements.iter().flat_map(|e| &e.page_starts).map(|p| p.level).max().unwrap_or(0)
+    }
+
+    /// Production > Unlock A-Pages: the newest Lock A-Pages is undone, so those A-pages are
+    /// lettered afresh. Returns how many pages it unlocked (none after Lock Pages alone).
+    pub fn unlock_a_pages(&mut self) -> usize {
+        let level = self.lock_level();
+        if level == 0 {
+            return 0;
+        }
+        let mut count = 0;
+        for element in &mut self.elements {
+            let before = element.page_starts.len();
+            element.page_starts.retain(|p| p.level != level);
+            count += before - element.page_starts.len();
+        }
+        count
     }
 
     /// Production > Unlock All Pages: every locked page goes, so the pages number straight

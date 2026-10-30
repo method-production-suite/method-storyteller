@@ -1108,7 +1108,7 @@ impl Importer {
             let after = starts.partition_point(|(_, s)| *s <= position);
             let Some(&(index, start)) = starts.get(after.saturating_sub(1)) else { continue };
             let label = get(&attributes, "PageNumber").unwrap_or_default().to_string();
-            pages.push((position, index, PageStart { at: position.saturating_sub(start), label, fdx_attributes: kept }));
+            pages.push((position, index, PageStart { at: position.saturating_sub(start), label, fdx_attributes: kept, level: 0 }));
         }
         // The marker is trusted only while the text agrees: every page starts a paragraph or a
         // word. Another app that kept the marker but moved the pages leaves some inside a word.
@@ -1119,7 +1119,10 @@ impl Importer {
             at == 0 || at >= plain.len() || plain.get(at - 1).is_some_and(|c| c.is_whitespace())
         };
         if ours && pages.iter().all(|(_, index, page)| starts_a_word(*index, page.at)) {
-            pages.iter_mut().for_each(|(_, _, page)| page.fdx_attributes.clear());
+            for (_, _, page) in &mut pages {
+                page.level = number(get(&page.fdx_attributes, "LockLevel")).unwrap_or(0);
+                page.fdx_attributes.clear();
+            }
         }
         for (position, index, page) in pages {
             self.document.locked_pages.push((position, page.clone()));
@@ -2033,6 +2036,10 @@ pub(crate) fn locked_page_attributes(page: &PageStart, position: Option<u32>) ->
         set_or_remove(&mut attributes, "Position", Some(position.map(|p| p.to_string()).unwrap_or_default()));
     }
     if page.fdx_attributes.is_empty() {
+        // A page locked here says its lock level when it has one.
+        if page.level > 0 {
+            attributes.push(("LockLevel".into(), page.level.to_string()));
+        }
         attributes.sort();
     }
     attributes
