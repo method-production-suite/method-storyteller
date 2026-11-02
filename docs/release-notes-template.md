@@ -25,6 +25,9 @@ Start a new file by copying the skeleton at the end of this page. Release steps:
 - Name platforms the way the README's table does: "a Mac (Apple silicon or Intel)", "Windows",
   "Linux". The Mac download is one app for both kinds of Mac; don't name chips unless the
   release changes what runs where.
+- Windows is unsigned for good: never "not signed yet". When the notes mention it, use the
+  standard sentence: "Not signed, and no certificate is planned: Windows warns that the
+  publisher is unknown before it opens."
 - Examples use invented scripts only (Field Station). Never a real production, a real
   script or a real person's work: the notes become a public web page.
 - Claim only what is built and in this release. Most commits earn no bullet: refactors,
