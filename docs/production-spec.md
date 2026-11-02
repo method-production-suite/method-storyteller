@@ -273,7 +273,9 @@ Each report exports as CSV (comma-separated, UTF-8, a header row) and prints as 
 File > Export Plain Text… writes the script as it reads on the page, with no markup.
 
 *Built (2026-11-02):* the four reports as commands, each writing CSV when given a `path`
-(lines end in CRLF; a field with a comma, quote or line break is quoted), and
+(lines end in CRLF; a field with a comma, quote or line break is quoted; a field starting with
+`=`, `+`, `-`, `@`, their full-width forms, a tab or a carriage return gets a `'` in front, so a
+spreadsheet never runs script text as a formula), and
 `method-storyteller report SCRIPT scenes|locations|characters|cast [OUT.csv]`. Choices made:
 a heading with no INT. or EXT. is all location, with no time of day (there is no telling the
 two apart); a scene number typed in front of the INT. (`12. INT. HUT - DAY`) is passed over;
