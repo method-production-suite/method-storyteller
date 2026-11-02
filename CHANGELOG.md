@@ -28,6 +28,9 @@ for its own version in Help > What's New, once after an update.
 
 ### Security
 
+- Report CSV files put a `'` before any cell that starts like a spreadsheet formula (`=`, `+`,
+  `-`, `@`, a tab or a carriage return), so script text is never run as one when the report
+  is opened.
 - The secure connection the update check uses carries four more fixes from its library
   (RUSTSEC-2026-0346 to -0349). None of them reached the way the app uses it.
 

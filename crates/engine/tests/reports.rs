@@ -125,6 +125,14 @@ fn reports_write_csv_with_a_header_and_quoting() {
     assert!(cast.contains("\r\nOWEN,2,\"1, 2\"\r\n"), "{cast}");
 
     assert_eq!(reports::csv(&["A"], [vec!["say \"hi\"".to_string()]]), "A\r\n\"say \"\"hi\"\"\"\r\n");
+    // Script text that starts like a formula is never read as one.
+    let cells = ["=HYPERLINK(\"x\")", "+1", "-2", "@SUM(A1)", "\tTAB", "\rCR", "\u{ff1d}1", "\u{ff20}A", "A=1", "7"];
+    let row = reports::csv(&["A"], cells.iter().map(|c| vec![(*c).to_string()]));
+    let lines: Vec<&str> = row.split("\r\n").skip(1).collect();
+    assert_eq!(&lines[..4], ["\"'=HYPERLINK(\"\"x\"\")\"", "'+1", "'-2", "'@SUM(A1)"]);
+    assert_eq!(lines[4], "'\tTAB");
+    assert!(row.contains("\"'\rCR\""), "a carriage return is quoted too");
+    assert!(row.contains("\r\n'\u{ff1d}1\r\n'\u{ff20}A\r\nA=1\r\n7\r\n"), "full-width forms guarded; text that only contains them is not");
     let wrong = run(&registry, &mut s, "report.scenes", json!({ "path": dir.path().join("x.txt").display().to_string() }));
     assert!(wrong.unwrap_err().contains(".csv"));
 }

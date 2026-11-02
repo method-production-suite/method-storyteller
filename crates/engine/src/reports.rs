@@ -195,9 +195,15 @@ pub fn cast(scenes: &[SceneRow]) -> Vec<CastRow> {
     rows
 }
 
-/// One CSV field, quoted when it has to be.
+/// Characters a spreadsheet may read a cell's formula from, when the cell starts with one:
+/// `=`, `+`, `-`, `@` (and their full-width forms), tab and carriage return.
+const FORMULA_STARTS: [char; 10] = ['=', '+', '-', '@', '\t', '\r', '\u{ff1d}', '\u{ff0b}', '\u{ff0d}', '\u{ff20}'];
+
+/// One CSV field, quoted when it has to be. Script text that starts like a formula gets a
+/// single quote in front, so opening the report never runs it.
 fn field(text: &str) -> String {
-    if text.contains([',', '"', '\n', '\r']) { format!("\"{}\"", text.replace('"', "\"\"")) } else { text.to_string() }
+    let text = if text.starts_with(FORMULA_STARTS) { format!("'{text}") } else { text.to_string() };
+    if text.contains([',', '"', '\n', '\r']) { format!("\"{}\"", text.replace('"', "\"\"")) } else { text }
 }
 
 /// A CSV table: a header row, then the rows, each line ending in CRLF.
