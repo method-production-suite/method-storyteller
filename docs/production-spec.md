@@ -272,6 +272,19 @@ Production > Reports… opens one window with a report picker, each one also a c
 Each report exports as CSV (comma-separated, UTF-8, a header row) and prints as a PDF table.
 File > Export Plain Text… writes the script as it reads on the page, with no markup.
 
+*Built (2026-11-02):* the four reports as commands, each writing CSV when given a `path`
+(lines end in CRLF; a field with a comma, quote or line break is quoted), and
+`method-storyteller report SCRIPT scenes|locations|characters|cast [OUT.csv]`. Choices made:
+a heading with no INT. or EXT. is all location, with no time of day (there is no telling the
+two apart); a scene number typed in front of the INT. (`12. INT. HUT - DAY`) is passed over;
+`EST.` counts as exterior and `I/E` as INT/EXT; an omitted scene keeps its row with
+0 eighths and no cast, and counts in no location; locations are listed by name; the cast report
+lists characters in the order they first speak, and `report.cast` also gives each scene's
+speakers. Plain text keeps each line where it sits on the page, less the common left margin,
+with a form feed between pages. On the private corpus (108 scripts, 9,052 scenes) every report
+runs; 1,121 headings have no INT. or EXT. (`LATER`, a bare place), and passing over typed
+numbers recognised 158 more. Still to come: the Reports… window and the PDF tables.
+
 ### 4.4 The Method Schedule export: script scenes
 
 File > Export for Method Schedule… and `method-storyteller export-scenes SCRIPT OUT` write a

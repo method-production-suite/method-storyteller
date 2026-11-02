@@ -78,6 +78,10 @@ Production > Unlock A-Pages takes the newest of those locks away.
   XML that keeps more production detail. Both are open formats you own.
 - **File > Export PDF** (⌘E) writes a PDF ready to print or send.
 - File > Export also writes `.fdx`, Open Screenplay Format and Fountain copies.
+- **File > Export Plain Text…** writes the script as it reads on the page, with no markup.
+- The scene, location, character and cast reports export as CSV for a spreadsheet:
+  `method-storyteller report script.fountain scenes scenes.csv` (or `locations`, `characters`,
+  `cast`).
 
 While a script has unsaved changes, the app copies it every minute to the `Recovery` folder in
 its data folder, so a crash or a power cut costs at most a minute of work.

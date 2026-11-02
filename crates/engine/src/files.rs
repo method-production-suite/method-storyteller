@@ -272,6 +272,11 @@ pub fn save_pdf(script: &Script, path: &Path, layout: &Layout, options: &storyte
     craft_atomic::atomic_write(path, &bytes).map_err(|source| FileError::Write { path: path.display().to_string(), source })
 }
 
+/// Atomically write a text file: a report's CSV or the script as plain text.
+pub fn save_text(path: &Path, text: &str) -> Result<(), FileError> {
+    craft_atomic::atomic_write(path, text.as_bytes()).map_err(|source| FileError::Write { path: path.display().to_string(), source })
+}
+
 /// Atomically write a script in a format.
 pub fn save(script: &Script, path: &Path, format: FileFormat, layout: &Layout) -> Result<(), FileError> {
     let bytes = encode(script, format, layout)?;
