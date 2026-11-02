@@ -10,6 +10,7 @@ use storyteller_core::{Element, ElementKind, Script, autocomplete, inline};
 use crate::files::{self, FileError, FileFormat, FileProblem};
 use crate::find;
 use crate::flow;
+use crate::reports;
 use crate::session::{Caret, EditKind, Session, floor_char_boundary};
 
 /// Command parameters, as JSON.
@@ -227,10 +228,16 @@ pub struct CharacterRow {
     pub first_scene: Option<String>,
     /// Words spoken, dialogue only.
     pub words: usize,
+    /// The scenes the character speaks in, by printed number or position, in script order.
+    pub scene_list: Vec<String>,
 }
 
 /// Every speaking character, most speeches first (then by name).
 pub fn character_table(script: &Script) -> Vec<CharacterRow> {
+    // A scene by its printed number, or its position when it has none.
+    let scene_label = |scene: Option<usize>, count: usize| {
+        scene.map(|h| script.elements.get(h).and_then(|e| e.scene_number.clone()).unwrap_or_else(|| count.to_string()))
+    };
     let mut rows: Vec<CharacterRow> = Vec::new();
     let mut scene: Option<usize> = None;
     let mut scene_count = 0usize;
@@ -252,9 +259,15 @@ pub fn character_table(script: &Script) -> Vec<CharacterRow> {
                 let at = match rows.iter().position(|r| r.name == name) {
                     Some(at) => at,
                     None => {
-                        let first_scene =
-                            scene.map(|h| script.elements.get(h).and_then(|e| e.scene_number.clone()).unwrap_or_else(|| scene_count.to_string()));
-                        rows.push(CharacterRow { name: name.clone(), speeches: 0, scenes: 0, first: index, first_scene, words: 0 });
+                        rows.push(CharacterRow {
+                            name: name.clone(),
+                            speeches: 0,
+                            scenes: 0,
+                            first: index,
+                            first_scene: scene_label(scene, scene_count),
+                            words: 0,
+                            scene_list: Vec::new(),
+                        });
                         rows.len() - 1
                     }
                 };
@@ -264,6 +277,7 @@ pub fn character_table(script: &Script) -> Vec<CharacterRow> {
                     if !seen_in.contains(&key) {
                         seen_in.push(key);
                         row.scenes += 1;
+                        row.scene_list.extend(scene_label(scene, scene_count));
                     }
                 }
                 speaker = Some(at);
@@ -1000,6 +1014,19 @@ fn all_commands() -> Vec<Command> {
             run: |s, p| export(s, p, FileFormat::Fountain),
         },
         Command {
+            id: "file.export_text",
+            label: "Export Plain Text…",
+            menu: "File/Export Plain Text…",
+            shortcut: None,
+            params: const { &[param("path", Path, true, "Destination .txt")] },
+            enabled: always,
+            run: |s, p| {
+                let path = path(p, "path")?;
+                files::save_text(&path, &reports::plain_text(s.paginated()))?;
+                Ok(Outcome::message(format!("Exported {}", path.display())))
+            },
+        },
+        Command {
             id: "edit.undo",
             label: "Undo",
             menu: "Edit/Undo",
@@ -1270,9 +1297,50 @@ fn all_commands() -> Vec<Command> {
             label: "Character Table",
             menu: "",
             shortcut: None,
-            params: &[],
+            params: const { &[REPORT_PATH] },
             enabled: always,
-            run: |s, _| Ok(Outcome::value(json!(character_table(&s.script)))),
+            run: |s, p| {
+                let rows = character_table(&s.script);
+                report(p, json!(rows), || reports::characters_csv(&rows))
+            },
+        },
+        Command {
+            id: "report.scenes",
+            label: "Scene Report",
+            menu: "",
+            shortcut: None,
+            params: const { &[REPORT_PATH] },
+            enabled: always,
+            run: |s, p| {
+                let rows = reports::session_scenes(s);
+                report(p, json!(rows), || reports::scenes_csv(&rows))
+            },
+        },
+        Command {
+            id: "report.locations",
+            label: "Location Report",
+            menu: "",
+            shortcut: None,
+            params: const { &[REPORT_PATH] },
+            enabled: always,
+            run: |s, p| {
+                let rows = reports::locations(&reports::session_scenes(s));
+                report(p, json!(rows), || reports::locations_csv(&rows))
+            },
+        },
+        Command {
+            id: "report.cast",
+            label: "Cast Report",
+            menu: "",
+            shortcut: None,
+            params: const { &[REPORT_PATH] },
+            enabled: always,
+            run: |s, p| {
+                let scenes = reports::session_scenes(s);
+                let rows = reports::cast(&scenes);
+                let by_scene: Vec<Value> = scenes.iter().map(|r| json!({ "scene": r.label(), "characters": r.characters })).collect();
+                report(p, json!({ "characters": rows, "scenes": by_scene }), || reports::cast_csv(&rows))
+            },
         },
         Command {
             id: "spell.next",
@@ -2158,6 +2226,21 @@ fn all_commands() -> Vec<Command> {
             },
         },
     ]
+}
+
+/// The optional CSV destination every report takes.
+const REPORT_PATH: ParamSpec = param("path", ParamType::Path, false, "Write the report as CSV to this .csv file");
+
+/// A report's rows, also written as CSV when the command has a `path`.
+fn report(params: &Params, rows: Value, csv: impl FnOnce() -> String) -> Result<Outcome, CommandError> {
+    let Some(path) = opt_string(params, "path")?.filter(|p| !p.trim().is_empty()).map(PathBuf::from) else {
+        return Ok(Outcome::value(rows));
+    };
+    if !path.extension().is_some_and(|e| e.eq_ignore_ascii_case("csv")) {
+        return Err(CommandError::Invalid { name: "path", reason: "reports are written as .csv".into() });
+    }
+    files::save_text(&path, &csv())?;
+    Ok(Outcome { message: Some(format!("Exported {}", path.display())), value: rows })
 }
 
 fn export(session: &mut Session, params: &Params, format: FileFormat) -> Result<Outcome, CommandError> {

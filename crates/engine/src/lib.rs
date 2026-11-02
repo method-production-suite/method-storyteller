@@ -8,6 +8,7 @@ pub mod control;
 pub mod files;
 pub mod find;
 pub mod flow;
+pub mod reports;
 pub mod session;
 pub mod spell;
 

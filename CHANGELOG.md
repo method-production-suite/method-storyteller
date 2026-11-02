@@ -21,6 +21,10 @@ for its own version in Help > What's New, once after an update.
 - Production > Lock A-Pages locks the A-pages there are now, so later pages letter around them
   (`12AA` before a locked `12A`); Production > Unlock A-Pages takes the newest of those locks
   away. Both are one Undo.
+- File > Export Plain Text… writes the script as it reads on the page, with no markup.
+- Scene, location, character and cast reports, as CSV from `method-storyteller report` and as
+  commands: each scene's INT/EXT, location, time of day, page, length and speaking characters;
+  each location's scenes and pages; and the scenes each character speaks in.
 
 ### Security
 

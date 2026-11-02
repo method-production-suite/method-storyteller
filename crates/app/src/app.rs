@@ -508,6 +508,7 @@ impl StorytellerApp {
             "file.export_fdx" => self.export(FileFormat::Fdx),
             "file.export_fountain" => self.export(FileFormat::Fountain),
             "file.export_osf" => self.export(FileFormat::Osf),
+            "file.export_text" => self.export_text(),
             "app.title_page" => {
                 let page = &self.session.script.title_page;
                 let fields =
@@ -1000,18 +1001,24 @@ impl StorytellerApp {
         }
     }
 
-    /// Asks where to save an export, named after the script.
-    fn export_path(&self, format: FileFormat) -> Option<PathBuf> {
+    /// Asks where to save an export with this extension, named after the script.
+    fn export_path(&self, extension: &str) -> Option<PathBuf> {
         let stem =
             self.session.path.as_ref().and_then(|p| p.file_stem()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "Untitled".into());
-        rfd::FileDialog::new()
-            .add_filter(format.extension(), &[format.extension()])
-            .set_file_name(format!("{stem}.{}", format.extension()))
-            .save_file()
+        rfd::FileDialog::new().add_filter(extension, &[extension]).set_file_name(format!("{stem}.{extension}")).save_file()
+    }
+
+    /// File > Export Plain Text…
+    fn export_text(&mut self) {
+        if let Some(path) = self.export_path("txt") {
+            let mut params = Map::new();
+            params.insert("path".into(), json!(path.display().to_string()));
+            self.run("file.export_text", params);
+        }
     }
 
     fn export(&mut self, format: FileFormat) {
-        if let Some(path) = self.export_path(format) {
+        if let Some(path) = self.export_path(format.extension()) {
             let id = match format {
                 FileFormat::Pdf => "file.export_pdf",
                 FileFormat::Fdx => "file.export_fdx",
@@ -2114,7 +2121,7 @@ impl StorytellerApp {
         if selection.revised_only {
             target.insert("revised_only".into(), json!(true));
         }
-        let Some(path) = self.export_path(FileFormat::Pdf) else { return };
+        let Some(path) = self.export_path(FileFormat::Pdf.extension()) else { return };
         target.insert("path".into(), json!(path.display().to_string()));
         match self.registry.run("file.export_pdf", &mut self.session, &target) {
             Ok(outcome) => {
