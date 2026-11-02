@@ -166,7 +166,7 @@ gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD -R method-production-suite/meth
 | `AC_API_KEY_P8_BASE64` | the key's `.p8` file, base64-encoded | |
 | `TAURI_SIGNING_PRIVATE_KEY` | the minisign update key, as the base64 of its secret key box ("Method Storyteller - Update signing key" in 1Password; key ID C4D0E2230F7A95FB) | the updater archive, its `.sig` and `latest.json` (with the next one, and a notarized Mac build) |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | that key's password | |
-| `WINDOWS_CERTIFICATE` | a code signing `.pfx`, base64-encoded (none exists yet) | signing the Windows installer (with the next one) |
+| `WINDOWS_CERTIFICATE` | a code signing `.pfx`, base64-encoded (none exists, and none is planned) | signing the Windows installer (with the next one) |
 | `WINDOWS_CERTIFICATE_PASSWORD` | that `.pfx`'s password | |
 
 The Mac build is signed with whichever Developer ID Application identity the `.p12` holds;
