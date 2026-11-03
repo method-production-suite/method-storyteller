@@ -27,7 +27,7 @@ USAGE:
     method-storyteller pdf <input> [output.pdf]        Export a PDF (default: next to the input)
     method-storyteller paginate <input> [--text]       Page count and scenes; --text prints the pages
     method-storyteller info <input>                    Scenes, characters and pages
-    method-storyteller report <input> <report> [out]   CSV of scenes, locations, characters or cast (default: stdout)
+    method-storyteller report <input> <report> [out]   scenes, locations, characters or cast: CSV, or a PDF table to a .pdf (default: CSV to stdout)
     method-storyteller text <input> [output.txt]       The script as plain text, as it reads on the page
     method-storyteller run <input> <command> [k=v…]    Run an engine command, then save the file
     method-storyteller commands                        List engine commands

@@ -145,15 +145,34 @@ pub fn session_scenes(session: &mut Session) -> Vec<SceneRow> {
     scenes(&session.script, &paginated, &lengths)
 }
 
-/// A report as CSV by name: `scenes`, `locations`, `characters` or `cast`.
-pub fn csv_for(session: &mut Session, report: &str) -> Option<String> {
+/// The reports by name, in the order the Reports window lists them.
+pub const NAMES: [&str; 4] = ["scenes", "locations", "characters", "cast"];
+
+/// A report's name as the window shows it.
+pub fn title(report: &str) -> &'static str {
+    match report {
+        "scenes" => "Scenes",
+        "locations" => "Locations",
+        "characters" => "Characters",
+        "cast" => "Cast",
+        _ => "",
+    }
+}
+
+/// A report as a table by name: `scenes`, `locations`, `characters` or `cast`.
+pub fn table_for(session: &mut Session, report: &str) -> Option<Table> {
     Some(match report {
-        "scenes" => scenes_csv(&session_scenes(session)),
-        "locations" => locations_csv(&locations(&session_scenes(session))),
-        "cast" => cast_csv(&cast(&session_scenes(session))),
-        "characters" => characters_csv(&character_table(&session.script)),
+        "scenes" => scenes_table(&session_scenes(session)),
+        "locations" => locations_table(&locations(&session_scenes(session))),
+        "cast" => cast_table(&cast(&session_scenes(session))),
+        "characters" => characters_table(&character_table(&session.script)),
         _ => return None,
     })
+}
+
+/// A report as CSV by name.
+pub fn csv_for(session: &mut Session, report: &str) -> Option<String> {
+    table_for(session, report).map(|t| t.csv())
 }
 
 /// Every location, by name, from the scene report.
@@ -220,59 +239,160 @@ pub fn csv(header: &[&str], rows: impl IntoIterator<Item = Vec<String>>) -> Stri
     out
 }
 
+/// A report laid out as a table: what the CSV holds, what the Reports window shows and what
+/// prints.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Table {
+    /// Such as `Scenes`.
+    pub name: &'static str,
+    pub header: Vec<&'static str>,
+    pub rows: Vec<Vec<String>>,
+    /// Columns that only the CSV carries: the same fact in another form, for a spreadsheet.
+    pub csv_only: Vec<usize>,
+    /// Counts and lengths, set flush right.
+    pub numeric: Vec<usize>,
+    /// Totals, such as `42 scenes, 98 4/8 pages`.
+    pub summary: String,
+}
+
+impl Table {
+    pub fn csv(&self) -> String {
+        csv(&self.header, self.rows.iter().cloned())
+    }
+
+    /// The columns shown and printed, by index: those the CSV doesn't keep to itself, less any
+    /// that is empty in every row (a script with no scene titles prints no Title column).
+    pub fn shown(&self) -> Vec<usize> {
+        let filled = |c: usize| self.rows.is_empty() || self.rows.iter().any(|r| r.get(c).is_some_and(|t| !t.is_empty()));
+        (0..self.header.len()).filter(|&c| !self.csv_only.contains(&c) && filled(c)).collect()
+    }
+
+    /// The table as a PDF, its title after the script's.
+    pub fn pdf(&self, script_title: Option<&str>, page: (f32, f32)) -> Result<Vec<u8>, storyteller_pdf::PdfError> {
+        let shown = self.shown();
+        let pick = |row: &Vec<String>| shown.iter().map(|&c| row.get(c).cloned().unwrap_or_default()).collect();
+        let table = storyteller_pdf::PdfTable {
+            title: match script_title.map(str::trim).filter(|t| !t.is_empty()) {
+                Some(title) => format!("{title}: {}", self.name),
+                None => self.name.to_string(),
+            },
+            summary: self.summary.clone(),
+            header: shown.iter().filter_map(|&c| self.header.get(c)).map(|h| (*h).to_string()).collect(),
+            rows: self.rows.iter().map(pick).collect(),
+            right: shown.iter().enumerate().filter(|(_, c)| self.numeric.contains(c)).map(|(i, _)| i).collect(),
+            creator: crate::app_version(),
+        };
+        storyteller_pdf::render_table(&table, page)
+    }
+}
+
+fn counted(n: usize, one: &str, many: &str) -> String {
+    format!("{n} {}", if n == 1 { one } else { many })
+}
+
+pub fn scenes_table(rows: &[SceneRow]) -> Table {
+    let header = vec!["Scene", "Heading", "INT/EXT", "Location", "Time", "Page", "Length", "Eighths", "Characters", "Title", "Omitted"];
+    let kept: Vec<&SceneRow> = rows.iter().filter(|r| !r.omitted).collect();
+    let omitted = rows.len() - kept.len();
+    let mut summary = format!("{}, {} pages", counted(kept.len(), "scene", "scenes"), format_eighths(kept.iter().map(|r| r.eighths).sum()));
+    if omitted > 0 {
+        summary.push_str(&format!(", {omitted} omitted"));
+    }
+    Table {
+        name: "Scenes",
+        header,
+        rows: rows
+            .iter()
+            .map(|r| {
+                vec![
+                    r.label(),
+                    r.heading.clone(),
+                    r.int_ext.unwrap_or_default().to_string(),
+                    r.location.clone(),
+                    r.time.clone().unwrap_or_default(),
+                    r.page.clone(),
+                    format_eighths(r.eighths),
+                    r.eighths.to_string(),
+                    r.characters.join(", "),
+                    r.title.clone(),
+                    if r.omitted { "yes".into() } else { String::new() },
+                ]
+            })
+            .collect(),
+        // The heading is INT/EXT, location and time together, and eighths repeat the length;
+        // the omitted column prints only when a scene is omitted.
+        csv_only: if omitted > 0 { vec![1, 7] } else { vec![1, 7, 10] },
+        numeric: vec![6, 7],
+        summary,
+    }
+}
+
+pub fn locations_table(rows: &[LocationRow]) -> Table {
+    Table {
+        name: "Locations",
+        header: vec!["Location", "Scenes", "Pages", "Eighths", "INT", "EXT", "INT/EXT", "Unmarked"],
+        rows: rows
+            .iter()
+            .map(|r| {
+                let counts = [r.scenes, r.int, r.ext, r.int_ext, r.unmarked].map(|n| n.to_string());
+                let [scenes, int, ext, both, unmarked] = counts;
+                vec![r.location.clone(), scenes, format_eighths(r.eighths), r.eighths.to_string(), int, ext, both, unmarked]
+            })
+            .collect(),
+        csv_only: vec![3],
+        numeric: vec![1, 2, 3, 4, 5, 6, 7],
+        summary: counted(rows.len(), "location", "locations"),
+    }
+}
+
+pub fn cast_table(rows: &[CastRow]) -> Table {
+    Table {
+        name: "Cast",
+        header: vec!["Character", "Scenes", "Scene list"],
+        rows: rows.iter().map(|r| vec![r.name.clone(), r.scenes.len().to_string(), r.scenes.join(", ")]).collect(),
+        csv_only: Vec::new(),
+        numeric: vec![1],
+        summary: counted(rows.len(), "speaking character", "speaking characters"),
+    }
+}
+
+pub fn characters_table(rows: &[CharacterRow]) -> Table {
+    Table {
+        name: "Characters",
+        header: vec!["Character", "Speeches", "Scenes", "Words", "First scene", "Scene list"],
+        rows: rows
+            .iter()
+            .map(|r| {
+                vec![
+                    r.name.clone(),
+                    r.speeches.to_string(),
+                    r.scenes.to_string(),
+                    r.words.to_string(),
+                    r.first_scene.clone().unwrap_or_default(),
+                    r.scene_list.join(", "),
+                ]
+            })
+            .collect(),
+        csv_only: Vec::new(),
+        numeric: vec![1, 2, 3],
+        summary: counted(rows.len(), "speaking character", "speaking characters"),
+    }
+}
+
 pub fn scenes_csv(rows: &[SceneRow]) -> String {
-    let header = ["Scene", "Heading", "INT/EXT", "Location", "Time", "Page", "Length", "Eighths", "Characters", "Title", "Omitted"];
-    csv(
-        &header,
-        rows.iter().map(|r| {
-            vec![
-                r.label(),
-                r.heading.clone(),
-                r.int_ext.unwrap_or_default().to_string(),
-                r.location.clone(),
-                r.time.clone().unwrap_or_default(),
-                r.page.clone(),
-                format_eighths(r.eighths),
-                r.eighths.to_string(),
-                r.characters.join(", "),
-                r.title.clone(),
-                if r.omitted { "yes".into() } else { String::new() },
-            ]
-        }),
-    )
+    scenes_table(rows).csv()
 }
 
 pub fn locations_csv(rows: &[LocationRow]) -> String {
-    let header = ["Location", "Scenes", "Pages", "Eighths", "INT", "EXT", "INT/EXT", "Unmarked"];
-    csv(
-        &header,
-        rows.iter().map(|r| {
-            let counts = [r.scenes, r.int, r.ext, r.int_ext, r.unmarked].map(|n| n.to_string());
-            let [scenes, int, ext, both, unmarked] = counts;
-            vec![r.location.clone(), scenes, format_eighths(r.eighths), r.eighths.to_string(), int, ext, both, unmarked]
-        }),
-    )
+    locations_table(rows).csv()
 }
 
 pub fn cast_csv(rows: &[CastRow]) -> String {
-    csv(&["Character", "Scenes", "Scene list"], rows.iter().map(|r| vec![r.name.clone(), r.scenes.len().to_string(), r.scenes.join(", ")]))
+    cast_table(rows).csv()
 }
 
 pub fn characters_csv(rows: &[CharacterRow]) -> String {
-    let header = ["Character", "Speeches", "Scenes", "Words", "First scene", "Scene list"];
-    csv(
-        &header,
-        rows.iter().map(|r| {
-            vec![
-                r.name.clone(),
-                r.speeches.to_string(),
-                r.scenes.to_string(),
-                r.words.to_string(),
-                r.first_scene.clone().unwrap_or_default(),
-                r.scene_list.join(", "),
-            ]
-        }),
-    )
+    characters_table(rows).csv()
 }
 
 /// The script as it reads on the page, with no markup: the title page and every page, the text

@@ -731,6 +731,24 @@ fn the_character_table_opens_and_a_name_goes_to_the_first_line() {
 }
 
 #[test]
+fn the_reports_window_shows_each_report() {
+    let (mut harness, _file) = harness("INT. HUT - DAY\n\nNORA\nIt held.\n\nEXT. RIDGE - DAWN\n\nOWEN\nGo.\n");
+    harness.state_mut().queued.push("app.reports".into());
+    harness.run_steps(3);
+    assert_eq!(harness.state().reports, Some("scenes"));
+    assert!(harness.query_by_label("RIDGE").is_some(), "a scene's location in the table");
+    assert!(harness.query_by_label("Export PDF…").is_some());
+    harness.get_by_label("Locations").click();
+    harness.run_steps(3);
+    assert_eq!(harness.state().reports, Some("locations"));
+    assert!(harness.query_by_label("2 locations").is_some(), "the totals line");
+    harness.get_by_label("Cast").click();
+    harness.run_steps(3);
+    assert_eq!(harness.state().reports, Some("cast"));
+    assert!(harness.query_by_label("OWEN").is_some());
+}
+
+#[test]
 fn number_scenes_asks_how_and_numbers() {
     let (mut harness, _file) = harness("INT. A - DAY #5#\n\nINT. NEW - DAY\n\nINT. B - DAY #6#\n");
     harness.state_mut().queued.push("scene.number".into());

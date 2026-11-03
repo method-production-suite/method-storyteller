@@ -1301,7 +1301,7 @@ fn all_commands() -> Vec<Command> {
             enabled: always,
             run: |s, p| {
                 let rows = character_table(&s.script);
-                report(p, json!(rows), || reports::characters_csv(&rows))
+                report(s, p, json!(rows), reports::characters_table(&rows))
             },
         },
         Command {
@@ -1313,7 +1313,7 @@ fn all_commands() -> Vec<Command> {
             enabled: always,
             run: |s, p| {
                 let rows = reports::session_scenes(s);
-                report(p, json!(rows), || reports::scenes_csv(&rows))
+                report(s, p, json!(rows), reports::scenes_table(&rows))
             },
         },
         Command {
@@ -1325,7 +1325,7 @@ fn all_commands() -> Vec<Command> {
             enabled: always,
             run: |s, p| {
                 let rows = reports::locations(&reports::session_scenes(s));
-                report(p, json!(rows), || reports::locations_csv(&rows))
+                report(s, p, json!(rows), reports::locations_table(&rows))
             },
         },
         Command {
@@ -1339,7 +1339,7 @@ fn all_commands() -> Vec<Command> {
                 let scenes = reports::session_scenes(s);
                 let rows = reports::cast(&scenes);
                 let by_scene: Vec<Value> = scenes.iter().map(|r| json!({ "scene": r.label(), "characters": r.characters })).collect();
-                report(p, json!({ "characters": rows, "scenes": by_scene }), || reports::cast_csv(&rows))
+                report(s, p, json!({ "characters": rows, "scenes": by_scene }), reports::cast_table(&rows))
             },
         },
         Command {
@@ -2229,17 +2229,23 @@ fn all_commands() -> Vec<Command> {
 }
 
 /// The optional CSV destination every report takes.
-const REPORT_PATH: ParamSpec = param("path", ParamType::Path, false, "Write the report as CSV to this .csv file");
+const REPORT_PATH: ParamSpec = param("path", ParamType::Path, false, "Write the report to this .csv file, or print it to this .pdf file");
 
-/// A report's rows, also written as CSV when the command has a `path`.
-fn report(params: &Params, rows: Value, csv: impl FnOnce() -> String) -> Result<Outcome, CommandError> {
+/// A report's rows, also written as CSV or printed as a PDF table when the command has a `path`.
+fn report(session: &Session, params: &Params, rows: Value, table: reports::Table) -> Result<Outcome, CommandError> {
     let Some(path) = opt_string(params, "path")?.filter(|p| !p.trim().is_empty()).map(PathBuf::from) else {
         return Ok(Outcome::value(rows));
     };
-    if !path.extension().is_some_and(|e| e.eq_ignore_ascii_case("csv")) {
-        return Err(CommandError::Invalid { name: "path", reason: "reports are written as .csv".into() });
+    let extension = path.extension().map(|e| e.to_string_lossy().to_ascii_lowercase());
+    match extension.as_deref() {
+        Some("csv") => files::save_text(&path, &table.csv())?,
+        Some("pdf") => {
+            let title = session.script.title_page.get("Title").map(storyteller_core::inline::plain);
+            let bytes = table.pdf(title.as_deref(), session.layout.page_size_points()).map_err(files::FileError::from)?;
+            files::save_bytes(&path, &bytes)?;
+        }
+        _ => return Err(CommandError::Invalid { name: "path", reason: "reports are written as .csv or .pdf".into() }),
     }
-    files::save_text(&path, &csv())?;
     Ok(Outcome { message: Some(format!("Exported {}", path.display())), value: rows })
 }
 

@@ -119,7 +119,7 @@ fn gallery() {
     let script = root.join("examples/field-station.fountain");
     // One shot by name, when only that one is wanted.
     let only = std::env::var("STORYTELLER_GALLERY_ONLY").ok();
-    let states: [(&str, &[&str]); 15] = [
+    let states: [(&str, &[&str]); 16] = [
         ("find", &["app.find"]),
         ("go-to", &["app.go_to"]),
         ("rename", &["app.rename_character"]),
@@ -135,6 +135,7 @@ fn gallery() {
         ("save-failed", &[]),
         ("revised-page", &[]),
         ("export-pdf", &["file.export_pdf"]),
+        ("reports", &["app.reports"]),
     ];
     for theme in [egui::Theme::Light, egui::Theme::Dark] {
         let suffix = if theme == egui::Theme::Dark { "dark" } else { "light" };

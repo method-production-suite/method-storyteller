@@ -25,6 +25,9 @@ for its own version in Help > What's New, once after an update.
 - Scene, location, character and cast reports, as CSV from `method-storyteller report` and as
   commands: each scene's INT/EXT, location, time of day, page, length and speaking characters;
   each location's scenes and pages; and the scenes each character speaks in.
+- Production > Reports… shows those four reports in one window, with their totals, and exports
+  each as CSV or prints it as a PDF table on landscape pages, the column heads on every page.
+  `method-storyteller report` prints the table when the file it writes ends in `.pdf`.
 
 ### Security
 

@@ -39,7 +39,7 @@ const GO_TO_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Alt+G" } else { "Cmd
 const FIND_NEXT_KEY: &str = if cfg!(target_os = "macos") { "Cmd+G" } else { "F3" };
 const FIND_PREVIOUS_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Shift+G" } else { "Shift+F3" };
 
-const APP_COMMANDS: [AppCommand; 46] = [
+const APP_COMMANDS: [AppCommand; 47] = [
     AppCommand { id: "app.close", label: "Close", menu: "File/Close", shortcut: Some("Cmd+W") },
     AppCommand { id: "app.title_page", label: "Title Page…", menu: "File/Title Page…", shortcut: Some("Cmd+Shift+T") },
     AppCommand {
@@ -71,6 +71,7 @@ const APP_COMMANDS: [AppCommand; 46] = [
     AppCommand { id: "app.find_previous", label: "Find Previous", menu: "Edit/Find Previous", shortcut: Some(FIND_PREVIOUS_KEY) },
     AppCommand { id: "app.rename_character", label: "Rename Character…", menu: "Production/Rename Character…", shortcut: None },
     AppCommand { id: "app.characters", label: "Characters", menu: "Production/Characters", shortcut: None },
+    AppCommand { id: "app.reports", label: "Reports…", menu: "Production/Reports…", shortcut: None },
     AppCommand { id: "app.edit_scene_number", label: "Edit Scene Number…", menu: "Production/Edit Scene Number…", shortcut: None },
     AppCommand { id: "app.revisions", label: "Revisions…", menu: "Production/Revisions…", shortcut: None },
     AppCommand { id: "app.mark_revised", label: "Mark Revised", menu: "Production/Mark Revised", shortcut: Some("Cmd+CloseBracket") },
@@ -283,6 +284,8 @@ pub struct StorytellerApp {
     scene_dialog: Option<SceneDraft>,
     /// Production > Characters: the character table is open.
     characters: bool,
+    /// Production > Reports…: the report the window shows, while it is open.
+    reports: Option<&'static str>,
     numbering: Option<NumberingDraft>,
     pages_confirm: Option<PagesConfirm>,
     export_pdf: Option<ExportDraft>,
@@ -405,6 +408,7 @@ impl StorytellerApp {
             rename: None,
             scene_dialog: None,
             characters: false,
+            reports: None,
             numbering: None,
             pages_confirm: None,
             export_pdf: None,
@@ -650,6 +654,7 @@ impl StorytellerApp {
             // File > Close: the script closes and an empty one takes its place (decision 15).
             "app.close" => self.guard_unsaved(ctx, Pending::New),
             "app.characters" => self.characters = !self.characters,
+            "app.reports" => self.reports = Some(self.reports.unwrap_or("scenes")),
             "app.revisions" => self.revisions = Some(RevisionsDraft::default()),
             "app.mark_revised" => self.mark_selection(ctx, "revisions.mark"),
             "app.clear_revised" => self.mark_selection(ctx, "revisions.clear"),
@@ -1003,9 +1008,16 @@ impl StorytellerApp {
 
     /// Asks where to save an export with this extension, named after the script.
     fn export_path(&self, extension: &str) -> Option<PathBuf> {
+        self.export_path_as("", extension)
+    }
+
+    /// Asks where to save an export named after the script and then `suffix`, such as
+    /// `Field Station Scenes.csv`.
+    fn export_path_as(&self, suffix: &str, extension: &str) -> Option<PathBuf> {
         let stem =
             self.session.path.as_ref().and_then(|p| p.file_stem()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "Untitled".into());
-        rfd::FileDialog::new().add_filter(extension, &[extension]).set_file_name(format!("{stem}.{extension}")).save_file()
+        let name = if suffix.is_empty() { format!("{stem}.{extension}") } else { format!("{stem} {suffix}.{extension}") };
+        rfd::FileDialog::new().add_filter(extension, &[extension]).set_file_name(name).save_file()
     }
 
     /// File > Export Plain Text…
@@ -1889,6 +1901,75 @@ impl StorytellerApp {
         }
     }
 
+    /// Production > Reports…: the scene, location, character and cast reports, each read here as a
+    /// table and exported as CSV or printed as a PDF table.
+    fn reports_window(&mut self, ctx: &egui::Context) {
+        let Some(current) = self.reports else { return };
+        let Some(table) = storyteller_engine::reports::table_for(&mut self.session, current) else {
+            self.reports = None;
+            return;
+        };
+        let shown = table.shown();
+        let mut open = true;
+        let mut pick = None;
+        let mut export = None;
+        egui::Window::new("Reports").open(&mut open).collapsible(false).default_width(760.0).show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                for name in storyteller_engine::reports::NAMES {
+                    let label = storyteller_engine::reports::title(name);
+                    let tab = ui.selectable_label(name == current, label);
+                    self.automation.add(format!("reports.tab.{name}"), "tab", label, &tab);
+                    if tab.clicked() {
+                        pick = Some(name);
+                    }
+                }
+            });
+            ui.label(egui::RichText::new(&table.summary).small());
+            ui.separator();
+            egui::ScrollArea::both().max_height(400.0).auto_shrink([false, true]).show(ui, |ui| {
+                if table.rows.is_empty() {
+                    ui.label("Nothing to report yet. Scenes and speaking characters appear here as you write them.");
+                    return;
+                }
+                egui::Grid::new(("storyteller.report", current)).num_columns(shown.len()).striped(true).spacing([16.0, 4.0]).show(ui, |ui| {
+                    for heading in shown.iter().filter_map(|&c| table.header.get(c)) {
+                        ui.label(egui::RichText::new(*heading).small().strong());
+                    }
+                    ui.end_row();
+                    for row in &table.rows {
+                        for &c in &shown {
+                            let cell = row.get(c).map_or("", String::as_str);
+                            ui.add(egui::Label::new(cell).wrap_mode(egui::TextWrapMode::Extend));
+                        }
+                        ui.end_row();
+                    }
+                });
+            });
+            ui.separator();
+            ui.horizontal(|ui| {
+                let csv = ui.button("Export CSV…");
+                self.automation.add("reports.export_csv", "button", "Export CSV…", &csv);
+                if csv.clicked() {
+                    export = Some("csv");
+                }
+                let pdf = ui.button("Export PDF…");
+                self.automation.add("reports.export_pdf", "button", "Export PDF…", &pdf);
+                if pdf.clicked() {
+                    export = Some("pdf");
+                }
+            });
+        });
+        self.reports = if open { Some(pick.unwrap_or(current)) } else { None };
+        if let Some(extension) = export
+            && let Some(path) = self.export_path_as(table.name, extension)
+        {
+            let id = if current == "characters" { "character.table".to_string() } else { format!("report.{current}") };
+            let mut params = Map::new();
+            params.insert("path".into(), json!(path.display().to_string()));
+            self.run(&id, params);
+        }
+    }
+
     /// Production > Number Scenes…: start number, keep existing (letters for new scenes), from
     /// the caret's scene on, and whether I and O are left out.
     fn pages_confirm_dialog(&mut self, ctx: &egui::Context) {
@@ -2664,6 +2745,7 @@ impl StorytellerApp {
         self.rename_dialog(&ctx);
         self.scene_properties_dialog(&ctx);
         self.characters_window(&ctx);
+        self.reports_window(&ctx);
         self.numbering_dialog(&ctx);
         self.pages_confirm_dialog(&ctx);
         self.export_pdf_dialog(&ctx);
