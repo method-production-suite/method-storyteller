@@ -177,6 +177,13 @@ impl Session {
         self.paginated.get_or_insert_with(|| paginate(script, layout))
     }
 
+    /// The script with its cached pagination and scene lengths, borrowed together.
+    pub(crate) fn with_pages(&mut self) -> (&Script, &Paginated, &[SceneLength]) {
+        self.scene_lengths();
+        let paginated = self.paginated.get_or_insert_with(|| paginate(&self.script, &self.layout));
+        (&self.script, paginated, self.lengths.as_deref().unwrap_or_default())
+    }
+
     /// Each scene's page and length in eighths of a page, cached like the pagination.
     pub fn scene_lengths(&mut self) -> &[SceneLength] {
         if self.lengths.is_none() {

@@ -138,11 +138,11 @@ pub fn scenes(script: &Script, paginated: &Paginated, lengths: &[SceneLength]) -
     rows
 }
 
-/// The scene report for a session's script, from its cached pagination.
+/// The scene report for a session's script, from its cached pagination (no copy of it, so
+/// the Reports window can build it every frame).
 pub fn session_scenes(session: &mut Session) -> Vec<SceneRow> {
-    let lengths = session.scene_lengths().to_vec();
-    let paginated = session.paginated().clone();
-    scenes(&session.script, &paginated, &lengths)
+    let (script, paginated, lengths) = session.with_pages();
+    scenes(script, paginated, lengths)
 }
 
 /// The reports by name, in the order the Reports window lists them.
