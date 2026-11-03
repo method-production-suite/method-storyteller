@@ -178,7 +178,8 @@ pub fn render_table(table: &PdfTable, page: (f32, f32)) -> Result<Vec<u8>, PdfEr
             }
         }
 
-        let metadata = Metadata { creator: table.creator.clone(), producer: table.creator.clone(), title: Some(table.title.clone()), ..Metadata::default() };
+        let metadata =
+            Metadata { creator: table.creator.clone(), producer: table.creator.clone(), title: Some(table.title.clone()), ..Metadata::default() };
         let mut writer = Writer::new(Default::default(), metadata);
         let document = writer.document_mut();
         let total = pages.len();
@@ -239,11 +240,7 @@ mod tests {
 
     #[test]
     fn the_widest_column_gives_way_first() {
-        let table = PdfTable {
-            header: vec!["Scene".into(), "Heading".into()],
-            rows: vec![vec!["1".into(), "X".repeat(200)]],
-            ..PdfTable::default()
-        };
+        let table = PdfTable { header: vec!["Scene".into(), "Heading".into()], rows: vec![vec!["1".into(), "X".repeat(200)]], ..PdfTable::default() };
         let w = widths(&table, 100);
         assert_eq!(w[0], 5);
         assert_eq!(w[0] + w[1] + GAP, 100);
