@@ -289,8 +289,8 @@ wait for a decision above.
    OSF's; locks read from `.fdx` wait on how their positions count
    ([research/locked-pages.md](research/locked-pages.md)); Lock Pages, Lock A-Pages, Unlock
    A-Pages and Unlock All Pages; the scene, location, character and cast reports as commands
-   and CSV (`method-storyteller report`), and File > Export Plain Text…. Next: the Production >
-   Reports… window with PDF tables; the structured export Method Schedule reads.
+   and CSV (`method-storyteller report`), the Production > Reports… window and the reports as PDF
+   tables, and File > Export Plain Text…. Next: the structured export Method Schedule reads.
 11. **D, the design pass** M (new, owner 2026-10-18). What is done and what is left:
    [design-pass.md](design-pass.md). Matched to the family (Method Budget's and
     Method Schedule's BRAND.md), every step pictured offscreen in light and dark:

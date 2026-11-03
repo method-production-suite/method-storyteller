@@ -285,7 +285,20 @@ lists characters in the order they first speak, and `report.cast` also gives eac
 speakers. Plain text keeps each line where it sits on the page, less the common left margin,
 with a form feed between pages. On the private corpus (108 scripts, 9,052 scenes) every report
 runs; 1,121 headings have no INT. or EXT. (`LATER`, a bare place), and passing over typed
-numbers recognised 158 more. Still to come: the Reports… window and the PDF tables.
+numbers recognised 158 more.
+
+*Built (2026-11-03):* Production > Reports… opens one window with the four reports as tabs, the
+totals under them (`90 scenes, 83 pages`, `12 locations`, `8 speaking characters`; omitted
+scenes counted apart), the table, and Export CSV… and Export PDF…; the export is named after the
+script and the report (`Field Station Scenes.csv`). Every report command takes a `.pdf` path as
+well as a `.csv` one, and so does `method-storyteller report`. The PDF table is landscape on the
+script's paper, Courier Prime 9 pt, titled with the script's title and the report's name, the
+totals under the title, the column heads repeated on every page, alternate rows shaded, counts
+and lengths set flush right, long cells wrapped inside their column (the widest column gives way
+first until the table fits), a row kept whole unless it is taller than a page, and `Page 2 of 5`
+at the foot. The window and the PDF leave out what the CSV repeats for a spreadsheet (the
+scene heading, which is INT/EXT, location and time together, and the counts in eighths), the
+Omitted column unless a scene is omitted, and any column empty in every row.
 
 ### 4.4 The Method Schedule export: script scenes
 

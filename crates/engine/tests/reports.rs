@@ -138,6 +138,48 @@ fn reports_write_csv_with_a_header_and_quoting() {
 }
 
 #[test]
+fn reports_print_as_pdf_tables() {
+    let registry = Registry::new();
+    let mut s = session();
+    let dir = tempfile::tempdir().unwrap();
+    for id in ["report.scenes", "report.locations", "report.cast", "character.table"] {
+        let path = dir.path().join(format!("{id}.pdf"));
+        let outcome = run(&registry, &mut s, id, json!({ "path": path.display().to_string() })).unwrap();
+        assert!(outcome["message"].as_str().unwrap().starts_with("Exported"), "{id}");
+        let bytes = std::fs::read(&path).unwrap();
+        assert!(bytes.starts_with(b"%PDF-"), "{id}");
+    }
+    let wrong = run(&registry, &mut s, "report.cast", json!({ "path": dir.path().join("x.txt").display().to_string() }));
+    assert!(wrong.unwrap_err().contains(".pdf"));
+
+    // A long report runs onto more pages than a short one, each a page of its own in the file.
+    let long: String = (1..=150).map(|n| format!("INT. ROOM {n} - DAY\n\nNORA\nLine {n}.\n\n")).collect();
+    let mut big = Session::new(storyteller_core::fountain::parse(&long).unwrap());
+    let table = reports::table_for(&mut big, "scenes").unwrap();
+    let short = reports::table_for(&mut s, "scenes").unwrap().pdf(None, (612.0, 792.0)).unwrap();
+    let many = table.pdf(Some("Field Station"), (612.0, 792.0)).unwrap();
+    assert!(many.len() > short.len());
+}
+
+#[test]
+fn the_printed_scene_table_leaves_out_what_the_csv_repeats() {
+    let registry = Registry::new();
+    let mut s = session();
+    let table = reports::table_for(&mut s, "scenes").unwrap();
+    let shown: Vec<&str> = table.shown().iter().map(|&c| table.header[c]).collect();
+    assert_eq!(shown, ["Scene", "INT/EXT", "Location", "Time", "Page", "Length", "Characters"], "no scene has a title");
+    assert_eq!(table.summary.split(", ").next(), Some("5 scenes"));
+    assert_eq!(reports::table_for(&mut s, "locations").unwrap().summary, "3 locations");
+    assert_eq!(reports::table_for(&mut s, "cast").unwrap().summary, "3 speaking characters");
+
+    s.caret.element = s.script.scene_indices()[1];
+    run(&registry, &mut s, "scene.omit", json!({})).unwrap();
+    let table = reports::table_for(&mut s, "scenes").unwrap();
+    assert!(table.shown().iter().any(|&c| table.header[c] == "Omitted"), "printed once a scene is omitted");
+    assert!(table.summary.starts_with("4 scenes,") && table.summary.ends_with(", 1 omitted"), "{}", table.summary);
+}
+
+#[test]
 fn the_cast_command_gives_both_directions() {
     let registry = Registry::new();
     let mut s = session();

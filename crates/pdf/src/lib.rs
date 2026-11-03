@@ -15,6 +15,9 @@ use storyteller_core::layout::{Layout, POINTS_PER_COLUMN, POINTS_PER_ROW, REVISI
 use storyteller_core::model::ShowRevisions;
 use storyteller_core::paginate::{Page, PageSelection, Paginated, paginate};
 
+mod table;
+pub use table::{PdfTable, render_table, wrap};
+
 /// Courier Prime, SIL Open Font License 1.1 (see `assets/fonts/OFL.txt`).
 pub const COURIER_PRIME_REGULAR: &[u8] = include_bytes!("../../../assets/fonts/CourierPrime-Regular.ttf");
 pub const COURIER_PRIME_BOLD: &[u8] = include_bytes!("../../../assets/fonts/CourierPrime-Bold.ttf");
