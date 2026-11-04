@@ -374,8 +374,9 @@ Credit line only says how they are credited; `draft` is a `Draft` field, else `D
 `episode` an `Episode` field. `set` and `time` are written only when the heading has INT. or
 EXT., so a heading without them goes whole and Method Schedule splits it as its Fountain import
 does. `act` is the last New Act line before the scene, until its End of Act. `source_hash` is
-64-bit FNV-1a over the script and everything the file says but `generated`, so any edit, even
-one that leaves every length alone, changes it. `story_day`, `nonspeaking` and `tags` are not
+64-bit FNV-1a over the script as Fountain text and everything the file says but `generated`:
+any edit, even one that leaves every length alone, changes it, and an update that changes only
+how the app holds a script does not. `story_day`, `nonspeaking` and `tags` are not
 written yet. Checked on the private corpus: all 108 scripts write a file, and Method Schedule's
 `import` reads each one (9,052 scenes, no nulls, every total the sum of its scenes).
 

@@ -153,10 +153,11 @@ pub fn write(session: &mut Session, generated: &str) -> String {
         eighths: scenes.iter().map(|s| s.eighths).sum(),
         scenes,
     };
-    // The digest is of the script and of everything the file says but the date it was
-    // written, so the same script, paged the same way, always gives the same hash, and any
-    // edit, even one that leaves every length alone, gives a new one.
-    let mut content = serde_json::to_vec(&session.script).unwrap_or_default();
+    // The digest is of the script as Fountain text and of everything the file says but the
+    // date it was written, so the same script, paged the same way, always gives the same hash,
+    // and any edit, even one that leaves every length alone, gives a new one. Fountain, not the
+    // app's own model, so an update that changes how the app holds a script changes no hash.
+    let mut content = storyteller_core::fountain::write(&session.script).into_bytes();
     content.extend_from_slice(pretty(&file).as_bytes());
     file.source_hash = digest(&content);
     file.generated = generated.to_string();
