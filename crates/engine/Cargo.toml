@@ -14,6 +14,8 @@ workspace = true
 [dependencies]
 storyteller-core = { workspace = true }
 storyteller-pdf = { workspace = true }
+# Today's local date for revision set names and exported files: the one crate allowed `unsafe`.
+storyteller-macos-open = { workspace = true }
 craft-atomic = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

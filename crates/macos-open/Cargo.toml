@@ -8,8 +8,9 @@ rust-version.workspace = true
 publish = false
 repository.workspace = true
 
-# The one crate allowed `unsafe`: the Objective-C calls below have no safe binding. It does not
-# inherit the workspace's `unsafe_code = "forbid"`; every other lint is the workspace's.
+# The one crate allowed `unsafe`: the Objective-C calls below, and the system's local date, have
+# no safe binding. It does not inherit the workspace's `unsafe_code = "forbid"`; every other lint
+# is the workspace's.
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
 
@@ -27,3 +28,11 @@ undocumented_unsafe_blocks = "deny"
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = { version = "0.6.4", default-features = false, features = ["std"] }
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSAppleEventDescriptor", "NSAppleEventManager", "NSLocale", "NSNotification", "NSObject", "NSString", "NSURL"] }
+
+# Today's local date (`local_date`): localtime_r and GetLocalTime. Both crates are already in the
+# tree through other dependencies, at these versions.
+[target.'cfg(unix)'.dependencies]
+libc = { version = "0.2.190", default-features = false }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_SystemInformation"] }

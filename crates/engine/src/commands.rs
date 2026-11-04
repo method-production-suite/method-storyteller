@@ -541,16 +541,29 @@ fn set_id(params: &Params) -> Result<u32, CommandError> {
 
 /// Today's date as a revision set's name carries it: `10/21/26`.
 fn today_short() -> std::string::String {
-    let days = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() / 86_400);
-    let (year, month, day) = civil_from_days(i64::try_from(days).unwrap_or(0));
+    let (year, month, day) = today();
     format!("{month:02}/{day:02}/{:02}", year.rem_euclid(100))
 }
 
 /// Today's date as a file carries it: `2026-10-21`.
 fn today_iso() -> std::string::String {
-    let days = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() / 86_400);
-    let (year, month, day) = civil_from_days(i64::try_from(days).unwrap_or(0));
+    let (year, month, day) = today();
     format!("{year:04}-{month:02}-{day:02}")
+}
+
+/// Today's date where the writer is, or the UTC date when the system cannot say, so there is
+/// always a date.
+fn today() -> (i64, u32, u32) {
+    match storyteller_macos_open::local_date() {
+        Some((year, month, day)) => (i64::from(year), u32::from(month), u32::from(day)),
+        None => utc_today(),
+    }
+}
+
+/// Today's date in UTC.
+fn utc_today() -> (i64, u32, u32) {
+    let days = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() / 86_400);
+    civil_from_days(i64::try_from(days).unwrap_or(0))
 }
 
 /// The calendar date `days` after 1970-01-01 (Howard Hinnant's algorithm).
@@ -573,6 +586,18 @@ mod date_tests {
         assert_eq!(super::civil_from_days(0), (1970, 1, 1));
         assert_eq!(super::civil_from_days(20_747), (2026, 10, 21));
         assert_eq!(super::civil_from_days(11_016), (2000, 2, 29));
+    }
+
+    #[test]
+    fn the_local_date_is_within_a_day_of_utc() {
+        let local = storyteller_macos_open::local_date().expect("the system gives a local date");
+        let local = (i64::from(local.0), u32::from(local.1), u32::from(local.2));
+        let days = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() / 86_400);
+        let days = i64::try_from(days).unwrap_or(0);
+        let near: Vec<_> = (days - 1..=days + 1).map(super::civil_from_days).collect();
+        assert!(near.contains(&local), "{local:?} is not within a day of {near:?}");
+        assert!((1..=12).contains(&local.1) && (1..=31).contains(&local.2));
+        assert_eq!(super::today(), local);
     }
 }
 

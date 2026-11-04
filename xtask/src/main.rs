@@ -21,7 +21,7 @@ use std::process::{Command, ExitCode};
 const LAYERS: [(&str, &[&str]); 6] = [
     ("storyteller-core", &[]),
     ("storyteller-pdf", &["storyteller-core"]),
-    ("storyteller-engine", &["storyteller-core", "storyteller-pdf"]),
+    ("storyteller-engine", &["storyteller-core", "storyteller-pdf", "storyteller-macos-open"]),
     ("storyteller-cli", &["storyteller-core", "storyteller-engine"]),
     ("storyteller-macos-open", &[]),
     ("method-storyteller", &["storyteller-core", "storyteller-engine", "storyteller-pdf", "storyteller-macos-open"]),
