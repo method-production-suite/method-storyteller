@@ -79,6 +79,10 @@ Production > Unlock A-Pages takes the newest of those locks away.
 - **File > Export PDF** (⌘E) writes a PDF ready to print or send.
 - File > Export also writes `.fdx`, Open Screenplay Format and Fountain copies.
 - **File > Export Plain Text…** writes the script as it reads on the page, with no markup.
+- **File > Export for Method Schedule…** writes the scenes as a `.mscenes` file for Method
+  Schedule's File > Import Script: each scene's number, heading, page, length in eighths and
+  speaking characters, with its title, summary and act, so the schedule's pages match the
+  script's. From the command line: `method-storyteller export-scenes script.fountain`.
 - **Production > Reports…** shows the scene, location, character and cast reports. Pick one
   at the top; Export CSV… writes it for a spreadsheet, and Export PDF… prints it as a table on
   landscape pages, with the column heads on every page. From the command line:

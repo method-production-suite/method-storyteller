@@ -29,6 +29,7 @@ USAGE:
     method-storyteller info <input>                    Scenes, characters and pages
     method-storyteller report <input> <report> [out]   scenes, locations, characters or cast: CSV, or a PDF table to a .pdf (default: CSV to stdout)
     method-storyteller text <input> [output.txt]       The script as plain text, as it reads on the page
+    method-storyteller export-scenes <input> [out]     The scenes for Method Schedule's File > Import Script (default: <input>.mscenes)
     method-storyteller run <input> <command> [k=v…]    Run an engine command, then save the file
     method-storyteller commands                        List engine commands
     method-storyteller serve [--control <port>] [file] Headless JSON-lines control server (default port 9876)
@@ -145,6 +146,15 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 }
                 None => print!("{}", storyteller_engine::reports::csv_for(&mut session, which).unwrap_or_default()),
             }
+        }
+        "export-scenes" => {
+            let input = arg(args, 1, "input")?;
+            let output = args.get(2).map(PathBuf::from).unwrap_or_else(|| input.with_extension(storyteller_engine::scenes_file::EXTENSION));
+            let mut session = open(&input)?;
+            let mut params = Map::new();
+            params.insert("path".into(), Value::String(output.display().to_string()));
+            Registry::new().run("file.export_scenes", &mut session, &params).map_err(|e| e.to_string())?;
+            println!("wrote {}", output.display());
         }
         "text" => {
             let input = arg(args, 1, "input")?;

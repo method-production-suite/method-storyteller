@@ -366,6 +366,19 @@ Sequence field; `story_day` to Script Day; `nonspeaking` to the cast, not as spe
 board and counting no pages. `color` is kept in the file but not used by version 1 of the
 reader.
 
+Built (M6 item 10, 2026-11-04): `file.export_scenes` (File > Export for Method Schedule…) and
+`method-storyteller export-scenes SCRIPT [OUT]`, from `scenes_file::write`. Each scene's page,
+eighths, cast, INT/EXT, set and time are the scene report's, so the two always agree.
+`written_by` is the title page's Author (its names, one line each joined by commas), since the
+Credit line only says how they are credited; `draft` is a `Draft` field, else `Draft date`;
+`episode` an `Episode` field. `set` and `time` are written only when the heading has INT. or
+EXT., so a heading without them goes whole and Method Schedule splits it as its Fountain import
+does. `act` is the last New Act line before the scene, until its End of Act. `source_hash` is
+64-bit FNV-1a over the script and everything the file says but `generated`, so any edit, even
+one that leaves every length alone, changes it. `story_day`, `nonspeaking` and `tags` are not
+written yet. Checked on the private corpus: all 108 scripts write a file, and Method Schedule's
+`import` reads each one (9,052 scenes, no nulls, every total the sum of its scenes).
+
 ## 5. What `production.json` holds
 
 The package's production data file holds what neither `.fdx` nor Open Screenplay Format has a

@@ -100,7 +100,8 @@ says otherwise.
 23. **The Method Schedule export format** (S4). **Agreed with the Method Schedule session,
    2026-10-20:** a script scenes file (`.mscenes`, JSON, `method-script-scenes` version 1),
    specified in [production-spec.md](production-spec.md) section 4.4 and in Method Schedule's
-   EXCHANGE.md. Built on that agreement; reversible until the writer ships.
+   EXCHANGE.md. Built on that agreement (File > Export for Method Schedule…, 2026-11-04). It is
+   frozen when the writer first ships in a release: after that, fields are only added.
 24. **Show Revisions as three menu items** (§3.5). The spec has one View > Show Revisions
     submenu; the menus have no submenus yet. **Built on the recommendation: three checked
     items** (Show All Revision Sets, Show Active Revision Set, Hide Revisions), moved into a
@@ -290,7 +291,8 @@ wait for a decision above.
    ([research/locked-pages.md](research/locked-pages.md)); Lock Pages, Lock A-Pages, Unlock
    A-Pages and Unlock All Pages; the scene, location, character and cast reports as commands
    and CSV (`method-storyteller report`), the Production > Reports… window and the reports as PDF
-   tables, and File > Export Plain Text…. Next: the structured export Method Schedule reads.
+   tables, File > Export Plain Text…, and File > Export for Method Schedule… (the `.mscenes`
+   file, §4.4). M6 is done.
 11. **D, the design pass** M (new, owner 2026-10-18). What is done and what is left:
    [design-pass.md](design-pass.md). Matched to the family (Method Budget's and
     Method Schedule's BRAND.md), every step pictured offscreen in light and dark:
