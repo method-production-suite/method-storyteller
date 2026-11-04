@@ -11,6 +11,7 @@ use crate::files::{self, FileError, FileFormat, FileProblem};
 use crate::find;
 use crate::flow;
 use crate::reports;
+use crate::scenes_file;
 use crate::session::{Caret, EditKind, Session, floor_char_boundary};
 
 /// Command parameters, as JSON.
@@ -545,6 +546,13 @@ fn today_short() -> std::string::String {
     format!("{month:02}/{day:02}/{:02}", year.rem_euclid(100))
 }
 
+/// Today's date as a file carries it: `2026-10-21`.
+fn today_iso() -> std::string::String {
+    let days = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() / 86_400);
+    let (year, month, day) = civil_from_days(i64::try_from(days).unwrap_or(0));
+    format!("{year:04}-{month:02}-{day:02}")
+}
+
 /// The calendar date `days` after 1970-01-01 (Howard Hinnant's algorithm).
 fn civil_from_days(days: i64) -> (i64, u32, u32) {
     let z = days + 719_468;
@@ -1023,6 +1031,19 @@ fn all_commands() -> Vec<Command> {
             run: |s, p| {
                 let path = path(p, "path")?;
                 files::save_text(&path, &reports::plain_text(s.paginated()))?;
+                Ok(Outcome::message(format!("Exported {}", path.display())))
+            },
+        },
+        Command {
+            id: "file.export_scenes",
+            label: "Export for Method Schedule…",
+            menu: "File/Export for Method Schedule…",
+            shortcut: None,
+            params: const { &[param("path", Path, true, "Destination .mscenes")] },
+            enabled: always,
+            run: |s, p| {
+                let path = path(p, "path")?;
+                files::save_text(&path, &scenes_file::write(s, &today_iso()))?;
                 Ok(Outcome::message(format!("Exported {}", path.display())))
             },
         },

@@ -9,6 +9,7 @@ pub mod files;
 pub mod find;
 pub mod flow;
 pub mod reports;
+pub mod scenes_file;
 pub mod session;
 pub mod spell;
 

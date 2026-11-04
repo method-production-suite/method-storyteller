@@ -28,6 +28,9 @@ for its own version in Help > What's New, once after an update.
 - Production > Reports… shows those four reports in one window, with their totals, and exports
   each as CSV or prints it as a PDF table on landscape pages, the column heads on every page.
   `method-storyteller report` prints the table when the file it writes ends in `.pdf`.
+- File > Export for Method Schedule… writes the scenes as a `.mscenes` file that Method
+  Schedule's File > Import Script reads, with this app's own pages and lengths, so nothing is
+  estimated. `method-storyteller export-scenes` writes it from the command line.
 
 ### Security
 

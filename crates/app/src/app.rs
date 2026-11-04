@@ -513,6 +513,7 @@ impl StorytellerApp {
             "file.export_fountain" => self.export(FileFormat::Fountain),
             "file.export_osf" => self.export(FileFormat::Osf),
             "file.export_text" => self.export_text(),
+            "file.export_scenes" => self.export_scenes(),
             "app.title_page" => {
                 let page = &self.session.script.title_page;
                 let fields =
@@ -1026,6 +1027,15 @@ impl StorytellerApp {
             let mut params = Map::new();
             params.insert("path".into(), json!(path.display().to_string()));
             self.run("file.export_text", params);
+        }
+    }
+
+    /// File > Export for Method Schedule…
+    fn export_scenes(&mut self) {
+        if let Some(path) = self.export_path(storyteller_engine::scenes_file::EXTENSION) {
+            let mut params = Map::new();
+            params.insert("path".into(), json!(path.display().to_string()));
+            self.run("file.export_scenes", params);
         }
     }
 
