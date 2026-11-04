@@ -3425,6 +3425,7 @@ dependencies = [
  "serde_json",
  "spellbook",
  "storyteller-core",
+ "storyteller-macos-open",
  "storyteller-pdf",
  "tempfile",
  "thiserror 2.0.21",
@@ -3434,8 +3435,10 @@ dependencies = [
 name = "storyteller-macos-open"
 version = "0.6.0"
 dependencies = [
+ "libc",
  "objc2 0.6.4",
  "objc2-foundation 0.3.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

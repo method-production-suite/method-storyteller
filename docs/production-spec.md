@@ -371,7 +371,8 @@ Built (M6 item 10, 2026-11-04): `file.export_scenes` (File > Export for Method S
 eighths, cast, INT/EXT, set and time are the scene report's, so the two always agree.
 `written_by` is the title page's Author (its names, one line each joined by commas), since the
 Credit line only says how they are credited; `draft` is a `Draft` field, else `Draft date`;
-`episode` an `Episode` field. `set` and `time` are written only when the heading has INT. or
+`episode` an `Episode` field; `generated` is the local date where the file is written (the UTC
+date only if the system cannot say). `set` and `time` are written only when the heading has INT. or
 EXT., so a heading without them goes whole and Method Schedule splits it as its Fountain import
 does. `act` is the last New Act line before the scene, until its End of Act. `source_hash` is
 64-bit FNV-1a over the script as Fountain text and everything the file says but `generated`:

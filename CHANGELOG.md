@@ -32,6 +32,11 @@ for its own version in Help > What's New, once after an update.
   Schedule's File > Import Script reads, with this app's own pages and lengths, so nothing is
   estimated. `method-storyteller export-scenes` writes it from the command line.
 
+### Fixed
+
+- A new revision set is named with today's date where you are. It used the date in UTC, so in
+  the evening in the Americas it could carry tomorrow's date.
+
 ### Security
 
 - Report CSV files put a `'` before any cell that starts like a spreadsheet formula (`=`, `+`,

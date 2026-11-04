@@ -5,8 +5,12 @@
 //! installed: after the system's default one (which it replaces), before the launch's own files
 //! are delivered. The handler only queues paths; the app collects them with [`take`].
 //!
-//! This is the workspace's only `unsafe` code: a few Objective-C messages with no safe binding.
-//! Elsewhere (and on other systems) the functions do nothing.
+//! It also gives [`local_date`], today's date in the system's time zone, which the standard
+//! library cannot say.
+//!
+//! This is the workspace's only `unsafe` code: a few Objective-C messages, and the system calls
+//! for the local date, with no safe binding. Elsewhere (and on other systems) the Finder
+//! functions do nothing.
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -15,6 +19,54 @@ use std::sync::Mutex;
 static OPENED: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
 /// Wakes the app when a file arrives while it is idle.
 static WAKE: Mutex<Option<Box<dyn Fn() + Send>>> = Mutex::new(None);
+
+/// Today's date in the system's time zone, as year, month (1 to 12) and day (1 to 31); `None`
+/// when the system cannot say, and the caller falls back to the UTC date.
+pub fn local_date() -> Option<(i32, u8, u8)> {
+    #[cfg(unix)]
+    let date = unix::local_date();
+    #[cfg(windows)]
+    let date = windows::local_date();
+    #[cfg(not(any(unix, windows)))]
+    let date = None;
+    date.filter(|&(_, month, day)| (1..=12).contains(&month) && (1..=31).contains(&day))
+}
+
+#[cfg(unix)]
+mod unix {
+    pub(super) fn local_date() -> Option<(i32, u8, u8)> {
+        let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
+        let now = libc::time_t::try_from(secs).ok()?;
+        // SAFETY: `tm` is a plain C struct of integers (and, on some systems, a `tm_zone`
+        // pointer), for which all zeroes is a valid value: a null `tm_zone` is never read here.
+        let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+        // SAFETY: `now` and `tm` are live locals, valid for reading and writing for the whole
+        // call. `localtime_r` is the reentrant form: it writes only into `tm` and returns either
+        // a pointer to it or null, which is checked before `tm` is read.
+        let filled = unsafe { libc::localtime_r(&now, &mut tm) };
+        if filled.is_null() {
+            return None;
+        }
+        let year = tm.tm_year.checked_add(1900)?;
+        let month = u8::try_from(tm.tm_mon.checked_add(1)?).ok()?;
+        let day = u8::try_from(tm.tm_mday).ok()?;
+        Some((year, month, day))
+    }
+}
+
+#[cfg(windows)]
+mod windows {
+    use windows_sys::Win32::Foundation::SYSTEMTIME;
+    use windows_sys::Win32::System::SystemInformation::GetLocalTime;
+
+    pub(super) fn local_date() -> Option<(i32, u8, u8)> {
+        let mut time = SYSTEMTIME::default();
+        // SAFETY: `time` is a live, properly aligned SYSTEMTIME, valid for writing for the
+        // whole call; GetLocalTime only fills it in and cannot fail.
+        unsafe { GetLocalTime(&mut time) };
+        Some((i32::from(time.wYear), u8::try_from(time.wMonth).ok()?, u8::try_from(time.wDay).ok()?))
+    }
+}
 
 /// Starts listening. Call once, before the event loop runs.
 pub fn install() {
