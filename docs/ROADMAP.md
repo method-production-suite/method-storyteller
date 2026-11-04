@@ -172,6 +172,11 @@ says otherwise.
   only. Published 2026-10-28 (tag `v0.6.0` on `4f7198f`, the owner's yes through MOrg; draft
   checked: checksums, both signatures, notarisation and Gatekeeper). Nothing waiting; the
   override line comes out on 2026-11-06.
+- **The next release (0.6.1 or 0.7.0):** not asked for yet. Two things first: the clipboard-win
+  crate-age exception must be gone or renewed (it covers the tag v0.6.0 only, so any other tag
+  fails the release check until it is sorted, on or after 2026-11-06); and the release build is
+  the first Windows run of today's local date (`GetLocalTime`, merged 2026-11-04 as `df8f701`),
+  so the rehearsal's Windows tests, the local-date test among them, must pass before the tag.
 
 ### Deferred (the owner, 2026-10-20)
 
