@@ -695,10 +695,8 @@ impl StorytellerApp {
                 self.status = "Cleared the list of recent scripts.".into();
             }
             recent if recent.starts_with(RECENT_PREFIX) => {
-                let path = recent
-                    .strip_prefix(RECENT_PREFIX)
-                    .and_then(|n| n.parse::<usize>().ok())
-                    .and_then(|n| self.recent.get(n).map(str::to_string));
+                let path =
+                    recent.strip_prefix(RECENT_PREFIX).and_then(|n| n.parse::<usize>().ok()).and_then(|n| self.recent.get(n).map(str::to_string));
                 if let Some(path) = path {
                     self.guard_unsaved(ctx, Pending::Open(Some(PathBuf::from(path))));
                 }

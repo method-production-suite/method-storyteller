@@ -40,8 +40,7 @@ impl Recent {
             Some(text) => recent.entries = serde_json::from_str::<Vec<Entry>>(&text).unwrap_or_default(),
             None if !legacy.is_empty() => {
                 let now = storyteller_engine::commands::now_rfc3339();
-                recent.entries =
-                    legacy.iter().take(MAX).map(|path| Entry { path: absolute(path), opened: now.clone(), other: Map::new() }).collect();
+                recent.entries = legacy.iter().take(MAX).map(|path| Entry { path: absolute(path), opened: now.clone(), other: Map::new() }).collect();
                 recent.save();
             }
             None => {}
