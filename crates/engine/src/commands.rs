@@ -560,6 +560,14 @@ fn today() -> (i64, u32, u32) {
     }
 }
 
+/// Now, in UTC, as RFC 3339 to the second: `2026-11-05T09:30:00Z`.
+pub fn now_rfc3339() -> std::string::String {
+    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+    let (year, month, day) = civil_from_days(i64::try_from(secs / 86_400).unwrap_or(0));
+    let time = secs % 86_400;
+    format!("{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z", time / 3600, time % 3600 / 60, time % 60)
+}
+
 /// Today's date in UTC.
 fn utc_today() -> (i64, u32, u32) {
     let days = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() / 86_400);

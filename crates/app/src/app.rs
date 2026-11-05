@@ -262,6 +262,8 @@ pub struct StorytellerApp {
     session: Session,
     registry: Registry,
     prefs: SettingsStore<Prefs>,
+    /// File > Open Recent, kept in `recent.json` for Method Launcher.
+    recent: crate::recent::Recent,
     editor: EditorState,
     automation: Automation,
     control: Option<Receiver<ControlRequest>>,
@@ -391,6 +393,10 @@ impl StorytellerApp {
         let mut app = StorytellerApp {
             session: Session::default(),
             registry,
+            recent: crate::recent::Recent::open(
+                if in_memory { None } else { craft_settings::paths::data_dir(APP_ID) }.as_deref(),
+                &prefs.get().general.recent,
+            ),
             prefs,
             editor: EditorState::default(),
             automation: Automation::default(),
@@ -450,7 +456,7 @@ impl StorytellerApp {
         let from_finder = app.first_from_finder();
         let general = &app.prefs.get().general;
         let first_launch = !general.sample_seen;
-        let has_recent = !general.recent.is_empty();
+        let has_recent = !app.recent.is_empty();
         if first_launch {
             app.prefs.update(|p| p.general.sample_seen = true);
         }
@@ -685,14 +691,12 @@ impl StorytellerApp {
                 }
             }
             "app.clear_recent" => {
-                self.prefs.update(|p| p.general.recent.clear());
+                self.recent.clear();
                 self.status = "Cleared the list of recent scripts.".into();
             }
             recent if recent.starts_with(RECENT_PREFIX) => {
-                let path = recent
-                    .strip_prefix(RECENT_PREFIX)
-                    .and_then(|n| n.parse::<usize>().ok())
-                    .and_then(|n| self.prefs.get().general.recent.get(n).cloned());
+                let path =
+                    recent.strip_prefix(RECENT_PREFIX).and_then(|n| n.parse::<usize>().ok()).and_then(|n| self.recent.get(n).map(str::to_string));
                 if let Some(path) = path {
                     self.guard_unsaved(ctx, Pending::Open(Some(PathBuf::from(path))));
                 }
@@ -902,7 +906,7 @@ impl StorytellerApp {
             self.error = Some(crate::messages::open_failed(path, error.file_problem(), &error.to_string()));
         } else {
             let shown = path.display().to_string();
-            self.prefs.update(|p| p.push_recent(&shown));
+            self.recent.push(&shown);
         }
         self.after_open();
     }
@@ -969,7 +973,7 @@ impl StorytellerApp {
             }
             self.recovery_name = self.fresh_recovery_name();
             let shown = path.display().to_string();
-            self.prefs.update(|p| p.push_recent(&shown));
+            self.recent.push(&shown);
         }
         saved
     }
@@ -1312,7 +1316,7 @@ impl StorytellerApp {
         }
         // Open Recent, a submenu, straight after Open….
         if let Some(open) = items.iter().position(|e| e.id == "file.open") {
-            let enabled = !self.prefs.get().general.recent.is_empty();
+            let enabled = !self.recent.is_empty();
             items.insert(open + 1, MenuEntry { id: OPEN_RECENT.into(), label: "Open Recent".into(), shortcut: None, enabled });
         }
         items
@@ -1320,7 +1324,7 @@ impl StorytellerApp {
 
     /// File > Open Recent's items: (command id, label), most recent first.
     fn recent_items(&self) -> Vec<(String, String)> {
-        self.prefs.get().general.recent.iter().enumerate().map(|(n, path)| (format!("{RECENT_PREFIX}{n}"), recent_label(path))).collect()
+        self.recent.paths().enumerate().map(|(n, path)| (format!("{RECENT_PREFIX}{n}"), recent_label(path))).collect()
     }
 
     /// The checked state of a toggle command, or `None` for an ordinary one.

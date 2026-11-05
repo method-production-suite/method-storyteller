@@ -608,7 +608,7 @@ fn format_bold_styles_the_selection_and_keeps_it_selected() {
 fn close_leaves_an_empty_script_and_open_recent_brings_it_back() {
     let (mut harness, file) = harness(SCRIPT);
     let path = file.path().display().to_string();
-    harness.state_mut().prefs.update(|p| p.push_recent(&path));
+    harness.state_mut().recent.push(&path);
     harness.run_steps(2);
     let labels: Vec<String> = harness.state().menu_entries("File").into_iter().map(|e| e.label).collect();
     let open = labels.iter().position(|l| l == "Open…").unwrap();
