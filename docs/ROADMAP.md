@@ -229,7 +229,7 @@ says otherwise.
    - every release attaches exactly one `SHA256SUMS` listing every downloadable asset [have];
    - the app accepts `--check-for-updates` and `--open-sample` [have];
    - `recent.json` in the data folder, `[{"path": "/abs", "opened": "<RFC 3339>"}]`, newest
-     first, replacing the recent list in settings;
+     first, replacing the recent list in settings, which moves over once [have];
    - installed names: the Linux package `method-storyteller`, the Windows uninstall name
      `Method Storyteller`;
    - the whole-lock crate-age check on every push to main and weekly [have].

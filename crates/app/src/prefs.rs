@@ -13,8 +13,6 @@ const LEGACY_APP_ID: &str = "method-storyteller";
 /// Recovery copies, inside the data folder.
 pub const RECOVERY_DIR: &str = "Recovery";
 const LEGACY_RECOVERY_DIR: &str = "recovery";
-/// Recent files kept.
-pub const MAX_RECENT: usize = 10;
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -27,6 +25,9 @@ pub struct Prefs {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct General {
+    /// The recent scripts as versions up to 0.6 kept them: read once, to start `recent.json`
+    /// (crate::recent), and no longer written.
+    #[serde(skip_serializing)]
     pub recent: Vec<String>,
     /// The format new scripts are saved in: `osf` (the standard, the owner's decision of
     /// 2026-10-18) or `fountain`.
@@ -136,12 +137,6 @@ impl Settings for Prefs {
 }
 
 impl Prefs {
-    pub fn push_recent(&mut self, path: &str) {
-        self.general.recent.retain(|p| p != path);
-        self.general.recent.insert(0, path.to_string());
-        self.general.recent.truncate(MAX_RECENT);
-    }
-
     pub fn zoom(&self) -> f32 {
         if self.view.zoom.is_finite() { self.view.zoom.clamp(0.5, 3.0) } else { 1.0 }
     }

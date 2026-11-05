@@ -31,6 +31,9 @@ for its own version in Help > What's New, once after an update.
 - File > Export for Method Schedule… writes the scenes as a `.mscenes` file that Method
   Schedule's File > Import Script reads, with this app's own pages and lengths, so nothing is
   estimated. `method-storyteller export-scenes` writes it from the command line.
+- File > Open Recent's list is kept in `recent.json` in the app's data folder, the way every
+  Method app keeps it, so the launcher can show your recent scripts. The list you had moves
+  over on the first launch.
 
 ### Fixed
 
