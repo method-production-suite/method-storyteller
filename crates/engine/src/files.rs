@@ -118,6 +118,10 @@ pub fn open(path: &Path) -> Result<(Script, FileFormat), FileError> {
     let mut bytes = Vec::new();
     // Read one byte past the limit so oversize files are refused rather than truncated.
     file.take(MAX_INPUT_BYTES as u64 + 1).read_to_end(&mut bytes).map_err(read_error)?;
+    if container::is_zip(&bytes) && is_import(path) {
+        let document = container::read_text_bundle(&bytes).map_err(FileError::Archive)?;
+        return Ok((fountain::parse(decode_text(&document)?)?, FileFormat::Fountain));
+    }
     if container::is_zip(&bytes) {
         // A package holds script.osf; a .fadein archive, document.xml.
         let (package, (document, others)) = match container::read_package(&bytes) {
@@ -141,6 +145,12 @@ pub fn open(path: &Path) -> Result<(Script, FileFormat), FileError> {
     // A plain-XML document is .osf even if it was named .fadein or .mstory.
     let format = if matches!(format, FileFormat::FadeIn | FileFormat::Mstory) { FileFormat::Osf } else { format };
     Ok((script, format))
+}
+
+/// Whether a file is one this app reads but never writes back: it opens as a new, unsaved script,
+/// to be saved in a format of ours. A `.highland` file, which is a ZIP of Fountain text.
+pub fn is_import(path: &Path) -> bool {
+    path.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("highland"))
 }
 
 /// The XML format a text's root element names, if it is XML.

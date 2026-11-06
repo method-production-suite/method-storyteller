@@ -44,6 +44,13 @@ pub fn read_package(bytes: &[u8]) -> Result<(Vec<u8>, Vec<ArchiveEntry>), String
     read_member(bytes, |name| name == PACKAGE_SCRIPT).map(|(document, others, _)| (document, others))
 }
 
+/// The Fountain text inside a `.highland` file: a ZIP of a TextBundle, whose text is
+/// `text.fountain`, or `text.md` or `text.markdown` in older files.
+pub fn read_text_bundle(bytes: &[u8]) -> Result<Vec<u8>, String> {
+    let text = |name: &str| ["text.fountain", "text.md", "text.markdown"].iter().any(|text| name == *text || name.ends_with(&format!("/{text}")));
+    read_member(bytes, |name| text(name) && !name.contains("__MACOSX")).map(|(document, _, _)| document)
+}
+
 /// The first member `wanted` names, inflated, the other members, and the member's name.
 fn read_member(bytes: &[u8], wanted: impl Fn(&str) -> bool) -> Result<(Vec<u8>, Vec<ArchiveEntry>, String), String> {
     let damaged = || "the archive is damaged".to_string();

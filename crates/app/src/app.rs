@@ -914,7 +914,9 @@ impl StorytellerApp {
             }
             Pending::Open(path) => {
                 let path = path.or_else(|| {
-                    rfd::FileDialog::new().add_filter("Screenplay", &["mstory", "fountain", "spmd", "txt", "osf", "fadein", "fdx"]).pick_file()
+                    rfd::FileDialog::new()
+                        .add_filter("Screenplay", &["mstory", "fountain", "spmd", "txt", "osf", "fadein", "fdx", "highland"])
+                        .pick_file()
                 });
                 if let Some(path) = path {
                     self.open_path(&path);
