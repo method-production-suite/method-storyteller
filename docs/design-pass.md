@@ -15,6 +15,8 @@ every picture is drawn by the offscreen gallery (`gallery` in `crates/app/src/sc
 | Contrast for every pair, held by a test | `theme::tests::every_pair_meets_wcag_aa` |
 | Dark mode, surface by surface | BRAND.md, "Dark mode, surface by surface" |
 | Empty and error states in the family voice | `crates/app/src/messages.rs`, with tests |
+| Scene colours as tokens, 3:1 on the panel in both themes, and the act row in `ink-soft` | `theme::SCENE_COLOURS`, `scene_colours_hold_three_to_one_on_the_panel` |
+| A visible border on text boxes in dialogs | `theme::field`, using `rule-strong` |
 | A gallery of 15 surfaces in both themes | `gallery`, writing `gallery/` in the build folder |
 
 ## Left to do
@@ -41,31 +43,15 @@ in light and dark:
 | `revised-page` | A Pink revised page: coloured paper, revised text, margin marks, the header label (in the gallery) |
 | `export-pdf` | File > Export PDF… with its page choices (in the gallery) |
 
-### 2. Colours the app names itself
-
-BRAND.md says nothing in the app names a colour of its own. Two places do today:
-
-- **Scene colours.** The eight colours of Scene Properties are written in `app.rs`. They move
-  to `theme.rs` as `SCENE_RED` to `SCENE_PINK`, each checked as a 3:1 stripe against panel in
-  both themes (a stripe carries meaning, so it needs a border's contrast). A colour that fails
-  in dark mode gets a dark-mode value, as the accent has; the value saved in the file stays the
-  light one.
-- **The act row.** It draws in the strong text colour by hand. It becomes the `ink-soft`
-  token, the one section labels use.
-- **Text boxes in dialogs.** A single-line text box shows only its hint text, with no
-  visible frame (seen in `export-pdf` and Number Scenes). It needs a 3:1 border against the
-  dialog in both themes.
-
-### 3. The contact sheet
+### 2. The contact sheet
 
 One picture for the owner to look over: every gallery shot, light beside dark, in a grid,
 each labelled with its name (`gallery/contact-sheet.png` in the build folder). It is the "design pass (D)"
 check in the roadmap's Waiting on the owner, so looking at it takes minutes and opens nothing.
 
-### 4. BRAND.md catches up
+### 3. BRAND.md catches up
 
 - The new surfaces join "Dark mode, surface by surface".
-- The scene colours join the colour table and the contrast table.
 - "Document icons" lists `.mstory` (done in this change).
 
 ## Order

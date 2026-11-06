@@ -198,6 +198,24 @@ Body text needs 4.5:1 (AA); borders that carry meaning need 3:1. The test
 | accent on page | 5.83 | 5.83 | 4.5 |
 | selected text on selection | 6.10 | 6.10 | 4.5 |
 
+### Scene colours
+
+The eight colours of Scene Properties are tokens too (`theme::SCENE_COLOURS`). The file always
+saves the same value, whichever theme the writer works in. A stripe carries meaning, so it draws
+at 3:1 or better on the panel: dark mode uses the saved value, and light mode a deeper one where
+the saved value is too pale. A colour from a file that is none of these draws as it came.
+
+| Colour | Saved, and drawn in dark | Drawn in light |
+| --- | --- | --- |
+| Red | `#E06666` | `#E06666` |
+| Orange | `#F6B26B` | `#B6834F` |
+| Yellow | `#FFD966` | `#A38A41` |
+| Green | `#93C47D` | `#719660` |
+| Teal | `#76A5AF` | `#6A949D` |
+| Blue | `#6FA8DC` | `#6092BF` |
+| Purple | `#8E7CC3` | `#8E7CC3` |
+| Pink | `#C27BA0` | `#BE789C` |
+
 ### Dark mode, surface by surface
 
 The app follows the system's light or dark setting. Each surface was checked in both, in the

@@ -54,7 +54,7 @@ impl StorytellerApp {
         let mut close = false;
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 6.0;
-            let find = ui.add(egui::TextEdit::singleline(&mut bar.text).hint_text("Find").desired_width(220.0));
+            let find = crate::theme::field(ui, egui::TextEdit::singleline(&mut bar.text).hint_text("Find").desired_width(220.0));
             self.automation.add("find.text", "textbox", "Find", &find);
             if bar.focus {
                 find.request_focus();
@@ -69,7 +69,7 @@ impl StorytellerApp {
             if find.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 close = true;
             }
-            let with = ui.add(egui::TextEdit::singleline(&mut bar.replacement).hint_text("Replace with").desired_width(180.0));
+            let with = crate::theme::field(ui, egui::TextEdit::singleline(&mut bar.replacement).hint_text("Replace with").desired_width(180.0));
             self.automation.add("find.replacement", "textbox", "Replace with", &with);
             let case = ui.toggle_value(&mut bar.case, "Aa").on_hover_text("Match case");
             self.automation.add("find.case", "checkbox", "Match case", &case);
