@@ -45,6 +45,11 @@ impl Automation {
         });
     }
 
+    /// Record a widget not drawn this frame (a paragraph off screen), where it would be.
+    pub fn add_undrawn(&mut self, id: impl Into<String>, role: &'static str, label: impl Into<String>, rect: Rect) {
+        self.building.push(Widget { id: id.into(), role, label: label.into(), rect, enabled: true, focused: false });
+    }
+
     pub fn find(&self, id: &str) -> Option<&Widget> {
         self.widgets.iter().find(|w| w.id == id)
     }

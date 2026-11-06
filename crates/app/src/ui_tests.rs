@@ -726,6 +726,54 @@ fn the_autocomplete_lists_window_adds_removes_and_rebuilds() {
 }
 
 #[test]
+fn paragraphs_far_off_screen_are_not_laid_out_but_keep_their_place() {
+    let scene =
+        "INT. HUT - DAY\n\nShe waits by the door for as long as the light lasts, and then a good while after that, counting.\n\nNORA\nIt held.\n\n";
+    let (mut harness, _file) = harness(&scene.repeat(200));
+    harness.state_mut().editor.pending_focus = Some((0, 0));
+    harness.run_steps(4);
+    let count = harness.state().session.script.elements.len();
+    let last = count - 1;
+    let widget =
+        |harness: &Harness<'static, StorytellerApp>, n: usize| harness.state().automation.find(&format!("editor.element.{n}")).map(|w| w.rect);
+    assert!(harness.state().editor.field_rect(last).is_none(), "the far end is not laid out");
+    let far = widget(&harness, last).expect("but it is still listed");
+    assert!(far.top() > 5000.0, "at its real place: {far:?}");
+
+    // Heights stay right: what is skipped sits where laying it out would put it.
+    let drawn_all = {
+        let app = harness.state_mut();
+        let edits = app.session.edits();
+        app.editor.span = Some(super::editor::Span::between(
+            storyteller_engine::Caret { element: 0, offset: 0 },
+            storyteller_engine::Caret { element: 1, offset: 1 },
+            edits,
+        ));
+        harness.run_steps(2);
+        harness.state().editor.field_rect(last).expect("a selection lays out everything")
+    };
+    harness.state_mut().editor.span = None;
+    harness.run_steps(2);
+    assert!((drawn_all.top() - far.top()).abs() < 1.0, "{drawn_all:?} against {far:?}");
+
+    // Going to a far paragraph draws it and gives it the keyboard.
+    harness.state_mut().editor.pending_focus = Some((last, 0));
+    harness.run_steps(4);
+    assert!(harness.state().editor.field_rect(last).is_some());
+    let id = egui::Id::new(("storyteller.element", last));
+    assert!(harness.ctx.memory(|m| m.has_focus(id)));
+    assert!(harness.state().editor.field_rect(0).is_none(), "and the start is off screen now");
+
+    // Text changed while off screen is measured again.
+    let before = widget(&harness, last).expect("listed");
+    harness.state_mut().session.script.elements[1].text = "Longer. ".repeat(60);
+    harness.state_mut().session.invalidate_layout();
+    harness.run_steps(4);
+    let after = widget(&harness, last).expect("listed");
+    assert!(after.top() != before.top() || harness.state().editor.field_rect(1).is_none());
+}
+
+#[test]
 fn copy_scene_puts_the_scene_on_the_clipboard() {
     let (mut harness, _file) = harness("INT. HUT - DAY\n\nOne.\n\nEXT. RIDGE - DAWN\n\nNORA\nIt held.\n");
     harness.state_mut().editor.pending_focus = Some((3, 0));
