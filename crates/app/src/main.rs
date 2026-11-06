@@ -57,7 +57,7 @@ fn main() -> eframe::Result {
     #[cfg(target_os = "macos")]
     let viewport = viewport.with_fullsize_content_view(true).with_titlebar_shown(false).with_title_shown(false);
     // Files opened from the Finder arrive as an Apple Event while the app launches (macOS).
-    storyteller_macos_open::install();
+    storyteller_platform::install();
     let options = eframe::NativeOptions { viewport, ..Default::default() };
     eframe::run_native(
         storyteller_engine::APP_NAME,

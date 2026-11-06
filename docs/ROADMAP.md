@@ -66,7 +66,7 @@ says otherwise.
    Schedule's. Reversible: the drawing is one function in `scripts/make-brand.py`. Pictures
    are in the brand pull request.
 11. **`unsafe` for files opened from the Finder.** **Decided by the owner, 2026-10-18:**
-   `crates/macos-open` is the one crate allowed `unsafe`, with a SAFETY comment on every block
+   `crates/platform` is the one crate allowed `unsafe`, with a SAFETY comment on every block
    (enforced by clippy). Recorded in AGENTS.md.
 13. **TV structure (new, 2026-10-19).** **Decided by the owner: build it all** (act breaks,
    End of Act, Teaser, Cold Open and Tag, a New TV Script layout, acts in the navigator and Go

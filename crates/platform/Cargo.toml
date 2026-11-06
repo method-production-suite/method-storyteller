@@ -1,6 +1,6 @@
 [package]
-name = "storyteller-macos-open"
-description = "macOS: files opened from the Finder, received as the open documents Apple Event"
+name = "storyteller-platform"
+description = "What only the operating system can say: files opened from the Finder, the local date and the region"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
