@@ -806,6 +806,68 @@ fn bookmarks_go_to_undo_and_keep_to_one_place() {
 }
 
 #[test]
+fn a_highland_file_imports_as_a_new_unsaved_script() {
+    use std::io::Write;
+    let registry = Registry::new();
+    let dir = tempfile::tempdir().unwrap();
+    let zip_of = |member: &str, text: &str| {
+        // A stored (uncompressed) ZIP with one member, as the format allows.
+        let (name, data) = (member.as_bytes(), text.as_bytes());
+        let crc = {
+            let mut crc = !0u32;
+            for byte in data {
+                crc ^= u32::from(*byte);
+                for _ in 0..8 {
+                    crc = if crc & 1 == 1 { (crc >> 1) ^ 0xEDB8_8320 } else { crc >> 1 };
+                }
+            }
+            !crc
+        };
+        let (n, d) = (name.len() as u16, data.len() as u32);
+        let mut out = Vec::new();
+        out.write_all(b"PK\x03\x04\x14\0\0\0\0\0\0\0\0\0").unwrap();
+        out.write_all(&crc.to_le_bytes()).unwrap();
+        out.write_all(&d.to_le_bytes()).unwrap();
+        out.write_all(&d.to_le_bytes()).unwrap();
+        out.write_all(&n.to_le_bytes()).unwrap();
+        out.write_all(&[0, 0]).unwrap();
+        out.write_all(name).unwrap();
+        out.write_all(data).unwrap();
+        let central = out.len() as u32;
+        out.write_all(b"PK\x01\x02\x14\0\x14\0\0\0\0\0\0\0\0\0").unwrap();
+        out.write_all(&crc.to_le_bytes()).unwrap();
+        out.write_all(&d.to_le_bytes()).unwrap();
+        out.write_all(&d.to_le_bytes()).unwrap();
+        out.write_all(&n.to_le_bytes()).unwrap();
+        out.write_all(&[0; 12]).unwrap();
+        out.write_all(&0u32.to_le_bytes()).unwrap();
+        out.write_all(name).unwrap();
+        let size = out.len() as u32 - central;
+        out.write_all(b"PK\x05\x06\0\0\0\0\x01\0\x01\0").unwrap();
+        out.write_all(&size.to_le_bytes()).unwrap();
+        out.write_all(&central.to_le_bytes()).unwrap();
+        out.write_all(&[0, 0]).unwrap();
+        out
+    };
+    for member in ["Pilot.textbundle/text.fountain", "Pilot.textbundle/text.md", "text.markdown"] {
+        let path = dir.path().join("Pilot.highland");
+        std::fs::write(&path, zip_of(member, "INT. HUT - DAY\n\nNORA\nIt held.\n")).unwrap();
+        let mut s = Session::default();
+        let opened = registry.run("file.open", &mut s, json!({ "path": path }).as_object().unwrap()).unwrap();
+        assert!(opened.message.unwrap().starts_with("Imported 3 elements"), "{member}");
+        assert_eq!(kinds(&s), [K::SceneHeading, K::Character, K::Dialogue]);
+        assert!(s.path.is_none(), "nothing writes back to the .highland file");
+        assert!(s.dirty, "so closing it asks");
+    }
+    // An archive with no text in it says so, and leaves the script open as it was.
+    let path = dir.path().join("Empty.highland");
+    std::fs::write(&path, zip_of("Pilot.textbundle/info.json", "{}")).unwrap();
+    let mut s = Session::new(storyteller_core::fountain::parse(RANGE_SCRIPT).unwrap());
+    assert!(registry.run("file.open", &mut s, json!({ "path": path }).as_object().unwrap()).is_err());
+    assert_eq!(s.script.elements.len(), 5);
+}
+
+#[test]
 fn copy_scene_gives_fountain_that_pastes_back_the_same() {
     let registry = Registry::new();
     let mut s = Session::new(

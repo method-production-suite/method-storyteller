@@ -13,6 +13,8 @@ for its own version in Help > What's New, once after an update.
 
 ### New
 
+- File > Open reads `.highland` files. One opens as a new, unsaved script: Save asks where to
+  keep it, in a format of ours.
 - View > Show Outline shows or hides sections and synopses on screen. They stay in the script,
   and the setting is remembered.
 - Bookmarks: Edit > Add Bookmark… names the paragraph you are in, and Go To has a Bookmark tab

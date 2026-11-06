@@ -1144,6 +1144,12 @@ fn all_commands() -> Vec<Command> {
                 *s = Session::new(script);
                 s.layout = layout;
                 s.format = format;
+                if files::is_import(&path) {
+                    // Nothing writes this file back: Save asks where, in a format of ours.
+                    s.format = FileFormat::default();
+                    s.dirty = true;
+                    return Ok(Outcome::message(format!("Imported {} elements. Save to keep them in a format of ours.", s.script.elements.len())));
+                }
                 s.path = Some(path);
                 Ok(Outcome::message(format!("Opened {} elements", s.script.elements.len())))
             },

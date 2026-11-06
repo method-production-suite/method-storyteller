@@ -318,8 +318,8 @@ signed `.app.tar.gz`), the OSF and Fountain study, and the design pass. Each is 
 ### Smaller items
 - **Page view** [partial] S. A speech split across pages should continue on the next sheet
   instead of lengthening the first.
-- **Imports** [missing] S each. `.highland` (a ZIP holding Fountain), PDF (from Method Reader's
-  crates once relicensed), `.celtx`.
+- **Imports** [partial] S each. `.highland` [have]. PDF waits on Method Reader's crates being
+  relicensed. `.celtx` waits on a saved file to read, since there is no public description of it.
 - **Stored autocomplete lists** [missing] M. Lists kept in the document, learned as you type,
   editable; the extension-on-Tab option.
 - **Scene CONTINUED** [missing] S. Off by default; measured only if a corpus file turns it on.
