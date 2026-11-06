@@ -156,8 +156,26 @@ fn step_from(session: &Session, head: Caret, back: bool) -> Caret {
     }
 }
 
+/// How far beyond the view paragraphs are still laid out, in rows, so a wheel or key that moves a
+/// little has text ready.
+const OVERSCAN_ROWS: f32 = 30.0;
+
+/// What a paragraph's height depends on, as a hash.
+fn height_key(element: &Element, zoom: f32, style_width: u16) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    element.text.hash(&mut hasher);
+    element.kind.hash(&mut hasher);
+    zoom.to_bits().hash(&mut hasher);
+    style_width.hash(&mut hasher);
+    hasher.finish()
+}
+
 #[derive(Default)]
 pub struct EditorState {
+    /// Each paragraph's height when last laid out, and what it depended on. A paragraph off
+    /// screen with a known height only takes up its space.
+    heights: Vec<Option<(u64, f32)>>,
     /// The selection across paragraphs, when there is one.
     pub span: Option<Span>,
     /// Where the pointer went down in a paragraph, while it stays down.
@@ -513,6 +531,10 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                         ui.visuals_mut().text_cursor.stroke = Stroke::NONE;
                     }
                     let mut fields: Vec<Field> = Vec::with_capacity(count);
+                    editor.heights.resize(count, None);
+                    let clip = ui.clip_rect().expand2(vec2(0.0, OVERSCAN_ROWS * row));
+                    // A selection across paragraphs finds its places in every paragraph.
+                    let lay_out_all = editor.span.is_some() || editor.drag_from.is_some();
                     ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
                     // A text box is exactly one script line tall, at any zoom.
                     ui.spacing_mut().interact_size.y = row;
@@ -557,8 +579,38 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                             continue;
                         }
                         let id = Id::new(("storyteller.element", index));
-                        let mut text = element.text.clone();
                         let focused = ui.memory(|m| m.has_focus(id));
+                        let (box_left, box_width) = match kind {
+                            ElementKind::Section | ElementKind::Synopsis => (layout.action.left, layout.action.width),
+                            _ => (style.left, style.width),
+                        };
+                        let key = height_key(element, zoom, box_width);
+                        let wanted = focused
+                            || lay_out_all
+                            || editor.pending_focus.is_some_and(|(target, _)| target == index)
+                            || editor.scroll_to == Some(index)
+                            || editor.highlight.is_some_and(|h| h.0 == index);
+                        if !wanted
+                            && let Some(Some((known, height))) = editor.heights.get(index).copied()
+                            && known == key
+                        {
+                            let top = ui.cursor().top();
+                            if top > clip.bottom() || top + height < clip.top() {
+                                // Off screen, and its height is known: only its space.
+                                let left = ui.cursor().left() + f32::from(box_left) * col;
+                                let rect = Rect::from_min_size(pos2(left, top), vec2(f32::from(box_width) * advance + 1.0, height));
+                                automation.add_undrawn(
+                                    format!("editor.element.{index}"),
+                                    "textbox",
+                                    format!("{}: {}", kind.label(), preview(&element.text)),
+                                    rect,
+                                );
+                                ui.add_space(height);
+                                continue;
+                            }
+                        }
+                        let box_top = ui.cursor().top();
+                        let mut text = element.text.clone();
                         let single_line = kind.is_single_line();
                         let picking = editor.picker.as_ref().is_some_and(|p| p.index == index);
                         if focused && picking {
@@ -600,10 +652,7 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                             }
                             ui.fonts_mut(|f| f.layout_job(job))
                         };
-                        let (left, width) = match kind {
-                            ElementKind::Section | ElementKind::Synopsis => (layout.action.left, layout.action.width),
-                            _ => (style.left, style.width),
-                        };
+                        let (left, width) = (box_left, box_width);
                         let output = ui
                             .horizontal_top(|ui| {
                                 ui.add_space(f32::from(left) * col);
@@ -626,6 +675,9 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                             })
                             .inner;
                         let response = &output.response.response;
+                        if let Some(slot) = editor.heights.get_mut(index) {
+                            *slot = Some((key, ui.cursor().top() - box_top));
+                        }
                         fields.push(Field { index, rect: response.rect, galley: output.galley.clone(), origin: output.galley_pos });
                         // The edit's own id holds focus; the outer response may carry another id.
                         let has_focus = ui.memory(|m| m.has_focus(id));
