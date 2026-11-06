@@ -54,6 +54,8 @@ pub struct Session {
     pub show_revisions: storyteller_core::model::ShowRevisions,
     /// View > Revised Page Colours: revised pages on screen in their set's page colour.
     pub page_colours: bool,
+    /// The last range copied, as text and as elements: pasting that same text back gives these.
+    copied: Option<(String, Vec<Element>)>,
 }
 
 impl Default for Session {
@@ -85,7 +87,23 @@ impl Session {
             spelling: crate::spell::Personal::default(),
             show_revisions: Default::default(),
             page_colours: false,
+            copied: None,
         }
+    }
+
+    /// Remembers a range copied to the clipboard as `text`.
+    pub fn remember_copied(&mut self, text: String, elements: Vec<Element>) {
+        self.copied = Some((text, elements));
+    }
+
+    /// The elements of the last range copied, when `text` is what it put on the clipboard.
+    pub fn copied_elements(&self, text: &str) -> Option<&[Element]> {
+        self.copied.as_ref().filter(|(copied, _)| copied.replace("\r\n", "\n") == text.replace("\r\n", "\n")).map(|(_, elements)| elements.as_slice())
+    }
+
+    /// Whether pasting `text` makes elements rather than text in one paragraph.
+    pub fn pastes_as_elements(&self, text: &str) -> bool {
+        crate::commands::is_screenplay_paste(text) || self.copied_elements(text).is_some_and(|elements| elements.len() > 1)
     }
 
     /// Record an undo step before an edit. Typing in the same element merges into one step.

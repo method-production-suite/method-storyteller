@@ -251,17 +251,18 @@ fn help_opens_the_sample_any_time() {
 }
 
 #[test]
-fn select_all_selects_the_paragraph_and_the_edit_menu_lists_the_clipboard() {
+fn select_all_selects_the_script_and_the_edit_menu_lists_the_clipboard() {
     let (mut harness, _file) = harness(SCRIPT);
     harness.state_mut().editor.pending_focus = Some((1, 0));
     harness.run_steps(3);
     harness.state_mut().queued.push("app.select_all".into());
     harness.run_steps(3);
+    let last = harness.state().session.script.elements.len() - 1;
+    let (from, to) = harness.state().editor.span.expect("a selection").ordered();
+    assert_eq!((from.element, from.offset), (0, 0), "from the start of the script");
+    assert_eq!((to.element, to.offset), (last, "Three.".len()), "to its end");
     let id = egui::Id::new(("storyteller.element", 1));
-    let range = egui::text_edit::TextEditState::load(&harness.ctx, id).and_then(|s| s.cursor.char_range());
-    let (start, end) = range.map(|r| (r.primary.index.0.min(r.secondary.index.0), r.primary.index.0.max(r.secondary.index.0))).unwrap_or_default();
-    assert_eq!((start, end), (0, "One.".chars().count()), "the whole paragraph is selected");
-    assert!(harness.ctx.memory(|m| m.has_focus(id)), "and keeps the keyboard");
+    assert!(harness.ctx.memory(|m| m.has_focus(id)), "and the paragraph keeps the keyboard");
     let labels: Vec<String> = harness.state().menu_entries("Edit").into_iter().map(|e| e.label).collect();
     for wanted in ["Cut", "Copy", "Paste", "Select All"] {
         assert!(labels.iter().any(|l| l == wanted), "Edit has {wanted}: {labels:?}");
@@ -290,9 +291,11 @@ fn edit_cut_from_the_window_menu_cuts_the_selection() {
     // The item shows its key beside the label (Cut ⌘X), so match the label's start.
     harness.get_by_label_contains("Cut").click();
     harness.run_steps(4);
-    assert_eq!(harness.state().session.script.elements[1].text, "", "the selected paragraph is cut");
-    let id = egui::Id::new(("storyteller.element", 1));
-    assert!(harness.ctx.memory(|m| m.has_focus(id)), "and the paragraph has the keyboard again");
+    let elements = &harness.state().session.script.elements;
+    assert_eq!(elements.len(), 1, "the selected script is cut, leaving one empty paragraph");
+    assert_eq!(elements[0].text, "");
+    let id = egui::Id::new(("storyteller.element", 0));
+    assert!(harness.ctx.memory(|m| m.has_focus(id)), "and it has the keyboard");
 }
 
 const SPELL_SCRIPT: &str = "INT. HUT - DAY\n\nNora taps the glsas. The seismograf is still.\n\nNORA\nOkay.\n";
@@ -425,6 +428,191 @@ fn pasting_screenplay_text_into_a_line_makes_elements() {
     harness.run_steps(3);
     assert_eq!(harness.state().session.script.elements[4].text, "Still She waits.");
     assert_eq!(harness.state().session.script.elements.len(), 5);
+}
+
+const RANGE_SCRIPT: &str = "INT. HUT - DAY\n\nShe waits.\n\nNORA\nIt held.\n\nRain falls.\n";
+
+/// Copies through the input, as ⌘C does, and returns what reached the clipboard.
+fn copy_event(harness: &mut Harness<'static, StorytellerApp>) -> Vec<String> {
+    harness.input_mut().events.push(egui::Event::Copy);
+    harness.step();
+    harness
+        .output()
+        .platform_output
+        .commands
+        .iter()
+        .filter_map(|c| if let egui::OutputCommand::CopyText(t) = c { Some(t.clone()) } else { None })
+        .collect()
+}
+
+fn press(harness: &mut Harness<'static, StorytellerApp>, key: egui::Key, modifiers: egui::Modifiers) {
+    harness.input_mut().events.push(egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers });
+    harness.run_steps(2);
+}
+
+/// The middle of element `index`'s text on screen.
+fn field_centre(harness: &Harness<'static, StorytellerApp>, index: usize) -> egui::Pos2 {
+    harness.state().editor.field_rect(index).expect("drawn").center()
+}
+
+fn pointer(harness: &mut Harness<'static, StorytellerApp>, at: egui::Pos2, pressed: Option<bool>, modifiers: egui::Modifiers) {
+    harness.input_mut().events.push(egui::Event::ModifiersChanged(modifiers));
+    harness.input_mut().events.push(egui::Event::PointerMoved(at));
+    if let Some(pressed) = pressed {
+        harness.input_mut().events.push(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers });
+    }
+    harness.run_steps(2);
+}
+
+#[test]
+fn shift_arrows_cross_paragraphs_and_copy_keeps_element_types() {
+    use storyteller_core::ElementKind as K;
+    let (mut harness, _file) = harness(RANGE_SCRIPT);
+    harness.state_mut().editor.pending_focus = Some((1, "She ".len()));
+    harness.run_steps(3);
+    // Over the end of "She waits.", into the cue, and on to the dialogue.
+    for _ in 0.."waits.".len() {
+        press(&mut harness, egui::Key::ArrowRight, egui::Modifiers::SHIFT);
+    }
+    assert!(harness.state().editor.span.is_none(), "still inside one paragraph");
+    press(&mut harness, egui::Key::ArrowRight, egui::Modifiers::SHIFT);
+    assert!(harness.state().editor.span.is_some(), "over the edge");
+    press(&mut harness, egui::Key::ArrowDown, egui::Modifiers::SHIFT);
+    let (_, to) = harness.state().editor.span.expect("a selection").ordered();
+    assert_eq!(to.element, 3, "Shift+Down moves on a row: {to:?}");
+    let copied = copy_event(&mut harness);
+    assert_eq!(copied.len(), 1, "one copy: {copied:?}");
+    assert!(copied[0].contains("waits.") && copied[0].contains("NORA") && !copied[0].contains("She"), "{copied:?}");
+    // Pasted back on an empty line, the same types, the cut cue and dialogue included.
+    let end = harness.state().session.script.elements.len() - 1;
+    harness.state_mut().editor.span = None;
+    harness.state_mut().editor.pending_focus = Some((end, 0));
+    harness.run_steps(3);
+    harness.input_mut().events.push(egui::Event::Paste(copied[0].clone()));
+    harness.run_steps(4);
+    let kinds: Vec<K> = harness.state().session.script.elements.iter().skip(end).map(|e| e.kind).collect();
+    assert_eq!(&kinds[..3], [K::Action, K::Character, K::Dialogue], "{kinds:?}");
+}
+
+#[test]
+fn back_inside_one_paragraph_the_field_has_the_selection() {
+    let (mut harness, _file) = harness(RANGE_SCRIPT);
+    harness.state_mut().editor.pending_focus = Some((1, "She waits.".len()));
+    harness.run_steps(3);
+    press(&mut harness, egui::Key::ArrowRight, egui::Modifiers::SHIFT);
+    assert!(harness.state().editor.span.is_some());
+    press(&mut harness, egui::Key::ArrowLeft, egui::Modifiers::SHIFT);
+    assert!(harness.state().editor.span.is_none(), "the ends are in one paragraph again");
+}
+
+#[test]
+fn typing_over_a_selection_replaces_it_in_one_undo() {
+    let (mut harness, _file) = harness(RANGE_SCRIPT);
+    harness.state_mut().editor.pending_focus = Some((1, "She ".len()));
+    harness.run_steps(3);
+    let edits = harness.state().session.edits();
+    harness.state_mut().editor.span = None;
+    press(&mut harness, egui::Key::ArrowRight, egui::Modifiers::NONE);
+    pointer_free_span(&mut harness, (1, 4), (3, 3));
+    harness.input_mut().events.push(egui::Event::Text("runs. Still ".into()));
+    harness.run_steps(4);
+    let elements = &harness.state().session.script.elements;
+    assert_eq!(elements.len(), 3, "the cue is gone and the dialogue joined");
+    assert_eq!(elements[1].text, "She runs. Still held.");
+    assert!(harness.state().editor.span.is_none(), "and the selection is over");
+    assert!(harness.state().session.edits() > edits);
+    harness.state_mut().queued.push("edit.undo".into());
+    harness.run_steps(3);
+    assert_eq!(harness.state().session.script.elements.len(), 5, "one Undo brings it all back");
+    assert_eq!(harness.state().session.script.elements[3].text, "It held.");
+}
+
+/// Selects through the same path as Shift+arrows, from `anchor` to `head`.
+fn pointer_free_span(harness: &mut Harness<'static, StorytellerApp>, anchor: (usize, usize), head: (usize, usize)) {
+    harness.state_mut().editor.pending_focus = Some(head);
+    harness.run_steps(3);
+    let app = harness.state_mut();
+    let edits = app.session.edits();
+    app.editor.span = Some(super::editor::Span::between(
+        storyteller_engine::Caret { element: anchor.0, offset: anchor.1 },
+        storyteller_engine::Caret { element: head.0, offset: head.1 },
+        edits,
+    ));
+    harness.run_steps(2);
+}
+
+#[test]
+fn backspace_cut_and_arrows_with_a_selection() {
+    let (mut harness, _file) = harness(RANGE_SCRIPT);
+    pointer_free_span(&mut harness, (1, 4), (3, 3));
+    // An arrow collapses it to its start, and takes nothing out.
+    press(&mut harness, egui::Key::ArrowLeft, egui::Modifiers::NONE);
+    assert!(harness.state().editor.span.is_none());
+    assert_eq!(harness.state().session.script.elements.len(), 5);
+    assert_eq!((harness.state().session.caret.element, harness.state().session.caret.offset), (1, 4));
+    pointer_free_span(&mut harness, (1, 4), (3, 3));
+    press(&mut harness, egui::Key::Backspace, egui::Modifiers::NONE);
+    assert_eq!(harness.state().session.script.elements[1].text, "She held.");
+    assert_eq!(harness.state().session.script.elements.len(), 3);
+    harness.state_mut().queued.push("edit.undo".into());
+    harness.run_steps(3);
+    pointer_free_span(&mut harness, (3, 3), (1, 4));
+    harness.input_mut().events.push(egui::Event::Cut);
+    harness.step();
+    let copied: Vec<String> = harness
+        .output()
+        .platform_output
+        .commands
+        .iter()
+        .filter_map(|c| if let egui::OutputCommand::CopyText(t) = c { Some(t.clone()) } else { None })
+        .collect();
+    assert_eq!(copied.len(), 1, "Cut copies, whichever way it was selected");
+    harness.run_steps(3);
+    assert_eq!(harness.state().session.script.elements[1].text, "She held.");
+}
+
+#[test]
+fn dragging_from_one_paragraph_into_another_selects_across() {
+    let (mut harness, _file) = harness(RANGE_SCRIPT);
+    let start = field_centre(&harness, 1);
+    let end = field_centre(&harness, 3);
+    pointer(&mut harness, start, None, egui::Modifiers::NONE);
+    pointer(&mut harness, start, Some(true), egui::Modifiers::NONE);
+    assert!(harness.state().editor.span.is_none(), "a press alone selects nothing");
+    pointer(&mut harness, end, None, egui::Modifiers::NONE);
+    let (from, to) = harness.state().editor.span.expect("the drag selects across").ordered();
+    assert_eq!((from.element, to.element), (1, 3));
+    pointer(&mut harness, end, Some(false), egui::Modifiers::NONE);
+    assert!(harness.state().editor.span.is_some(), "and it stays when the button comes up");
+    // A plain click ends it.
+    pointer(&mut harness, start, Some(true), egui::Modifiers::NONE);
+    pointer(&mut harness, start, Some(false), egui::Modifiers::NONE);
+    assert!(harness.state().editor.span.is_none());
+}
+
+#[test]
+fn shift_click_in_another_paragraph_selects_to_there() {
+    let (mut harness, _file) = harness(RANGE_SCRIPT);
+    harness.state_mut().editor.pending_focus = Some((1, 4));
+    harness.run_steps(3);
+    let end = field_centre(&harness, 3);
+    pointer(&mut harness, end, None, egui::Modifiers::SHIFT);
+    pointer(&mut harness, end, Some(true), egui::Modifiers::SHIFT);
+    pointer(&mut harness, end, Some(false), egui::Modifiers::SHIFT);
+    let (from, to) = harness.state().editor.span.expect("a selection").ordered();
+    assert_eq!((from.element, from.offset, to.element), (1, 4, 3));
+}
+
+#[test]
+fn the_find_bar_keeps_what_is_typed_there() {
+    let (mut harness, _file) = harness(RANGE_SCRIPT);
+    pointer_free_span(&mut harness, (1, 4), (3, 3));
+    harness.state_mut().queued.push("app.find".into());
+    harness.run_steps(3);
+    harness.input_mut().events.push(egui::Event::Text("x".into()));
+    harness.run_steps(2);
+    assert_eq!(harness.state().session.script.elements.len(), 5, "the selection is untouched");
+    assert_eq!(harness.state().find.as_ref().map(|bar| bar.text.as_str()), Some("x"), "and the bar has the letter");
 }
 
 #[test]

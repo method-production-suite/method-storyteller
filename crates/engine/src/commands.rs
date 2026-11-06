@@ -635,25 +635,45 @@ pub fn is_screenplay_paste(text: &str) -> bool {
 /// step: the text before the paste stays in the element, the pasted elements follow, and the
 /// text after the paste becomes an element of its own. Returns how many elements were pasted.
 fn paste_screenplay(s: &mut Session, index: usize, start: usize, end: usize, text: &str) -> Result<usize, CommandError> {
-    let Some(element) = s.script.elements.get(index) else {
+    if index >= s.script.elements.len() {
         return Err(CommandError::Invalid { name: "index", reason: "no such element".into() });
+    }
+    let pasted = pasted_elements(s, text)?;
+    if pasted.is_empty() {
+        return Ok(0);
+    }
+    s.checkpoint(EditKind::Other);
+    Ok(place_pasted(s, index, start, end, pasted))
+}
+
+/// The elements a paste of `text` makes: the very elements of the last range copied here when it
+/// is that text, so their types survive even where Fountain cannot say them (dialogue with no
+/// cue); otherwise `text` read as Fountain.
+fn pasted_elements(s: &Session, text: &str) -> Result<Vec<Element>, CommandError> {
+    let pasted = match s.copied_elements(text) {
+        Some(elements) => elements.to_vec(),
+        // The text alone, never a title page: a pasted `Title: …` line is action.
+        None => storyteller_core::fountain::parse(&format!("\n{}", text.replace("\r\n", "\n").trim()))
+            .map_err(|e| CommandError::Failed(format!("the pasted text could not be read: {e}")))?
+            .elements
+            .into_iter()
+            .filter(|e| e.kind != ElementKind::PageBreak || !e.text.is_empty())
+            .collect(),
     };
+    if s.script.elements.len().saturating_add(pasted.len()) > storyteller_core::MAX_ELEMENTS {
+        return Err(CommandError::Failed("the script has too many elements".into()));
+    }
+    Ok(pasted)
+}
+
+/// Puts `pasted` (not empty) in at `start..end` of element `index`, inside the caller's Undo step.
+fn place_pasted(s: &mut Session, index: usize, start: usize, end: usize, mut pasted: Vec<Element>) -> usize {
+    let Some(element) = s.script.elements.get(index) else { return 0 };
     let start = floor_char_boundary(&element.text, start);
     let end = floor_char_boundary(&element.text, end.max(start));
     let kind = element.kind;
     let before = element.text.get(..start).unwrap_or_default().to_string();
     let after = element.text.get(end..).unwrap_or_default().to_string();
-    // The text alone, never a title page: a pasted `Title: …` line is action.
-    let parsed = storyteller_core::fountain::parse(&format!("\n{}", text.replace("\r\n", "\n").trim()))
-        .map_err(|e| CommandError::Failed(format!("the pasted text could not be read: {e}")))?;
-    let mut pasted: Vec<Element> = parsed.elements.into_iter().filter(|e| e.kind != ElementKind::PageBreak || !e.text.is_empty()).collect();
-    if pasted.is_empty() {
-        return Ok(0);
-    }
-    if s.script.elements.len().saturating_add(pasted.len()) > storyteller_core::MAX_ELEMENTS {
-        return Err(CommandError::Failed("the script has too many elements".into()));
-    }
-    s.checkpoint(EditKind::Other);
     let count = pasted.len();
     let mut at = index;
     if before.trim().is_empty() {
@@ -681,7 +701,109 @@ fn paste_screenplay(s: &mut Session, index: usize, start: usize, end: usize, tex
         s.script.elements.insert(at + n, element);
     }
     s.caret = Caret { element: last, offset: caret };
-    Ok(count)
+    count
+}
+
+/// The range a command names: `from_index`/`from_offset` to `to_index`/`to_offset`, in script
+/// order whichever way it was selected, and on character boundaries.
+fn text_range(s: &Session, p: &Params) -> Result<(Caret, Caret), CommandError> {
+    let place = |index: &'static str, offset: &'static str| -> Result<Caret, CommandError> {
+        let element = opt_index(p, index)?.ok_or_else(|| CommandError::Invalid { name: index, reason: "required".into() })?;
+        let Some(found) = s.script.elements.get(element) else {
+            return Err(CommandError::Invalid { name: index, reason: format!("there are {} elements", s.script.elements.len()) });
+        };
+        let at = opt_index(p, offset)?.ok_or_else(|| CommandError::Invalid { name: offset, reason: "required".into() })?;
+        Ok(Caret { element, offset: floor_char_boundary(&found.text, at) })
+    };
+    let (a, b) = (place("from_index", "from_offset")?, place("to_index", "to_offset")?);
+    Ok(if (a.element, a.offset) <= (b.element, b.offset) { (a, b) } else { (b, a) })
+}
+
+/// The elements of a range, the first and last cut to the part inside it. A first or last one
+/// with nothing inside the range is left out.
+fn range_elements(s: &Session, from: Caret, to: Caret) -> Vec<Element> {
+    let mut out = Vec::new();
+    for index in from.element..=to.element {
+        let Some(element) = s.script.elements.get(index) else { continue };
+        let start = if index == from.element { from.offset } else { 0 };
+        let end = if index == to.element { to.offset } else { element.text.len() };
+        // A page break has no text: it is in the range when the range starts on it.
+        let nothing_inside =
+            if index == from.element { start >= end && element.kind != ElementKind::PageBreak } else { index == to.element && start >= end };
+        if nothing_inside {
+            continue;
+        }
+        let mut part = element.clone();
+        part.set_text(element.text.get(start..end).unwrap_or_default().to_string());
+        // Where the page starts and what was revised belong to this draft, not to the copy.
+        part.page_starts.clear();
+        part.revised.clear();
+        part.deletions.clear();
+        out.push(part);
+    }
+    out
+}
+
+/// Replaces a range, across paragraphs or within one, with `text`, as one Undo step. The first
+/// paragraph keeps its type and takes what follows the range in the last one; pasted screenplay
+/// text becomes elements there. In revision mode the join leaves a deletion mark, as Backspace
+/// at a paragraph's start does.
+fn replace_range(s: &mut Session, from: Caret, to: Caret, text: &str) -> Result<(), CommandError> {
+    let as_elements = !text.is_empty() && s.pastes_as_elements(text);
+    let pasted = if as_elements { pasted_elements(s, text)? } else { Vec::new() };
+    let Some(first) = s.script.elements.get(from.element) else {
+        return Err(CommandError::Invalid { name: "from_index", reason: "no such element".into() });
+    };
+    let Some(last) = s.script.elements.get(to.element) else {
+        return Err(CommandError::Invalid { name: "to_index", reason: "no such element".into() });
+    };
+    let kind = match (first.kind, last.kind) {
+        (ElementKind::PageBreak, ElementKind::PageBreak) => ElementKind::Action,
+        (ElementKind::PageBreak, other) | (other, _) => other,
+    };
+    let before = first.text.get(..from.offset).unwrap_or_default().to_string();
+    let after = last.text.get(to.offset..).unwrap_or_default().to_string();
+    // What comes up from the last paragraph takes the first one's capitals.
+    let caps = kind.is_caps() || s.layout.style(kind).caps;
+    let after = if caps { after.to_uppercase() } else { after };
+    s.checkpoint(EditKind::Other);
+    let mark = s.marking_set().filter(|set| *set != 0);
+    let mut tail = (from.element != to.element).then(|| s.script.elements.get(to.element).cloned()).flatten();
+    if let Some(tail) = tail.as_mut() {
+        tail.set_text(after.clone());
+    }
+    if from.element < to.element {
+        s.script.elements.drain(from.element + 1..=to.element);
+    }
+    let Some(element) = s.script.elements.get_mut(from.element) else { return Ok(()) };
+    element.kind = kind;
+    // Set in two steps, so the first paragraph's anchors stop at the cut and the last one's come
+    // along after it.
+    element.set_text(before.clone());
+    let joined_at = u32::try_from(inline::plain(&before).chars().count()).unwrap_or(u32::MAX);
+    element.set_text(format!("{before}{after}"));
+    if let Some(tail) = tail.as_mut() {
+        element.absorb_anchors(tail, joined_at);
+    }
+    if let Some(set) = mark.filter(|_| from != to) {
+        element.mark_deletion(joined_at, set);
+    }
+    element.normalize();
+    s.caret = Caret { element: from.element, offset: before.len() };
+    if as_elements {
+        if !pasted.is_empty() {
+            place_pasted(s, from.element, before.len(), before.len(), pasted);
+        }
+    } else if !text.is_empty() {
+        let text = if caps { text.to_uppercase() } else { text.replace('\r', "") };
+        let text = if kind.is_single_line() { text.replace('\n', " ") } else { text };
+        let marking = s.marking_set();
+        if let Some(element) = s.script.elements.get_mut(from.element) {
+            element.set_text_revised(format!("{before}{text}{after}"), marking);
+        }
+        s.caret = Caret { element: from.element, offset: before.len() + text.len() };
+    }
+    Ok(())
 }
 
 fn new_element(kind: ElementKind) -> (Element, usize) {
@@ -885,6 +1007,12 @@ fn all_commands() -> Vec<Command> {
     use ParamType::*;
     const INDEX: ParamSpec = param("index", Integer, false, "Element index (default: the caret's element)");
     const OFFSET: ParamSpec = param("offset", Integer, false, "Byte offset in the element text (default: the caret)");
+    const RANGE: [ParamSpec; 4] = [
+        param("from_index", Integer, true, "Element the range starts in"),
+        param("from_offset", Integer, true, "Byte offset where it starts"),
+        param("to_index", Integer, true, "Element the range ends in"),
+        param("to_offset", Integer, true, "Byte offset where it ends"),
+    ];
     const FIND_TEXT: ParamSpec = param("text", String, true, "Text to find");
     const FIND_CASE: ParamSpec = param("case", Bool, false, "Match case exactly");
     const FIND_WORD: ParamSpec = param("whole_word", Bool, false, "Whole words only");
@@ -1648,6 +1776,43 @@ fn all_commands() -> Vec<Command> {
                 let end = opt_index(p, "end")?.unwrap_or(start);
                 let pasted = paste_screenplay(s, index, start, end, &string(p, "text")?)?;
                 Ok(Outcome::value(json!({ "elements": pasted })))
+            },
+        },
+        Command {
+            id: "edit.copy_range",
+            label: "Copy Range",
+            menu: "",
+            shortcut: None,
+            params: const { &RANGE },
+            enabled: always,
+            run: |s, p| {
+                let (from, to) = text_range(s, p)?;
+                let elements = range_elements(s, from, to);
+                let text = storyteller_core::fountain::write(&Script { elements: elements.clone(), ..Script::default() });
+                s.remember_copied(text.clone(), elements);
+                Ok(Outcome::value(json!({ "text": text })))
+            },
+        },
+        Command {
+            id: "edit.replace_range",
+            label: "Replace Range",
+            menu: "",
+            shortcut: None,
+            params: const {
+                &[
+                    RANGE[0],
+                    RANGE[1],
+                    RANGE[2],
+                    RANGE[3],
+                    param("text", String, false, "What takes its place: plain text, or screenplay text that becomes elements (default: nothing)"),
+                ]
+            },
+            enabled: always,
+            run: |s, p| {
+                let (from, to) = text_range(s, p)?;
+                let text = if p.contains_key("text") { string(p, "text")? } else { std::string::String::new() };
+                replace_range(s, from, to, &text)?;
+                Ok(Outcome::done())
             },
         },
         Command {

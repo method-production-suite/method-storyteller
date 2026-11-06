@@ -9,6 +9,9 @@ use storyteller_engine::files::FileProblem;
 pub const NO_SCENES_TITLE: &str = "No scenes yet";
 pub const NO_SCENES_BODY: &str = "Start a line with INT. or EXT. and it appears here as a scene.";
 
+/// Bold, Italic, Underline, Mark Revised or Clear Revised with a selection across paragraphs.
+pub const WITHIN_ONE_PARAGRAPH: &str = "Select within one paragraph to use this.";
+
 /// The first line of an empty script, where the page would otherwise show only "Scene Heading".
 pub const EMPTY_SCRIPT_HINT: &str = "Scene Heading: start with INT. or EXT.";
 

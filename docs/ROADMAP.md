@@ -124,7 +124,8 @@ says otherwise.
 - **Navigation and editing (M4).** In a real script: the scene lengths in
   the navigator against what you expect; ⌘⌥G to a scene number and a page; ⌘F, Enter and ⇧Enter,
   Replace, Replace All and one ⌘Z; Production > Rename Character with and without "Also in
-  action, dialogue and other text".
+  action, dialogue and other text"; a selection across paragraphs by dragging, Shift-click and
+  Shift-arrows, then copy, cut, paste over it and one ⌘Z.
 - **Lossless `.fdx` (the final check).** Open `crates/core/tests/fixtures/lossless-check.fdx`
   in your licensed copy and go down the ten-step click list in
   [research/fdx-osf-fidelity.md](research/fdx-osf-fidelity.md#the-owners-final-check): notes,
@@ -243,10 +244,9 @@ wait for a decision above.
    into the scene's action, Go To (page, scene), find and replace, rename a character, spell
    check, script notes in all three `.fdx` generations and OSF, Copy Scene and pasting
    screenplay text as elements (decision 9, first half), scene titles, summaries and colours,
-   the character table. Next, in order: a selection across paragraphs, so any range copies and
-   cuts with its element types (decision 9, second half), drag to reorder scenes in the
-   navigator (one Undo), bookmarks for Go To, show
-   and hide outline paragraphs.
+   the character table, a selection across paragraphs that copies and cuts with its element
+   types (decision 9, second half). Next, in order: drag to reorder scenes in the navigator
+   (one Undo), bookmarks for Go To, show and hide outline paragraphs.
 8. **Lossless `.fdx`** [have, the owner's check to come] M (owner, 2026-10-18). Everything `.fdx` and Open Screenplay
    Format can both hold converts exactly both ways (OSF to `.fdx`, `.fdx` to OSF, `.fdx` to
    `.fdx`), proven by round-trip tests on files we write ourselves. Today an imported `.fdx`

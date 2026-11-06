@@ -568,6 +568,116 @@ fn pasting_screenplay_text_makes_elements() {
     assert_eq!(s.script.elements[0].text, "Title: the sign says");
 }
 
+fn range(from: (usize, usize), to: (usize, usize)) -> Value {
+    json!({ "from_index": from.0, "from_offset": from.1, "to_index": to.0, "to_offset": to.1 })
+}
+
+fn texts(session: &Session) -> Vec<&str> {
+    session.script.elements.iter().map(|e| e.text.as_str()).collect()
+}
+
+const RANGE_SCRIPT: &str = "INT. HUT - DAY\n\nShe waits.\n\nNORA\nIt held.\n\nRain falls.\n";
+
+#[test]
+fn a_range_copies_its_elements_with_their_types() {
+    let registry = Registry::new();
+    let mut s = Session::new(storyteller_core::fountain::parse(RANGE_SCRIPT).unwrap());
+    let before = s.edits();
+    // The end of the heading to the start of the dialogue, selected backwards.
+    let copied = run(&registry, &mut s, "edit.copy_range", range((3, 2), (0, "INT. ".len())));
+    assert_eq!(s.edits(), before, "copying edits nothing");
+    let text = copied["value"]["text"].as_str().unwrap().to_string();
+    // Heading text cut short still says it is a heading, in Fountain, for any other app.
+    assert!(text.starts_with(".HUT - DAY"), "{text}");
+    assert!(text.contains("She waits.") && text.contains("NORA\nIt"), "{text}");
+    assert!(!text.contains("held"), "{text}");
+
+    // Pasted here, the same types, on a line of its own.
+    let at = s.script.elements.len() - 1;
+    run(&registry, &mut s, "edit.paste_screenplay", json!({ "index": at, "start": 0, "end": 0, "text": text }));
+    assert_eq!(kinds(&s)[at..], [K::SceneHeading, K::Action, K::Character, K::Dialogue, K::Action]);
+    assert_eq!(s.script.elements[at + 3].text, "It");
+    assert_eq!(s.script.elements[at + 4].text, "Rain falls.", "the line it went in front of");
+
+    // Dialogue alone: Fountain cannot say it, but the copy pasted back here still can.
+    let mut s = Session::new(storyteller_core::fountain::parse("NORA\nOne.\n\nBEN\nTwo.\n").unwrap());
+    let copied = run(&registry, &mut s, "edit.copy_range", range((1, 0), (2, 3)));
+    let text = copied["value"]["text"].as_str().unwrap().to_string();
+    assert!(s.pastes_as_elements(&text));
+    run(&registry, &mut s, "element.insert", json!({ "index": 3, "kind": "action" }));
+    run(&registry, &mut s, "edit.paste_screenplay", json!({ "index": 4, "start": 0, "end": 0, "text": text }));
+    assert_eq!(kinds(&s)[4..], [K::Dialogue, K::Character]);
+    // A nothing at the range's end is left out.
+    let mut s = Session::new(storyteller_core::fountain::parse(RANGE_SCRIPT).unwrap());
+    let copied = run(&registry, &mut s, "edit.copy_range", range((1, 0), (2, 0)));
+    assert!(!copied["value"]["text"].as_str().unwrap().contains("NORA"), "{copied}");
+}
+
+#[test]
+fn replacing_a_range_joins_its_ends_in_one_undo() {
+    let registry = Registry::new();
+    let mut s = Session::new(storyteller_core::fountain::parse(RANGE_SCRIPT).unwrap());
+    let plain = range((1, "She ".len()), (3, "It ".len()));
+    run(&registry, &mut s, "edit.replace_range", plain);
+    assert_eq!(texts(&s), ["INT. HUT - DAY", "She held.", "Rain falls."]);
+    assert_eq!(s.script.elements[1].kind, K::Action, "the first paragraph's type");
+    assert_eq!((s.caret.element, s.caret.offset), (1, "She ".len()));
+    run(&registry, &mut s, "edit.undo", json!({}));
+    assert_eq!(texts(&s), ["INT. HUT - DAY", "She waits.", "NORA", "It held.", "Rain falls."], "one Undo");
+
+    // Text takes its place, in the first paragraph's capitals.
+    let mut params = range((0, "INT. ".len()), (1, "She ".len()));
+    params["text"] = json!("ridge ");
+    run(&registry, &mut s, "edit.replace_range", params);
+    assert_eq!(texts(&s)[0], "INT. RIDGE WAITS.");
+    assert_eq!(s.caret.offset, "INT. RIDGE ".len());
+    run(&registry, &mut s, "edit.undo", json!({}));
+
+    // Screenplay text becomes elements, inside the same one Undo.
+    let mut params = range((1, "She ".len()), (3, "It ".len()));
+    params["text"] = json!("EXT. RIDGE - DAWN\n\nWind.");
+    run(&registry, &mut s, "edit.replace_range", params);
+    assert_eq!(texts(&s), ["INT. HUT - DAY", "She", "EXT. RIDGE - DAWN", "Wind.", "held.", "Rain falls."]);
+    run(&registry, &mut s, "edit.undo", json!({}));
+    assert_eq!(s.script.elements.len(), 5, "one Undo for the paste too");
+
+    // The whole script leaves one empty paragraph.
+    let last = s.script.elements.len() - 1;
+    let end = s.script.elements[last].text.len();
+    run(&registry, &mut s, "edit.replace_range", range((0, 0), (last, end)));
+    assert_eq!(texts(&s), [""]);
+    assert_eq!(s.script.elements[0].kind, K::SceneHeading);
+
+    // A range past the script is refused.
+    let mut s = Session::new(storyteller_core::fountain::parse(RANGE_SCRIPT).unwrap());
+    assert!(registry.run("edit.replace_range", &mut s, range((1, 0), (99, 0)).as_object().unwrap()).is_err());
+    assert!(registry.run("edit.copy_range", &mut s, json!({ "from_index": 1 }).as_object().unwrap()).is_err());
+    assert_eq!(s.script.elements.len(), 5);
+}
+
+#[test]
+fn in_revision_mode_a_replaced_range_is_marked() {
+    let registry = Registry::new();
+    let mut s = Session::new(storyteller_core::fountain::parse(RANGE_SCRIPT).unwrap());
+    let set = run(&registry, &mut s, "revisions.add", json!({ "date": "10/21/26" }))["value"]["id"].as_u64().unwrap();
+    run(&registry, &mut s, "revisions.set_active", json!({ "id": set }));
+    run(&registry, &mut s, "revisions.mode", json!({ "on": true }));
+    run(&registry, &mut s, "edit.replace_range", range((1, "She ".len()), (3, "It ".len())));
+    let joined = &s.script.elements[1];
+    assert_eq!(joined.text, "She held.");
+    assert_eq!(joined.deletions.iter().map(|d| d.at).collect::<Vec<_>>(), ["She ".len() as u32], "a mark where the text went");
+
+    // What came with the last paragraph keeps its own place.
+    let mut s = Session::new(storyteller_core::fountain::parse(RANGE_SCRIPT).unwrap());
+    let set = run(&registry, &mut s, "revisions.add", json!({ "date": "10/21/26" }))["value"]["id"].as_u64().unwrap();
+    run(&registry, &mut s, "revisions.set_active", json!({ "id": set }));
+    run(&registry, &mut s, "revisions.mark", json!({ "index": 3, "start": 3, "end": 7 }));
+    assert_eq!(s.script.elements[3].revised.len(), 1, "{:?}", s.script.elements[3].revised);
+    run(&registry, &mut s, "edit.replace_range", range((1, "She ".len()), (3, "It ".len())));
+    let mark = &s.script.elements[1].revised[0];
+    assert_eq!((mark.from, mark.to), (4, 8), "\"held\" is still the revised text");
+}
+
 #[test]
 fn copy_scene_gives_fountain_that_pastes_back_the_same() {
     let registry = Registry::new();

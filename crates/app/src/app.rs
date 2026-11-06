@@ -775,6 +775,10 @@ impl StorytellerApp {
     /// word the caret is in; off again when all of it has the style already. The text stays
     /// selected.
     fn style_selection(&mut self, ctx: &egui::Context, style: &str) {
+        if self.editor.span.is_some() {
+            self.status = crate::messages::WITHIN_ONE_PARAGRAPH.to_string();
+            return;
+        }
         self.session.clamp_caret();
         let index = self.session.caret.element;
         let Some(text) = self.session.element(index).map(|e| e.text.clone()) else { return };
@@ -828,6 +832,10 @@ impl StorytellerApp {
     /// Production > Mark Revised and Clear Revised (`command`): the selection in the caret's
     /// paragraph, or the whole paragraph when nothing is selected.
     fn mark_selection(&mut self, ctx: &egui::Context, command: &str) {
+        if self.editor.span.is_some() {
+            self.status = crate::messages::WITHIN_ONE_PARAGRAPH.to_string();
+            return;
+        }
         self.session.clamp_caret();
         let index = self.session.caret.element;
         let Some(text) = self.session.element(index).map(|e| e.text.clone()) else { return };
@@ -847,9 +855,12 @@ impl StorytellerApp {
         ctx.request_repaint();
     }
 
-    /// Edit > Select All: the whole of the paragraph the caret is in, as ⌘A selects it.
+    /// Edit > Select All: the whole script, as ⌘A selects it.
     fn select_all(&mut self, ctx: &egui::Context) {
         let id = self.focus_caret_field(ctx);
+        if self.editor.select_whole_script(&self.session) {
+            return;
+        }
         let Some(text) = self.session.element(self.session.caret.element).map(|e| e.text.clone()) else { return };
         let mut state = egui::text_edit::TextEditState::load(ctx, id).unwrap_or_default();
         let range = egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(text.chars().count()));
@@ -1057,7 +1068,7 @@ impl StorytellerApp {
         }
     }
 
-    fn apply(&mut self, actions: Vec<EditAction>) {
+    fn apply(&mut self, ctx: &egui::Context, actions: Vec<EditAction>) {
         for action in actions {
             match action {
                 EditAction::SetText { index, mut text, mut caret } => {
@@ -1111,6 +1122,21 @@ impl StorytellerApp {
                         }
                         Err(error) => self.error = Some(error.to_string()),
                     }
+                    self.refocus();
+                }
+                EditAction::CopyRange { from, to } => match self.registry.run("edit.copy_range", &mut self.session, &range_params(from, to)) {
+                    Ok(outcome) => {
+                        if let Some(text) = outcome.value.get("text").and_then(Value::as_str) {
+                            ctx.copy_text(text.to_string());
+                        }
+                        self.error = None;
+                    }
+                    Err(error) => self.error = Some(error.to_string()),
+                },
+                EditAction::ReplaceRange { from, to, text } => {
+                    let mut request = range_params(from, to);
+                    request.insert("text".into(), json!(text));
+                    self.run("edit.replace_range", request);
                     self.refocus();
                 }
                 EditAction::Pick { index, kind } => {
@@ -2751,7 +2777,7 @@ impl StorytellerApp {
             .frame(egui::Frame::new().fill(ui.visuals().extreme_bg_color))
             .show(ui, |ui| editor::show(ui, &mut self.session, &mut self.editor, &mut self.automation, zoom, pages))
             .inner;
-        self.apply(actions);
+        self.apply(ui.ctx(), actions);
         self.title_page_dialog(&ctx);
         self.go_to_dialog(&ctx);
         self.new_tv_dialog(&ctx);
@@ -2783,6 +2809,15 @@ fn sentence(text: &str) -> String {
 
 fn params(pairs: &[(&str, Value)]) -> Map<String, Value> {
     pairs.iter().map(|(k, v)| (k.to_string(), v.clone())).collect()
+}
+
+fn range_params(from: Caret, to: Caret) -> Map<String, Value> {
+    params(&[
+        ("from_index", json!(from.element)),
+        ("from_offset", json!(from.offset)),
+        ("to_index", json!(to.element)),
+        ("to_offset", json!(to.offset)),
+    ])
 }
 
 fn encode_png(image: &egui::ColorImage) -> Result<Vec<u8>, String> {
