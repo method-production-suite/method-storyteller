@@ -312,6 +312,8 @@ pub struct StorytellerApp {
     sample: bool,
     /// Input for the next frame: Edit > Cut and Copy, after the text field has its focus back.
     next_frame_input: Vec<Event>,
+    /// The scene (its heading) being dragged in the navigator.
+    dragging_scene: Option<usize>,
     /// A caret to give the keyboard to on the next frame (after a click outside the editor).
     focus_next_frame: Option<(usize, usize)>,
     /// Drawn for the offscreen pictures: the window as a Mac shows it, menus in the menu bar.
@@ -439,6 +441,7 @@ impl StorytellerApp {
             update_line: None,
             sample: false,
             next_frame_input: Vec::new(),
+            dragging_scene: None,
             focus_next_frame: None,
             #[cfg(test)]
             pictures: false,
@@ -1626,6 +1629,10 @@ impl StorytellerApp {
             .collect();
         let mut next_act = 0;
         let mut act_clicked = None;
+        // The rows as drawn, for a scene being dragged to find where it would land.
+        let mut rows: Vec<NavRow> = Vec::with_capacity(scenes.len() + acts.len());
+        let mut drag_from = self.dragging_scene;
+        let mut dropped = None;
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             // A new script's one empty heading is not a scene yet.
             let blank = matches!(self.session.script.elements.as_slice(), [only] if only.text.trim().is_empty());
@@ -1653,16 +1660,18 @@ impl StorytellerApp {
                     strong,
                 );
                 automation.add(format!("navigator.act.{k}"), "listitem", name.to_string(), &response);
-                response.clicked()
+                (response.clicked(), rect)
             };
             for (n, scene) in scenes.iter().enumerate().filter(|_| !blank) {
                 while let Some((at, name)) = acts.get(next_act) {
                     if *at > scene.element {
                         break;
                     }
-                    if act_row(ui, &mut self.automation, next_act, name) {
+                    let (clicked, rect) = act_row(ui, &mut self.automation, next_act, name);
+                    if clicked {
                         act_clicked = Some(*at);
                     }
+                    rows.push(NavRow { rect, element: *at, act: true });
                     next_act += 1;
                 }
                 let number = scene.number.as_deref().unwrap_or("");
@@ -1673,7 +1682,11 @@ impl StorytellerApp {
                 // An omitted scene's row is muted: it is there, but not shot.
                 let omitted = self.session.script.elements.get(scene.element).is_some_and(storyteller_core::Element::is_omitted);
                 let text = if omitted { weak } else { text };
-                let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), theme::NAV_ROW_HEIGHT), egui::Sense::click());
+                let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), theme::NAV_ROW_HEIGHT), egui::Sense::click_and_drag());
+                rows.push(NavRow { rect, element: scene.element, act: false });
+                if response.drag_started() {
+                    drag_from = Some(scene.element);
+                }
                 let selected = n + 1 == current;
                 if selected || response.hovered() {
                     ui.painter().rect_filled(rect, 5.0, if selected { selected_fill } else { hover_fill });
@@ -1730,11 +1743,53 @@ impl StorytellerApp {
                 }
             }
             for (k, (at, name)) in acts.iter().enumerate().skip(next_act) {
-                if act_row(ui, &mut self.automation, k, name) {
+                let (clicked, rect) = act_row(ui, &mut self.automation, k, name);
+                if clicked {
                     act_clicked = Some(*at);
+                }
+                rows.push(NavRow { rect, element: *at, act: true });
+            }
+            if let Some(from) = drag_from {
+                let (pointer, released) = ui.input(|i| (i.pointer.interact_pos(), i.pointer.primary_released() || !i.pointer.primary_down()));
+                if let Some(pointer) = pointer {
+                    let (to, y) = drop_place(&self.session.script, &rows, pointer.y);
+                    let (left, right) = (ui.min_rect().left(), ui.min_rect().right());
+                    let stroke = egui::Stroke::new(2.0, ui.visuals().selection.stroke.color);
+                    ui.painter().hline(left..=right, y, stroke);
+                    let clip = ui.clip_rect();
+                    let delta = if pointer.y < clip.top() + 24.0 {
+                        6.0
+                    } else if pointer.y > clip.bottom() - 24.0 {
+                        -6.0
+                    } else {
+                        0.0
+                    };
+                    if delta != 0.0 {
+                        ui.scroll_with_delta(egui::vec2(0.0, delta));
+                    }
+                    if released {
+                        dropped = Some((from, to));
+                    }
+                }
+                if released {
+                    drag_from = None;
                 }
             }
         });
+        self.dragging_scene = drag_from;
+        if let Some((from, to)) = dropped {
+            let moved = self.registry.run("scene.move", &mut self.session, &params(&[("index", json!(from)), ("to", json!(to))]));
+            match moved {
+                Ok(outcome) => {
+                    if outcome.value.get("moved").and_then(Value::as_bool) == Some(true) {
+                        self.status = "Moved the scene".to_string();
+                        self.focus_next_frame = Some((self.session.caret.element, 0));
+                    }
+                    self.error = None;
+                }
+                Err(error) => self.error = Some(error.to_string()),
+            }
+        }
         if let Some(act) = act_clicked {
             // Into the act's first scene, as a scene click does; with no scene, onto the act line.
             let script = &self.session.script;
@@ -2809,6 +2864,39 @@ fn sentence(text: &str) -> String {
 
 fn params(pairs: &[(&str, Value)]) -> Map<String, Value> {
     pairs.iter().map(|(k, v)| (k.to_string(), v.clone())).collect()
+}
+
+/// A row of the scene navigator: a scene's or an act's, and its element.
+struct NavRow {
+    rect: egui::Rect,
+    element: usize,
+    act: bool,
+}
+
+/// Where a scene dropped at height `y` among `rows` would go: the element it would start before,
+/// and the height to draw the line at. Above an act's row is the end of the act before it; below
+/// it, the act's first place.
+fn drop_place(script: &storyteller_core::Script, rows: &[NavRow], y: f32) -> (usize, f32) {
+    let end_of = |row: &NavRow| storyteller_engine::commands::scene_body(script, row.element).end;
+    for (n, row) in rows.iter().enumerate() {
+        if y < row.rect.center().y {
+            let to = match (row.act, n.checked_sub(1).and_then(|p| rows.get(p))) {
+                (false, _) => row.element,
+                // The scene above ends this act: after it, ahead of its closing line.
+                (true, Some(above)) if !above.act => end_of(above),
+                (true, _) => row.element,
+            };
+            return (to, row.rect.top());
+        }
+        if row.act && rows.get(n + 1).is_none_or(|next| y < next.rect.center().y) {
+            return (row.element + 1, row.rect.bottom());
+        }
+    }
+    match rows.last() {
+        Some(last) if !last.act => (end_of(last), last.rect.bottom()),
+        Some(last) => (last.element + 1, last.rect.bottom()),
+        None => (script.elements.len(), y),
+    }
 }
 
 fn range_params(from: Caret, to: Caret) -> Map<String, Value> {

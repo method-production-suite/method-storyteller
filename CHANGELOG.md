@@ -7,6 +7,9 @@ for its own version in Help > What's New, once after an update.
 
 ### New
 
+- Drag a scene in the navigator to move it, with everything in it, as one Undo. It can go to
+  another place in its act or into another act; the act lines stay where they are. In revision
+  mode the moved scene reads as revised.
 - A selection can now cross paragraphs. Drag from one paragraph into another, Shift-click in
   another, or hold Shift and use the arrows past a paragraph's edge. Cut and Copy take all of it
   and pasting it back here keeps every element's type; typing, Paste, Backspace and Delete

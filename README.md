@@ -105,6 +105,7 @@ stderr) and will be removed in a future release.
 | ⌘⌥G (Ctrl+Shift+G on Windows and Linux) | Go to a scene (by its number), a page or an act |
 | ⌘F, then Enter / Shift-Enter (⌘G / ⇧⌘G; F3 / Shift+F3 on Windows and Linux) | Find, next and previous; the find bar also replaces one match or all (one Undo) |
 | Drag across paragraphs, Shift-click, or Shift and the arrows | Select across paragraphs; Cut and Copy keep each element's type when pasted back here, and typing replaces the selection. ⌘A selects the whole script |
+| Drag a scene in the navigator | Move it, with everything in it, as one Undo |
 | Edit > Copy Scene | The scene as screenplay text; paste it back here as the same elements, or into any other app. Pasting several paragraphs of screenplay text makes elements |
 | ⌘W | Close the script (File > Close); an empty one takes its place. File > Open Recent brings it back |
 | ⌘B, ⌘I, ⌘U | Bold, italic or underline the selection, or the word the caret is in; again to take it off |

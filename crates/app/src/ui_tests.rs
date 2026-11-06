@@ -616,6 +616,36 @@ fn the_find_bar_keeps_what_is_typed_there() {
 }
 
 #[test]
+fn dragging_a_scene_in_the_navigator_moves_it() {
+    let (mut harness, _file) = harness("INT. A - DAY\n\nOne.\n\nEXT. B - DAY\n\nTwo.\n\nINT. C - DAY\n\nThree.\n");
+    let row =
+        |harness: &Harness<'static, StorytellerApp>, n: usize| harness.state().automation.find(&format!("navigator.scene.{n}")).expect("a row").rect;
+    let (c, a) = (row(&harness, 2), row(&harness, 0));
+    let (from, to) = (c.center(), egui::pos2(a.center().x, a.top() + 1.0));
+    pointer(&mut harness, from, None, egui::Modifiers::NONE);
+    pointer(&mut harness, from, Some(true), egui::Modifiers::NONE);
+    pointer(&mut harness, from + egui::vec2(0.0, -8.0), None, egui::Modifiers::NONE);
+    pointer(&mut harness, to, None, egui::Modifiers::NONE);
+    assert_eq!(harness.state().session.script.elements[0].text, "INT. A - DAY", "nothing moves until it is dropped");
+    pointer(&mut harness, to, Some(false), egui::Modifiers::NONE);
+    harness.run_steps(2);
+    let texts: Vec<&str> = harness.state().session.script.elements.iter().map(|e| e.text.as_str()).collect();
+    assert_eq!(texts, ["INT. C - DAY", "Three.", "INT. A - DAY", "One.", "EXT. B - DAY", "Two."]);
+    assert_eq!(harness.state().status, "Moved the scene");
+    harness.state_mut().queued.push("edit.undo".into());
+    harness.run_steps(3);
+    assert_eq!(harness.state().session.script.elements[0].text, "INT. A - DAY", "one Undo");
+    // A click on a row still goes to the scene, and moves nothing.
+    let at = row(&harness, 1).center();
+    pointer(&mut harness, at, None, egui::Modifiers::NONE);
+    pointer(&mut harness, at, Some(true), egui::Modifiers::NONE);
+    pointer(&mut harness, at, Some(false), egui::Modifiers::NONE);
+    harness.run_steps(2);
+    assert_eq!(harness.state().session.script.elements[2].text, "EXT. B - DAY");
+    assert_eq!(harness.state().session.caret.element, 3, "into the scene's action");
+}
+
+#[test]
 fn copy_scene_puts_the_scene_on_the_clipboard() {
     let (mut harness, _file) = harness("INT. HUT - DAY\n\nOne.\n\nEXT. RIDGE - DAWN\n\nNORA\nIt held.\n");
     harness.state_mut().editor.pending_focus = Some((3, 0));

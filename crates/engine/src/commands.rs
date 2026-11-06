@@ -631,6 +631,58 @@ pub fn is_screenplay_paste(text: &str) -> bool {
     text.replace("\r\n", "\n").trim().split("\n\n").filter(|part| !part.trim().is_empty()).nth(1).is_some()
 }
 
+/// The elements that move with the scene headed at `heading`: up to the next heading, or to the
+/// act lines that close its act, which stay where they are.
+pub fn scene_body(script: &Script, heading: usize) -> std::ops::Range<usize> {
+    let rest = script.elements.iter().enumerate().skip(heading + 1);
+    let end = rest
+        .filter(|(_, e)| matches!(e.kind, ElementKind::SceneHeading | ElementKind::NewAct | ElementKind::EndOfAct))
+        .map(|(i, _)| i)
+        .next()
+        .unwrap_or(script.elements.len());
+    heading..end
+}
+
+/// Moves the scene headed at `heading` so it starts where element `to` is now, as one Undo step.
+/// Returns whether anything moved. In revision mode the moved paragraphs are marked whole. A
+/// locked page that started in them stays behind, on the paragraph after, so the pages around
+/// them keep their numbers.
+fn move_scene(s: &mut Session, heading: usize, to: usize) -> Result<bool, CommandError> {
+    if s.script.elements.get(heading).is_none_or(|e| e.kind != ElementKind::SceneHeading) {
+        return Err(CommandError::Invalid { name: "index", reason: "not a scene heading".into() });
+    }
+    if to > s.script.elements.len() {
+        return Err(CommandError::Invalid { name: "to", reason: format!("there are {} elements", s.script.elements.len()) });
+    }
+    let body = scene_body(&s.script, heading);
+    if body.contains(&to) || to == body.end {
+        return Ok(false);
+    }
+    s.checkpoint(EditKind::Other);
+    let mark = s.marking_set();
+    let at = if to > body.end { to - body.len() } else { to };
+    let mut moved: Vec<Element> = s.script.elements.drain(body.clone()).collect();
+    let mut starts = Vec::new();
+    for element in &mut moved {
+        for mut start in std::mem::take(&mut element.page_starts) {
+            start.at = 0;
+            starts.push(start);
+        }
+        element.mark_whole(mark);
+    }
+    if let Some(next) = s.script.elements.get_mut(body.start) {
+        starts.append(&mut next.page_starts);
+        next.page_starts = starts;
+    } else if let Some(last) = s.script.elements.last_mut() {
+        last.page_starts.append(&mut starts);
+    }
+    for (n, element) in moved.into_iter().enumerate() {
+        s.script.elements.insert(at + n, element);
+    }
+    s.caret = Caret { element: at, offset: 0 };
+    Ok(true)
+}
+
 /// Pastes screenplay text at `start..end` of element `index`, read as Fountain, as one Undo
 /// step: the text before the paste stays in the element, the pasted elements follow, and the
 /// text after the paste becomes an element of its own. Returns how many elements were pasted.
@@ -1968,6 +2020,25 @@ fn all_commands() -> Vec<Command> {
                 let index = element_index(s, p)?;
                 let merged = merge_previous(s, index)?;
                 Ok(Outcome::value(json!({ "merged": merged })))
+            },
+        },
+        Command {
+            id: "scene.move",
+            label: "Move Scene",
+            menu: "",
+            shortcut: None,
+            params: const {
+                &[
+                    param("index", Integer, true, "The scene's heading"),
+                    param("to", Integer, true, "The element it should start before (one past the last: the end of the script)"),
+                ]
+            },
+            enabled: always,
+            run: |s, p| {
+                let heading = opt_index(p, "index")?.ok_or(CommandError::Invalid { name: "index", reason: "required".into() })?;
+                let to = opt_index(p, "to")?.ok_or(CommandError::Invalid { name: "to", reason: "required".into() })?;
+                let moved = move_scene(s, heading, to)?;
+                Ok(Outcome::value(json!({ "moved": moved })))
             },
         },
         Command {
