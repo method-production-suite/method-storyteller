@@ -13,6 +13,12 @@ for its own version in Help > What's New, once after an update.
 
 ### New
 
+- Autocomplete lists are kept in the script: Production > Autocomplete Lists… shows characters,
+  extensions, scene intros, locations, times and transitions. Add or remove entries, or rebuild
+  them from the script. Saving after edits learns what the script now uses, and `.fdx` lists come
+  in and go back out.
+- Production > Tab After a Name Opens Extensions: with it on, Tab after a name in a character cue
+  offers V.O., O.S. and the rest, in place of starting a parenthetical.
 - File > Open reads `.highland` files. One opens as a new, unsaved script: Save asks where to
   keep it, in a format of ours.
 - View > Show Outline shows or hides sections and synopses on screen. They stay in the script,

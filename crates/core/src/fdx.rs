@@ -243,6 +243,69 @@ pub(crate) fn set_tag_attr(tag: &str, name: &str, value: &str) -> String {
 /// Our child of an omitted scene's heading: the scene it replaced, as Fountain. Final Draft
 /// keeps an omitted scene's content in a way no saved file has shown yet; this keeps ours.
 const OMITTED_CHILD: &str = "StorytellerOmitted";
+/// The `.fdx` name of each autocomplete list, and of an entry in it.
+const SMART_TYPE: [(&str, &str, &str); 6] = [
+    ("characters", "Characters", "Character"),
+    ("extensions", "Extensions", "Extension"),
+    ("intros", "SceneIntros", "SceneIntro"),
+    ("locations", "Locations", "Location"),
+    ("times", "TimesOfDay", "TimeOfDay"),
+    ("transitions", "Transitions", "Transition"),
+];
+
+/// The autocomplete lists a `SmartType` section holds.
+fn read_lists(xml: &str) -> crate::autocomplete::Lists {
+    let mut lists = crate::autocomplete::Lists::default();
+    for (name, section, _) in SMART_TYPE {
+        if let Some(list) = lists.list_mut(name) {
+            *list = ignored_words(xml, &loose(section));
+        }
+    }
+    let separator = |section: &str| -> Option<String> {
+        let mut reader = quick_xml::Reader::from_str(xml);
+        while let Ok(event) = reader.read_event() {
+            match event {
+                Event::Start(start) | Event::Empty(start) if loose(start.local_name().as_ref()) == loose(section) => {
+                    return attr(&start, "Separator");
+                }
+                Event::Eof => return None,
+                _ => {}
+            }
+        }
+        None
+    };
+    lists.intro_separator = separator("SceneIntros");
+    lists.time_separator = separator("TimesOfDay");
+    lists
+}
+
+/// A `SmartType` section for `lists`.
+fn lists_xml(lists: &crate::autocomplete::Lists) -> String {
+    let mut out = String::from("<SmartType>\n");
+    for (name, section, entry) in SMART_TYPE {
+        out.push_str(&format!("    <{section}"));
+        let separator = match section {
+            "SceneIntros" => lists.intro_separator.as_deref().or(Some(". ")),
+            "TimesOfDay" => lists.time_separator.as_deref().or(Some(" - ")),
+            _ => None,
+        };
+        if let Some(separator) = separator {
+            out.push_str(" Separator=\"");
+            escape(separator, &mut out);
+            out.push('"');
+        }
+        out.push_str(">\n");
+        for text in lists.list(name).into_iter().flatten() {
+            out.push_str(&format!("      <{entry}>"));
+            escape(text, &mut out);
+            out.push_str(&format!("</{entry}>\n"));
+        }
+        out.push_str(&format!("    </{section}>\n"));
+    }
+    out.push_str("  </SmartType>");
+    out
+}
+
 /// Our child of a paragraph with a bookmark: its name.
 const BOOKMARK_CHILD: &str = "StorytellerBookmark";
 
@@ -530,6 +593,7 @@ pub fn write_with_layout(script: &Script, layout: &Layout) -> String {
     let mut title_written = false;
     let format_same = script.fdx.as_ref().and_then(|d| d.format.as_ref()) == Some(&script.format);
     let mut ignored_written = false;
+    let mut lists_written = false;
     let (mut elements_written, mut layout_written, mut mores_written, mut numbers_written) = (false, false, false, false);
     for section in sections {
         match section {
@@ -577,6 +641,16 @@ pub fn write_with_layout(script: &Script, layout: &Layout) -> String {
                     write_revisions(&script.revisions, &mut out);
                 }
                 revisions_written = true;
+            }
+            FdxSection::Raw(xml) if section_is(xml, "SmartType") => {
+                out.push_str("  ");
+                if script.fdx.as_ref().is_some_and(|d| d.lists == script.lists) {
+                    out.push_str(xml);
+                } else {
+                    out.push_str(&lists_xml(&script.lists));
+                }
+                out.push('\n');
+                lists_written = true;
             }
             FdxSection::Raw(xml) if section_is(xml, "SpellCheckIgnoreLists") && !ignored_written => {
                 if script.fdx.as_ref().is_some_and(|d| d.spelling_ignored == script.spelling_ignored) {
@@ -659,6 +733,9 @@ pub fn write_with_layout(script: &Script, layout: &Layout) -> String {
                 out.push_str(&format!("  {}\n", crate::format::fdx_scene_numbers(page)));
             }
         }
+    }
+    if !lists_written && !script.lists.is_empty() {
+        out.push_str(&format!("  {}\n", lists_xml(&script.lists)));
     }
     if !ignored_written && !script.spelling_ignored.is_empty() {
         out.push_str(&format!("  <SpellCheckIgnoreLists><IgnoredRanges/>{}</SpellCheckIgnoreLists>\n", ignored_words_xml(&script.spelling_ignored)));
@@ -1253,12 +1330,23 @@ impl Importer {
             })
             .unwrap_or_default();
         self.document.spelling_ignored = spelling_ignored.clone();
+        let lists = self
+            .document
+            .sections
+            .iter()
+            .find_map(|s| match s {
+                FdxSection::Raw(xml) if section_is(xml, "SmartType") => Some(read_lists(xml)),
+                _ => None,
+            })
+            .unwrap_or_default();
+        self.document.lists = lists.clone();
         let format = crate::format::from_fdx(self.document.sections.iter().filter_map(|s| match s {
             FdxSection::Raw(xml) => Some(xml.as_str()),
             FdxSection::TitlePage { .. } => None,
         }));
         self.document.format = Some(format.clone());
         Ok(Script {
+            lists,
             title_page,
             elements: self.elements,
             revisions: revisions.unwrap_or_default(),

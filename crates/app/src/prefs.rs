@@ -25,6 +25,9 @@ pub struct Prefs {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct General {
+    /// Tab after a name in a character cue opens the extension list (decision 3).
+    #[serde(default)]
+    pub tab_opens_extensions: bool,
     /// The recent scripts as versions up to 0.6 kept them: read once, to start `recent.json`
     /// (crate::recent), and no longer written.
     #[serde(skip_serializing)]
@@ -55,6 +58,7 @@ pub struct General {
 impl Default for General {
     fn default() -> Self {
         General {
+            tab_opens_extensions: false,
             recent: Vec::new(),
             new_script_format: "mstory".into(),
             smart_quotes: true,

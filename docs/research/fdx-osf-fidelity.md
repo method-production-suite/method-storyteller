@@ -58,7 +58,8 @@ named factually here; how other apps behave is not described.
 | `.fdx` shortcuts, outline levels, hidden text, scene CONTINUEDs, header margins | cannot map | OSF has no place: they ride along in `fdx_xml`, `fdx_page_layout`, `fdx_mores` and come back to `.fdx` |
 | Ranges spell check ignores | cannot map | `.fdx` `IgnoredRanges` are character spans OSF has no place for; kept in `.fdx` |
 | Run fonts, colours and highlights | cannot map | not kept yet in either format |
-| Beat Board, cast, tags, SmartType lists, header and footer, scene number options, spelling lists | cannot map | kept in the format they came in; not converted (OSF lists and spelling likewise) |
+| Autocomplete lists and bookmarks | approximated | both ways through our own data: `.fdx` `SmartType` and a `StorytellerBookmark` child, OSF `method_storyteller_lists` and `method_storyteller_bookmark`; other OSF apps do not read them |
+| Beat Board, cast, tags, header and footer, scene number options, spelling lists | cannot map | kept in the format they came in; not converted (OSF lists and spelling likewise) |
 | Scene page and length | cannot map | `.fdx` caches them and OSF does not; written from our pagination on every `.fdx` save |
 <!-- table:end -->
 

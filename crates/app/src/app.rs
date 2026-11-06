@@ -39,7 +39,7 @@ const GO_TO_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Alt+G" } else { "Cmd
 const FIND_NEXT_KEY: &str = if cfg!(target_os = "macos") { "Cmd+G" } else { "F3" };
 const FIND_PREVIOUS_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Shift+G" } else { "Shift+F3" };
 
-const APP_COMMANDS: [AppCommand; 48] = [
+const APP_COMMANDS: [AppCommand; 50] = [
     AppCommand { id: "app.close", label: "Close", menu: "File/Close", shortcut: Some("Cmd+W") },
     AppCommand { id: "app.title_page", label: "Title Page…", menu: "File/Title Page…", shortcut: Some("Cmd+Shift+T") },
     AppCommand {
@@ -71,6 +71,13 @@ const APP_COMMANDS: [AppCommand; 48] = [
     AppCommand { id: "app.find_previous", label: "Find Previous", menu: "Edit/Find Previous", shortcut: Some(FIND_PREVIOUS_KEY) },
     AppCommand { id: "app.rename_character", label: "Rename Character…", menu: "Production/Rename Character…", shortcut: None },
     AppCommand { id: "app.characters", label: "Characters", menu: "Production/Characters", shortcut: None },
+    AppCommand { id: "app.lists", label: "Autocomplete Lists…", menu: "Production/Autocomplete Lists…", shortcut: None },
+    AppCommand {
+        id: "prefs.tab_extensions",
+        label: "Tab After a Name Opens Extensions",
+        menu: "Production/Tab After a Name Opens Extensions",
+        shortcut: None,
+    },
     AppCommand { id: "app.reports", label: "Reports…", menu: "Production/Reports…", shortcut: None },
     AppCommand { id: "app.edit_scene_number", label: "Edit Scene Number…", menu: "Production/Edit Scene Number…", shortcut: None },
     AppCommand { id: "app.revisions", label: "Revisions…", menu: "Production/Revisions…", shortcut: None },
@@ -236,6 +243,13 @@ enum GoToMode {
     Bookmark,
 }
 
+/// Production > Autocomplete Lists…: the list shown and the entry being typed.
+#[derive(Default)]
+struct ListsDraft {
+    tab: usize,
+    entry: String,
+}
+
 /// Edit > Add Bookmark…: the name being typed.
 struct BookmarkDraft {
     name: String,
@@ -278,6 +292,7 @@ pub struct StorytellerApp {
     title_dialog: Option<TitleDraft>,
     go_to: Option<GoToDraft>,
     bookmark: Option<BookmarkDraft>,
+    lists: Option<ListsDraft>,
     /// File > New TV Script: the shape chosen so far.
     new_tv: Option<storyteller_core::model::TvShape>,
     rename: Option<RenameDraft>,
@@ -411,6 +426,7 @@ impl StorytellerApp {
             title_dialog: None,
             go_to: None,
             bookmark: None,
+            lists: None,
             new_tv: None,
             rename: None,
             scene_dialog: None,
@@ -674,6 +690,11 @@ impl StorytellerApp {
             // File > Close: the script closes and an empty one takes its place (decision 15).
             "app.close" => self.guard_unsaved(ctx, Pending::New),
             "app.characters" => self.characters = !self.characters,
+            "app.lists" => self.lists = Some(ListsDraft::default()),
+            "prefs.tab_extensions" => {
+                self.prefs.update(|p| p.general.tab_opens_extensions = !p.general.tab_opens_extensions);
+                self.session.tab_opens_extensions = self.prefs.get().general.tab_opens_extensions;
+            }
             "app.reports" => self.reports = Some(self.reports.unwrap_or("scenes")),
             "app.revisions" => self.revisions = Some(RevisionsDraft::default()),
             "app.mark_revised" => self.mark_selection(ctx, "revisions.mark"),
@@ -944,6 +965,7 @@ impl StorytellerApp {
         self.session.show_revisions = view.revisions;
         self.session.page_colours = view.page_colours;
         self.session.show_outline = view.outline;
+        self.session.tab_opens_extensions = self.prefs.get().general.tab_opens_extensions;
     }
 
     fn after_open(&mut self) {
@@ -1385,6 +1407,7 @@ impl StorytellerApp {
             "prefs.new_osf" => Some(self.preferred_extension() == "osf"),
             "prefs.smart_quotes" => Some(self.prefs.get().general.smart_quotes),
             "app.characters" => Some(self.characters),
+            "prefs.tab_extensions" => Some(self.prefs.get().general.tab_opens_extensions),
             "revisions.mode" => Some(self.session.script.revisions.mode),
             "prefs.spelling_us" => Some(self.prefs.get().general.spelling_language != "en_GB"),
             "prefs.spelling_uk" => Some(self.prefs.get().general.spelling_language == "en_GB"),
@@ -2802,6 +2825,73 @@ impl StorytellerApp {
         }
     }
 
+    fn lists_window(&mut self, ctx: &egui::Context) {
+        let Some(draft) = &mut self.lists else { return };
+        const TABS: [(&str, &str); 6] = [
+            ("characters", "Characters"),
+            ("extensions", "Extensions"),
+            ("intros", "Scene Intros"),
+            ("locations", "Locations"),
+            ("times", "Times"),
+            ("transitions", "Transitions"),
+        ];
+        let mut open = true;
+        let mut request = None;
+        egui::Window::new("Autocomplete Lists").open(&mut open).collapsible(false).default_width(420.0).show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                for (n, (id, label)) in TABS.iter().enumerate() {
+                    let tab = ui.selectable_value(&mut draft.tab, n, *label);
+                    self.automation.add(format!("dialog.lists.{id}"), "radio", *label, &tab);
+                }
+            });
+            ui.add_space(theme::SPACE_1);
+            ui.label(egui::RichText::new("Autocomplete also offers everything the script uses, listed here or not.").weak());
+            ui.add_space(theme::SPACE_1);
+            let (name, _) = TABS.get(draft.tab).copied().unwrap_or(TABS[0]);
+            let entries = self.session.script.lists.list(name).cloned().unwrap_or_default();
+            egui::ScrollArea::vertical().max_height(320.0).auto_shrink([false, true]).show(ui, |ui| {
+                if entries.is_empty() {
+                    ui.label(egui::RichText::new("Nothing here yet.").weak());
+                }
+                for (n, entry) in entries.iter().enumerate() {
+                    ui.horizontal(|ui| {
+                        let remove = ui.small_button("Remove");
+                        self.automation.add(format!("dialog.lists.remove.{n}"), "button", format!("Remove {entry}"), &remove);
+                        if remove.clicked() {
+                            request = Some(("lists.remove", params(&[("list", json!(name)), ("entry", json!(entry))])));
+                        }
+                        ui.label(entry);
+                    });
+                }
+            });
+            ui.add_space(theme::SPACE_2);
+            ui.horizontal(|ui| {
+                let field = theme::field(ui, egui::TextEdit::singleline(&mut draft.entry).hint_text("New entry").desired_width(240.0));
+                self.automation.add("dialog.lists.entry", "textbox", "New entry", &field);
+                let enter = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                let add = ui.button("Add");
+                self.automation.add("dialog.lists.add", "button", "Add", &add);
+                if (add.clicked() || enter) && !draft.entry.trim().is_empty() {
+                    request = Some(("lists.add", params(&[("list", json!(name)), ("entry", json!(draft.entry.trim()))])));
+                    draft.entry.clear();
+                    field.request_focus();
+                }
+                let rebuild = ui.button("Rebuild from Script").on_hover_text("Replace all six lists with what the script uses now");
+                self.automation.add("dialog.lists.rebuild", "button", "Rebuild from Script", &rebuild);
+                if rebuild.clicked() {
+                    request = Some(("lists.rebuild", Map::new()));
+                }
+            });
+        });
+        if let Some((id, request)) = request {
+            self.run(id, request);
+        }
+        if !open {
+            self.lists = None;
+            self.refocus();
+        }
+    }
+
     fn bookmark_dialog(&mut self, ctx: &egui::Context) {
         let Some(draft) = &mut self.bookmark else { return };
         let mut add = false;
@@ -2927,6 +3017,7 @@ impl StorytellerApp {
         self.title_page_dialog(&ctx);
         self.go_to_dialog(&ctx);
         self.bookmark_dialog(&ctx);
+        self.lists_window(&ctx);
         self.new_tv_dialog(&ctx);
         self.spelling_dialog(&ctx);
         self.rename_dialog(&ctx);

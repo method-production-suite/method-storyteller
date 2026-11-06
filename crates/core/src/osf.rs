@@ -50,6 +50,45 @@ const PAGE_MARKER: &str = "method_storyteller_page";
 const SCENE_MARKER: &str = "method_storyteller_scene";
 /// Our element for the scene an omitted heading keeps, as Fountain.
 const OMITTED_MARKER: &str = "method_storyteller_omitted";
+/// Our section for the autocomplete lists. OSF has none of its own; other apps ignore it.
+const LISTS_SECTION: &str = "method_storyteller_lists";
+/// The autocomplete lists in our section.
+fn read_lists(raw: &str) -> crate::autocomplete::Lists {
+    let mut lists = crate::autocomplete::Lists::default();
+    for name in crate::autocomplete::LIST_NAMES {
+        if let Some(list) = lists.list_mut(name) {
+            *list = crate::fdx::ignored_words(raw, name);
+        }
+    }
+    let attributes = tags(raw).into_iter().next().map(|(_, a)| a).unwrap_or_default();
+    lists.intro_separator = get(&attributes, "intro_separator").map(str::to_string);
+    lists.time_separator = get(&attributes, "time_separator").map(str::to_string);
+    lists
+}
+
+/// Our section for `lists`.
+fn lists_xml(lists: &crate::autocomplete::Lists) -> String {
+    let mut out = format!("<{LISTS_SECTION}");
+    if let Some(separator) = &lists.intro_separator {
+        write_attr("intro_separator", separator, &mut out);
+    }
+    if let Some(separator) = &lists.time_separator {
+        write_attr("time_separator", separator, &mut out);
+    }
+    out.push_str(">\n");
+    for name in crate::autocomplete::LIST_NAMES {
+        out.push_str(&format!("    <{name}>\n"));
+        for entry in lists.list(name).into_iter().flatten() {
+            out.push_str("      <item");
+            write_attr("word", entry, &mut out);
+            out.push_str("/>\n");
+        }
+        out.push_str(&format!("    </{name}>\n"));
+    }
+    out.push_str(&format!("  </{LISTS_SECTION}>"));
+    out
+}
+
 /// Our element for a paragraph's bookmark, by name.
 const BOOKMARK_MARKER: &str = "method_storyteller_bookmark";
 /// Our element for a place revised text was deleted, which OSF's own marks may not say.
@@ -424,6 +463,7 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
     let section = |name: &str| top.iter().find(|s| s.name.eq_ignore_ascii_case(name)).map(|s| s.raw.as_str());
     let format = crate::format::from_osf(section("settings"), section("styles"))?;
     let spelling_ignored = section("spelling").map(|raw| crate::fdx::ignored_words(raw, "ignored")).unwrap_or_default();
+    let lists = section(LISTS_SECTION).map(read_lists).unwrap_or_default();
     let mut document = OsfDocument {
         version,
         sections: Vec::new(),
@@ -432,6 +472,7 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
         pages_locked,
         format: Some(format.clone()),
         spelling_ignored: spelling_ignored.clone(),
+        lists: lists.clone(),
     };
     // The page the paragraphs read so far end on, while pages are locked.
     let mut page: Option<Option<String>> = pages_locked.then_some(None);
@@ -453,7 +494,7 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
             document.sections.push(OsfSection::Raw(section.raw.clone()));
         }
     }
-    Ok(Script { title_page, elements, revisions, format, osf: Some(Box::new(document)), spelling_ignored, ..Script::default() })
+    Ok(Script { title_page, elements, revisions, format, osf: Some(Box::new(document)), spelling_ignored, lists, ..Script::default() })
 }
 
 fn read_para(
@@ -1404,6 +1445,7 @@ pub fn write(script: &Script) -> String {
             let format_same = document.format.as_ref() == Some(&script.format);
             let (mut settings_written, mut styles_written, mut spelling_written) = (false, false, false);
             let mut lists_written = false;
+            let mut autocomplete_written = false;
             for section in &document.sections {
                 match section {
                     OsfSection::Paragraphs => {
@@ -1440,6 +1482,10 @@ pub fn write(script: &Script) -> String {
                             "styles" if !format_same => {
                                 styles_written = true;
                                 rebuild_styles(raw, &script.format, spelling)
+                            }
+                            name if name == key(LISTS_SECTION) => {
+                                autocomplete_written = true;
+                                if document.lists == script.lists { raw.to_string() } else { lists_xml(&script.lists) }
                             }
                             "spelling" => {
                                 spelling_written = true;
@@ -1479,6 +1525,9 @@ pub fn write(script: &Script) -> String {
             if !spelling_written && !script.spelling_ignored.is_empty() {
                 out.push_str(&format!("  <spelling>{}</spelling>\n", ignored_xml(&script.spelling_ignored)));
             }
+            if !autocomplete_written && !script.lists.is_empty() {
+                out.push_str(&format!("  {}\n", lists_xml(&script.lists)));
+            }
         }
         None => {
             out.push_str("<document type=\"Open Screenplay Format document\" version=\"30\">\n");
@@ -1502,6 +1551,9 @@ pub fn write(script: &Script) -> String {
             }
             if !script.spelling_ignored.is_empty() {
                 out.push_str(&format!("  <spelling>{}</spelling>\n", ignored_xml(&script.spelling_ignored)));
+            }
+            if !script.lists.is_empty() {
+                out.push_str(&format!("  {}\n", lists_xml(&script.lists)));
             }
         }
     }

@@ -868,6 +868,97 @@ fn a_highland_file_imports_as_a_new_unsaved_script() {
 }
 
 #[test]
+fn autocomplete_lists_are_edited_learned_and_kept_in_the_file() {
+    let registry = Registry::new();
+    let mut s = Session::new(storyteller_core::fountain::parse(RANGE_SCRIPT).unwrap());
+    run(&registry, &mut s, "lists.add", json!({ "list": "characters", "entry": " martha " }));
+    assert_eq!(s.script.lists.characters, ["MARTHA"], "trimmed and in capitals");
+    assert_eq!(run(&registry, &mut s, "lists.add", json!({ "list": "characters", "entry": "Martha" }))["value"]["added"], false, "once");
+    assert!(registry.run("lists.add", &mut s, json!({ "list": "props", "entry": "x" }).as_object().unwrap()).is_err());
+    run(&registry, &mut s, "edit.undo", json!({}));
+    assert!(s.script.lists.characters.is_empty(), "one Undo");
+    run(&registry, &mut s, "lists.add", json!({ "list": "transitions", "entry": "Smash to:" }));
+    run(&registry, &mut s, "lists.add", json!({ "list": "times", "entry": "golden hour" }));
+    run(&registry, &mut s, "lists.add", json!({ "list": "characters", "entry": "Gone" }));
+    assert_eq!(run(&registry, &mut s, "lists.remove", json!({ "list": "characters", "entry": "gone" }))["value"]["removed"], true);
+    assert!(s.script.lists.characters.is_empty());
+
+    // Open Screenplay Format and .fdx keep them, and both round trips are stable.
+    let osf = storyteller_core::osf::parse(&storyteller_core::osf::write(&s.script)).unwrap();
+    assert_eq!(osf.lists, s.script.lists);
+    let fdx = storyteller_core::fdx::parse(&storyteller_core::fdx::write(&s.script)).unwrap();
+    assert_eq!(fdx.lists.transitions, s.script.lists.transitions);
+    assert_eq!(fdx.lists.times, s.script.lists.times);
+    assert_eq!(fdx.lists.intro_separator.as_deref(), Some(". "), "the sections .fdx expects");
+    assert_eq!(fdx.lists.time_separator.as_deref(), Some(" - "));
+    assert_eq!(
+        storyteller_core::fdx::write(&fdx),
+        storyteller_core::fdx::write(&storyteller_core::fdx::parse(&storyteller_core::fdx::write(&fdx)).unwrap())
+    );
+    assert_eq!(
+        storyteller_core::osf::write(&osf),
+        storyteller_core::osf::write(&storyteller_core::osf::parse(&storyteller_core::osf::write(&osf)).unwrap())
+    );
+
+    // Saving an edited script learns what it uses; an unedited one is written back as it came.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("a.osf");
+    run(&registry, &mut s, "file.save_as", json!({ "path": path }));
+    assert_eq!(s.script.lists.characters, ["NORA"], "learned");
+    assert_eq!(s.script.lists.locations, ["HUT"]);
+    let saved = std::fs::read_to_string(&path).unwrap();
+    assert!(saved.contains("method_storyteller_lists") && saved.contains("NORA"));
+    run(&registry, &mut s, "file.open", json!({ "path": path }));
+    assert_eq!(s.script.lists.transitions, ["SMASH TO:"]);
+    run(&registry, &mut s, "file.save", json!({}));
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), saved);
+
+    // An imported .fdx section stays byte for byte until the lists change.
+    let source = "<?xml version=\"1.0\"?>\n<FinalDraft DocumentType=\"Script\" Version=\"5\">\n  <Content>\n    <Paragraph Type=\"Action\"><Text>One.</Text></Paragraph>\n  </Content>\n  <SmartType><Characters><Character>ANA</Character></Characters><Extensions/><SceneIntros Separator=\". \"><SceneIntro>INT</SceneIntro></SceneIntros><Locations/><TimesOfDay Separator=\" - \"><TimeOfDay>DAY</TimeOfDay></TimesOfDay><Transitions/></SmartType>\n</FinalDraft>\n";
+    let script = storyteller_core::fdx::parse(source).unwrap();
+    assert_eq!(script.lists.characters, ["ANA"]);
+    assert_eq!(script.lists.intros, ["INT"]);
+    assert!(storyteller_core::fdx::write(&script).contains("<Character>ANA</Character></Characters><Extensions/>"), "as it came");
+    let mut changed = script.clone();
+    changed.lists.characters.push("BEN".into());
+    let written = storyteller_core::fdx::write(&changed);
+    assert!(written.contains("<Character>BEN</Character>") && written.contains("Separator=\". \""));
+    assert_eq!(written.matches("<SmartType").count(), 1);
+
+    // A renamed character takes the list's entry along.
+    let mut s = Session::new(storyteller_core::fountain::parse(RANGE_SCRIPT).unwrap());
+    run(&registry, &mut s, "lists.add", json!({ "list": "characters", "entry": "Nora" }));
+    run(&registry, &mut s, "character.rename", json!({ "from": "NORA", "to": "Emma" }));
+    assert_eq!(s.script.lists.characters, ["EMMA"]);
+
+    // A rebuild is what the script uses now, and offered suggestions include the lists.
+    let mut s = Session::new(storyteller_core::fountain::parse(RANGE_SCRIPT).unwrap());
+    run(&registry, &mut s, "lists.add", json!({ "list": "characters", "entry": "Gone" }));
+    run(&registry, &mut s, "lists.rebuild", json!({}));
+    assert_eq!(s.script.lists.characters, ["NORA"]);
+    assert_eq!(s.script.lists.intros, ["INT."]);
+}
+
+#[test]
+fn tab_after_a_name_can_open_the_extensions() {
+    let registry = Registry::new();
+    let mut s = Session::new(storyteller_core::fountain::parse("NORA\nIt held.\n").unwrap());
+    // By default Tab starts a parenthetical (decision 3).
+    run(&registry, &mut s, "flow.tab", json!({ "index": 0 }));
+    assert_eq!(kinds(&s)[1], K::Parenthetical);
+    let mut s = Session::new(storyteller_core::fountain::parse("NORA\nIt held.\n").unwrap());
+    s.tab_opens_extensions = true;
+    run(&registry, &mut s, "flow.tab", json!({ "index": 0 }));
+    assert_eq!(s.script.elements[0].text, "NORA (");
+    assert_eq!((s.caret.element, s.caret.offset), (0, "NORA (".len()));
+    assert_eq!(storyteller_core::autocomplete::suggest(&s.script, K::Character, "NORA (")[0], "NORA (V.O.)");
+    // With an extension already there, Tab goes on as usual.
+    s.script.elements[0].text = "NORA (V.O.)".into();
+    run(&registry, &mut s, "flow.tab", json!({ "index": 0 }));
+    assert_eq!(kinds(&s)[1], K::Parenthetical);
+}
+
+#[test]
 fn copy_scene_gives_fountain_that_pastes_back_the_same() {
     let registry = Registry::new();
     let mut s = Session::new(

@@ -701,6 +701,31 @@ fn hiding_the_outline_takes_its_paragraphs_off_the_page_and_out_of_the_arrows() 
 }
 
 #[test]
+fn the_autocomplete_lists_window_adds_removes_and_rebuilds() {
+    let (mut harness, _file) = harness(RANGE_SCRIPT);
+    harness.state_mut().queued.push("app.lists".into());
+    harness.run_steps(3);
+    assert!(harness.state().lists.is_some());
+    if let Some(draft) = harness.state_mut().lists.as_mut() {
+        draft.entry = "martha".into();
+    }
+    harness.get_by_role_and_label(egui::accesskit::Role::Button, "Add").click();
+    harness.run_steps(3);
+    assert_eq!(harness.state().session.script.lists.characters, ["MARTHA"]);
+    assert!(harness.state().lists.as_ref().is_some_and(|d| d.entry.is_empty()), "ready for the next one");
+    harness.get_by_label("Remove").click();
+    harness.run_steps(3);
+    assert!(harness.state().session.script.lists.characters.is_empty());
+    harness.get_by_label("Rebuild from Script").click();
+    harness.run_steps(3);
+    assert_eq!(harness.state().session.script.lists.characters, ["NORA"]);
+    // The setting for Tab reaches the session, and stays.
+    harness.state_mut().queued.push("prefs.tab_extensions".into());
+    harness.run_steps(2);
+    assert!(harness.state().session.tab_opens_extensions && harness.state().prefs.get().general.tab_opens_extensions);
+}
+
+#[test]
 fn copy_scene_puts_the_scene_on_the_clipboard() {
     let (mut harness, _file) = harness("INT. HUT - DAY\n\nOne.\n\nEXT. RIDGE - DAWN\n\nNORA\nIt held.\n");
     harness.state_mut().editor.pending_focus = Some((3, 0));
