@@ -7,6 +7,10 @@ for its own version in Help > What's New, once after an update.
 
 ### New
 
+- A selection can now cross paragraphs. Drag from one paragraph into another, Shift-click in
+  another, or hold Shift and use the arrows past a paragraph's edge. Cut and Copy take all of it
+  and pasting it back here keeps every element's type; typing, Paste, Backspace and Delete
+  replace it as one Undo. Select All and ⌘A now select the whole script, not just the paragraph.
 - In revision mode a new paragraph is marked whole, whether Enter splits it off or a paste
   makes it, and joining two paragraphs with Backspace leaves a mark where they met.
 - Revision mode is kept in the script: a file saved with it on opens with it on, in `.fdx`,

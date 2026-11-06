@@ -270,9 +270,16 @@ Limits: inputs over 32 MiB or 200 000 elements are refused with a message, not a
   Throw It Away, or Later (the copy waits for the next launch). A script's copies never take the
   name of one still waiting: a new Untitled script writes `Untitled 2` beside a waiting
   `Untitled`.
-- Edit: Undo, Redo, Cut, Copy, Paste, Select All (the paragraph the caret is in), Find…, Go To….
+- Edit: Undo, Redo, Cut, Copy, Paste, Select All (the whole script), Find…, Go To….
   Cut, Copy, Paste and Select All carry no menu shortcut on purpose: ⌘X, ⌘C, ⌘V and ⌘A go
   straight to the text being edited, and the menu items do the same.
+- A selection can cross paragraphs: drag from one into another, Shift-click in another, or use
+  Shift and the arrows over a paragraph's edge. Copy and Cut put it on the clipboard as Fountain
+  text and remember its elements, so pasted back into Storyteller it keeps every type, even
+  dialogue with no cue. Typing, Paste, Backspace and Delete replace it as one Undo: the first
+  paragraph keeps its type and takes what follows the selection in the last; in revision mode
+  the join leaves a deletion mark. Bold, italic, underline, Mark Revised and Clear Revised still
+  work within one paragraph, and say so.
 - Edit > Copy Scene, and Copy Scene on a right-click in the navigator, put the scene on the
   clipboard as Fountain text: pasted back into Storyteller it is the same elements, pasted
   anywhere else it reads as a screenplay. Pasting text in several paragraphs (a blank line
