@@ -17,50 +17,18 @@ every picture is drawn by the offscreen gallery (`gallery` in `crates/app/src/sc
 | Empty and error states in the family voice | `crates/app/src/messages.rs`, with tests |
 | Scene colours as tokens, 3:1 on the panel in both themes, and the act row in `ink-soft` | `theme::SCENE_COLOURS`, `scene_colours_hold_three_to_one_on_the_panel` |
 | A visible border on text boxes in dialogs | `theme::field`, using `rule-strong` |
-| A gallery of 15 surfaces in both themes | `gallery`, writing `gallery/` in the build folder |
+| A gallery of 31 surfaces in both themes, every surface built so far | `gallery`, writing `gallery/` in the build folder |
+| The contact sheet: every shot, light beside dark, labelled | `gallery/contact-sheet.png`, drawn with the gallery |
 
 ## Left to do
 
-### 1. The gallery catches up with this week
+The owner's look at the contact sheet, and whatever that turns up. To draw it:
 
-These surfaces were built after the gallery and are not in it yet. Each becomes a named shot,
-in light and dark:
+```
+cargo test -p method-storyteller --release gallery -- --ignored
+```
 
-| Shot | What it shows |
-| --- | --- |
-| `go-to-act` | Go To with the Act tab chosen |
-| `new-tv` | New TV Script with its three shapes |
-| `navigator-tv` | A TV script's navigator: act rows above their scenes |
-| `navigator-scenes` | Scene titles in place of headings, colour stripes, a hover with a summary |
-| `scene-properties` | The Scene Properties dialog with a colour chosen |
-| `characters` | Production > Characters with a few rows |
-| `recovery` | Recover unsaved changes? |
-| `styled-text` | Bold, italic and underline on the page, with the markup faint |
-| `multi-cam-page` | A multi-camera page: lettered scene, cast line, double-spaced dialogue |
-| `open-recent` | The window menu's File > Open Recent (Windows and Linux) |
-| `spelling` | Edit > Spelling… with suggestions |
-| `picker` | The element picker on an empty line |
-| `revised-page` | A Pink revised page: coloured paper, revised text, margin marks, the header label (in the gallery) |
-| `export-pdf` | File > Export PDF… with its page choices (in the gallery) |
-
-### 2. The contact sheet
-
-One picture for the owner to look over: every gallery shot, light beside dark, in a grid,
-each labelled with its name (`gallery/contact-sheet.png` in the build folder). It is the "design pass (D)"
-check in the roadmap's Waiting on the owner, so looking at it takes minutes and opens nothing.
-
-### 3. BRAND.md catches up
-
-- The new surfaces join "Dark mode, surface by surface".
-- "Document icons" lists `.mstory` (done in this change).
-
-## Order
-
-1. The scene colour and act row tokens (section 2), with their contrast tests. A code change:
-   built and tested on power.
-2. The new gallery shots and the contact sheet (sections 1 and 3). A code change to the
-   gallery test only.
-3. BRAND.md's tables (section 4), with the measured numbers from step 1.
-4. The owner looks at the contact sheet; anything that feels off comes back as a small PR.
-
-Steps 1 and 2 need a build, so they wait for full power. Step 3 waits for their numbers.
+It is `gallery/contact-sheet.png` in the build folder (`STORYTELLER_GALLERY_OUT` to put it
+elsewhere). A surface added later gets a named shot in `gallery`, in light and dark. Things to
+look at in particular: the deeper Yellow and Orange stripes in light mode, which read as olive and
+tan so they hold 3:1 on the panel.
