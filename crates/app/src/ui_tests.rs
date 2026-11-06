@@ -674,6 +674,33 @@ fn add_a_bookmark_then_go_to_it() {
 }
 
 #[test]
+fn hiding_the_outline_takes_its_paragraphs_off_the_page_and_out_of_the_arrows() {
+    let (mut harness, _file) = harness("# Act One\n\nINT. HUT - DAY\n\n= She arrives.\n\nShe waits.\n");
+    let shown = |harness: &Harness<'static, StorytellerApp>, n: usize| harness.state().editor.field_rect(n).is_some();
+    assert!(shown(&harness, 0) && shown(&harness, 2), "both show at first");
+    // The caret is in a synopsis when it hides: it moves on to the next paragraph drawn.
+    harness.state_mut().editor.pending_focus = Some((2, 0));
+    harness.run_steps(3);
+    harness.state_mut().queued.push("view.outline".into());
+    harness.run_steps(4);
+    assert!(!shown(&harness, 0) && !shown(&harness, 2), "both are gone");
+    assert_eq!(harness.state().session.script.elements.len(), 4, "from the page, not the script");
+    assert_eq!(harness.state().session.caret.element, 3);
+    assert!(!harness.state().prefs.get().view.outline, "the setting is kept");
+    // Up from the action goes past the hidden synopsis, to the heading.
+    press(&mut harness, egui::Key::ArrowUp, egui::Modifiers::NONE);
+    harness.run_steps(3);
+    assert_eq!(harness.state().session.caret.element, 1);
+    // A jump that lands on a hidden one stops at the next drawn.
+    harness.state_mut().editor.pending_focus = Some((0, 0));
+    harness.run_steps(3);
+    assert_eq!(harness.state().session.caret.element, 1);
+    harness.state_mut().queued.push("view.outline".into());
+    harness.run_steps(3);
+    assert!(shown(&harness, 0) && shown(&harness, 2), "and they come back");
+}
+
+#[test]
 fn copy_scene_puts_the_scene_on_the_clipboard() {
     let (mut harness, _file) = harness("INT. HUT - DAY\n\nOne.\n\nEXT. RIDGE - DAWN\n\nNORA\nIt held.\n");
     harness.state_mut().editor.pending_focus = Some((3, 0));
