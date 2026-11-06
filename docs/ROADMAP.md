@@ -110,6 +110,11 @@ says otherwise.
     narrows the pages** (a page range of revised pages only, say); the title page prints only
     with all pages. Through the control interface the choices combine; the dialog offers one
     at a time.
+26. **Learning autocomplete entries on save.** A script saved after edits adds what it now uses
+    to its lists, as the reference app does; an unedited one is written back byte for byte. **Built
+    on the recommendation.** Reversible: one call, `learn_before_saving`.
+27. **Select All takes the whole script** (it took the paragraph until selections could cross
+    paragraphs). **Built on the recommendation**, as writers expect. Reversible.
 12. **Rank for `.osf` in the Finder.** **Decided by the owner, 2026-10-18: Default**, like
    `.fountain` and `.fdx`: open formats, so the app claims none of them as their owner.
 
@@ -126,6 +131,11 @@ says otherwise.
   Replace, Replace All and one ⌘Z; Production > Rename Character with and without "Also in
   action, dialogue and other text"; a selection across paragraphs by dragging, Shift-click and
   Shift-arrows, then copy, cut, paste over it and one ⌘Z; dragging a scene in the navigator.
+- **Files from other apps (a few minutes each, when you have them).** One PDF exported with scene
+  `CONTINUED` turned on, with its `.fdx` (none of the 15 measured pairs has it on, so where the
+  markers print cannot be measured; 3 of 108 files use it). A real `.highland` file, to confirm the
+  import on one that was not built by a test. A saved `.celtx` file, since nothing public describes
+  the format.
 - **Lossless `.fdx` (the final check).** Open `crates/core/tests/fixtures/lossless-check.fdx`
   in your licensed copy and go down the ten-step click list in
   [research/fdx-osf-fidelity.md](research/fdx-osf-fidelity.md#the-owners-final-check): notes,
@@ -173,10 +183,13 @@ says otherwise.
   only. Published 2026-10-28 (tag `v0.6.0` on `4f7198f`, the owner's yes through MOrg; draft
   checked: checksums, both signatures, notarisation and Gatekeeper). Nothing waiting; the
   override line came out on 2026-11-06, when clipboard-win 5.4.3 turned 14 days old.
-- **The next release (0.6.1 or 0.7.0):** not asked for yet. One thing first: the release build
-  is the first Windows run of today's local date (`GetLocalTime`, merged 2026-11-04 as
-  `df8f701`), so the rehearsal's Windows tests, the local-date test among them, must pass before
-  the tag.
+- **The next release, 0.7.0:** not asked for yet. **Recommend asking once #148 is merged**: it
+  would carry selection across paragraphs, scene drag, bookmarks, View > Show Outline, autocomplete
+  lists, `.highland` import, the faster editor and the design pass. Called 0.7.0 because it adds
+  features. Three things the rehearsal must show before the tag: the Windows tests pass, the
+  local-date test among them (the first Windows run of `GetLocalTime`, merged 2026-11-04 as
+  `df8f701`); the sign job ran with the key (#148 has not run on GitHub yet); and its release notes
+  are written (`docs/releases/0.7.0.md`, not started).
 
 ### Deferred (the owner, 2026-10-20)
 
@@ -199,9 +212,11 @@ says otherwise.
 - M3, the writing feel: Enter/Tab flow, element picker, ⌘1–7 and ⌘⌥1–7, status-bar hint,
   automatic (CONT'D), autocomplete, smart quotes; INT./EXT. typed fast or pasted becomes a
   heading.
-- M4 so far: scene lengths in the navigator, a navigator click lands in the scene's action, Go
-  To (scene or page), find and replace with one Undo for Replace All, rename a character, spell
-  check (underlines and Edit > Spelling…), script notes in all three `.fdx` forms and OSF.
+- M4, done since (on `main`, not yet released from selection across paragraphs on): scene lengths
+  in the navigator, a navigator click lands in the scene's action, Go To (scene, page, act,
+  bookmark), find and replace with one Undo for Replace All, rename a character, spell check
+  (underlines and Edit > Spelling…), script notes in all three `.fdx` forms and OSF, selection
+  across paragraphs, scene drag, show and hide outline paragraphs.
 - The Mac app: the menu bar, Cut/Copy/Paste/Select All, the Help menu, the first-launch
   sample, Finder double-click with document icons for `.osf`, `.fountain` and `.fdx`, the
   updater (live with the first release), `--open-sample` and `--check-for-updates`.
@@ -317,12 +332,14 @@ signed `.app.tar.gz`), the OSF and Fountain study, and the design pass. Each is 
 
 ### Smaller items
 - **Page view** [partial] S. A speech split across pages should continue on the next sheet
-  instead of lengthening the first.
+  instead of lengthening the first. Waits on the editor drawing its own text: each paragraph is one
+  text field today, and one field cannot sit on two sheets.
 - **Imports** [partial] S each. `.highland` [have]. PDF waits on Method Reader's crates being
   relicensed. `.celtx` waits on a saved file to read, since there is no public description of it.
 - **Stored autocomplete lists** [have] M. Lists kept in the document, learned on save, editable;
   the extension-on-Tab option.
-- **Scene CONTINUED** [missing] S. Off by default; measured only if a corpus file turns it on.
+- **Scene CONTINUED** [missing] S. Off by default. Waits on one exported PDF with it on (above):
+  it changes where pages break, so it is not built from a guess.
 - **File > Open Recent and Close** [have] S. Open Recent needs a menu built at run time (the
   menu is fixed today); Close (⌘W) closes the script and leaves an empty one (decision 15).
 - **Recovery copies at launch** [have] S. The app writes a recovery copy as the writer works
@@ -332,7 +349,12 @@ signed `.app.tar.gz`), the OSF and Fountain study, and the design pass. Each is 
   key; that is the next thing to look at if long scripts feel slow.
 - **Capitals by display** [missing] S. Typing into a capitals type (a multi-camera script's
   action) stores capitals today; keep the writer's casing and show capitals on screen and page
-  instead, once the editor draws a capitals type itself (MReview's note on #82).
+  instead. Waits on the editor drawing its own text, as Page view does (MReview's note on #82).
+- **The editor draws its own text** [missing] L. What Page view and Capitals by display need, and
+  what hiding the markup of bold and italic needs (8b). A large change to how typing works, so it
+  is its own piece of work, best after the next release.
+- **Typing on long scripts** [missing] S to M. A key on a 239-page script takes about 90 ms in a
+  debug build, most of it repaginating. Paginate from the changed page on, or after a short pause.
 - **UK English dictionary** [have] S (decision 16). US and UK English, a setting, the first
   run choosing from the system's region.
 
