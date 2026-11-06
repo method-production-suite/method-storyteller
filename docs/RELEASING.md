@@ -44,7 +44,7 @@ website and in the README never go stale:
 | `Method-Storyteller-linux-amd64.deb` | Debian and Ubuntu, x86_64 | `cargo xtask package-linux` (`dpkg-deb`) |
 | `Method-Storyteller-linux-x86_64.AppImage` | Other Linux, x86_64 | `cargo xtask package-linux --appimagetool <path> --runtime <path>` |
 | `SHA256SUMS` | | the assemble job: one line per file of the release (installers, the updater archive and its signature, `latest.json`), checked before the draft is made |
-| `SHA256SUMS.minisig` | | the sign job: `SHA256SUMS` signed with the update key (`cargo xtask sign-file`), checked against the app's public key first; check it with `minisign -Vm SHA256SUMS -P <the public key>` |
+| `SHA256SUMS.minisig` | | the sign job: `SHA256SUMS` signed with the update key (`cargo xtask sign-file`), checked against the app's public key first; check it with `minisign -Vm SHA256SUMS -P <the public key>`. Required: without the update key the sign job fails and nothing is drafted |
 
 The packaging code is `xtask/src/package.rs`; the files it reads are in `packaging/`:
 `macos/Info.plist` (bundle id `com.methodstoryteller.desktop`, display name "Method
@@ -179,8 +179,9 @@ what was skipped.
 Updates: the update key's names are the suite's (Method Budget's), though Storyteller does not
 use Tauri; `cargo xtask updater-archive` signs with the `minisign` crate the suite updater is
 tested against. The public half is `PUBKEY` in `crates/app/src/updates.rs`; a new key means a
-new `PUBKEY` in a release first, or installed apps refuse the next update. Without the key,
-or without notarizing, the release has no updater files and installed apps do not see it.
+new `PUBKEY` in a release first, or installed apps refuse the next update. Without the key the
+release fails at the sign job and nothing is drafted. Without notarizing, the release has no
+updater files and installed apps do not see it.
 
 After the signing tools change (the `minisign` crate, the key format), and before the next tag,
 run Actions > updater-key-check > Run workflow on `main`. It signs a throwaway bundle with the
@@ -194,7 +195,7 @@ leaving GitHub. A red run means the next release's update would be refused: fix 
 | `check` | contents: read | the tag is `v` plus the version in `Cargo.toml`, points at a commit on `main`, and `docs/releases/<version>.md` is written; with no tag, on `main`, a rehearsal of main's latest commit |
 | `build` (macOS universal, Windows x64, Linux x64) | contents: read | compiles everything first, before any secret reaches the runner (on macOS both slices, joined with `lipo`); then packages each platform with `--no-build`; on macOS signs, notarizes, staples and verifies (every executable must be exactly `x86_64 arm64`), each only when its secrets are there; then, with the update key, packs and signs the updater archive; on Windows signs the app and the installer only with a certificate |
 | `assemble` | contents: read | checks all four installers are there, writes `latest.json` after checking the archive's signature against the app's public key (one universal archive under `darwin-aarch64` and `darwin-x86_64`), writes and checks `SHA256SUMS` (one line per file of the release); runs in a rehearsal too |
-| `sign` | contents: read | builds the release tool, then signs `SHA256SUMS` with the update key as `SHA256SUMS.minisig`; runs in a rehearsal too |
+| `sign` | contents: read | builds the release tool, then signs `SHA256SUMS` with the update key as `SHA256SUMS.minisig`; fails without the key; runs in a rehearsal too |
 | `draft` | contents: write (the only job with it) | runs `gh release create --draft` with the notes and the files; skipped in a rehearsal |
 
 Only first-party actions are used, each pinned to the suite's full commit SHA. Each secret

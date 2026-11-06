@@ -103,6 +103,21 @@ fn no_cargo_after_a_secret() {
     assert_eq!(violations(&workflow), Vec::<String>::new());
 }
 
+/// Method Launcher requires SHA256SUMS.minisig, so a release never goes out without it.
+#[test]
+fn a_release_cannot_skip_the_signature() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../.github/workflows/release.yml");
+    let workflow = std::fs::read_to_string(&path).expect("the release workflow");
+    let found = jobs(&workflow);
+    let job = |name: &str| found.iter().find(|(n, _)| n == name).map(|(_, steps)| steps.join("\n")).unwrap_or_default();
+    let sign = job("sign");
+    assert!(sign.contains("Require the update key") && sign.contains("exit 1"), "no key fails the sign job");
+    assert!(!sign.contains("if: env.HAS_UPDATER_KEY"), "no signing step of the job can be skipped");
+    let draft = job("draft");
+    assert!(draft.contains("[ ! -s dist/SHA256SUMS.minisig ]"), "the draft checks the signature came");
+    assert!(workflow.contains("needs: [check, assemble, sign]"), "the draft waits for the sign job");
+}
+
 #[test]
 fn the_check_catches_cargo_after_a_secret() {
     let bad = "jobs:\n  build:\n    steps:\n      - name: Build\n        run: cargo build\n      - name: Key\n        env:\n          K: ${{ secrets.KEY }}\n        run: echo\n      - name: Package\n        run: |\n          # cargo is fine in a comment\n          cargo xtask bundle\n";
