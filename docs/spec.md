@@ -280,6 +280,11 @@ Limits: inputs over 32 MiB or 200 000 elements are refused with a message, not a
   paragraph keeps its type and takes what follows the selection in the last; in revision mode
   the join leaves a deletion mark. Bold, italic, underline, Mark Revised and Clear Revised still
   work within one paragraph, and say so.
+- Dragging a scene's row in the navigator moves the scene, as one Undo (`scene.move`). A line
+  shows where it would land. It takes its paragraphs up to the next heading or the act lines
+  that close its act, which stay put. Its scene number goes with it. In revision mode its
+  paragraphs are marked whole. A locked page that started in it stays behind, on the paragraph
+  that follows, so the pages around it keep their numbers.
 - Edit > Copy Scene, and Copy Scene on a right-click in the navigator, put the scene on the
   clipboard as Fountain text: pasted back into Storyteller it is the same elements, pasted
   anywhere else it reads as a screenplay. Pasting text in several paragraphs (a blank line

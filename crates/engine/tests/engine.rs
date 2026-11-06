@@ -679,6 +679,69 @@ fn in_revision_mode_a_replaced_range_is_marked() {
 }
 
 #[test]
+fn moving_a_scene_takes_its_paragraphs_in_one_undo() {
+    let registry = Registry::new();
+    let script = "INT. A - DAY #1#\n\nOne.\n\nEXT. B - DAY #2#\n\nNORA\nTwo.\n\nINT. C - DAY #3#\n\nThree.\n";
+    let mut s = Session::new(storyteller_core::fountain::parse(script).unwrap());
+    let original: Vec<String> = texts(&s).iter().map(ToString::to_string).collect();
+    // C to the front.
+    let out = run(&registry, &mut s, "scene.move", json!({ "index": 5, "to": 0 }));
+    assert_eq!(out["value"]["moved"], true);
+    assert_eq!(texts(&s), ["INT. C - DAY", "Three.", "INT. A - DAY", "One.", "EXT. B - DAY", "NORA", "Two."]);
+    assert_eq!(s.script.elements[0].scene_number.as_deref(), Some("3"), "its number goes with it");
+    assert_eq!(s.caret.element, 0, "the caret goes with it too");
+    run(&registry, &mut s, "edit.undo", json!({}));
+    assert_eq!(texts(&s), original, "one Undo");
+    // A to the end of the script, past C.
+    let end = s.script.elements.len();
+    run(&registry, &mut s, "scene.move", json!({ "index": 0, "to": end }));
+    assert_eq!(texts(&s), ["EXT. B - DAY", "NORA", "Two.", "INT. C - DAY", "Three.", "INT. A - DAY", "One."]);
+    assert_eq!(s.caret.element, 5);
+    run(&registry, &mut s, "edit.undo", json!({}));
+    // Onto itself, or just after itself, moves nothing and leaves no Undo.
+    let edits = s.edits();
+    for to in [2, 3, 4, 5] {
+        assert_eq!(run(&registry, &mut s, "scene.move", json!({ "index": 2, "to": to }))["value"]["moved"], false, "to {to}");
+        assert_eq!(s.edits(), edits);
+    }
+    // Only a heading moves, and only within the script.
+    assert!(registry.run("scene.move", &mut s, json!({ "index": 1, "to": 0 }).as_object().unwrap()).is_err());
+    assert!(registry.run("scene.move", &mut s, json!({ "index": 0, "to": 99 }).as_object().unwrap()).is_err());
+}
+
+#[test]
+fn moving_a_scene_leaves_act_lines_and_locked_pages_where_they_are() {
+    let registry = Registry::new();
+    let mut s = Session::new(storyteller_core::fountain::parse("INT. A - DAY\n\nOne.\n\nEXT. B - DAY\n\nTwo.\n\nINT. C - DAY\n\nThree.\n").unwrap());
+    run(&registry, &mut s, "element.insert", json!({ "index": 3, "kind": "end_of_act" }));
+    run(&registry, &mut s, "element.set_text", json!({ "index": 4, "text": "END OF ACT ONE" }));
+    run(&registry, &mut s, "element.insert", json!({ "index": 4, "kind": "new_act" }));
+    run(&registry, &mut s, "element.set_text", json!({ "index": 5, "text": "ACT TWO" }));
+    let at = |s: &Session, wanted: &str| s.script.elements.iter().position(|e| e.text == wanted).unwrap();
+    // The last scene of an act leaves its closing line behind.
+    assert_eq!(texts(&s)[2..4].len(), 2);
+    let b = at(&s, "EXT. B - DAY");
+    let end = s.script.elements.len();
+    run(&registry, &mut s, "scene.move", json!({ "index": b, "to": end }));
+    assert_eq!(s.script.elements.last().unwrap().text, "Two.");
+    assert_eq!(at(&s, "INT. C - DAY"), at(&s, "ACT TWO") + 1, "the act keeps its place, and C is now first in it");
+    run(&registry, &mut s, "edit.undo", json!({}));
+
+    // In revision mode a moved scene reads as revised; a locked page start stays behind.
+    let mut s = Session::new(storyteller_core::fountain::parse("INT. A - DAY\n\nOne.\n\nEXT. B - DAY\n\nTwo.\n\nINT. C - DAY\n\nThree.\n").unwrap());
+    let set = run(&registry, &mut s, "revisions.add", json!({ "date": "10/21/26" }))["value"]["id"].as_u64().unwrap();
+    run(&registry, &mut s, "revisions.set_active", json!({ "id": set }));
+    run(&registry, &mut s, "revisions.mode", json!({ "on": true }));
+    s.script.elements[2].page_starts.push(storyteller_core::model::PageStart { at: 0, label: "2".into(), ..Default::default() });
+    run(&registry, &mut s, "scene.move", json!({ "index": 2, "to": 0 }));
+    assert!(!s.script.elements[0].revised.is_empty() && !s.script.elements[1].revised.is_empty());
+    assert!(s.script.elements[0].page_starts.is_empty());
+    let c = at(&s, "INT. C - DAY");
+    assert_eq!(s.script.elements[c].page_starts[0].label, "2");
+    assert!(s.script.elements[at(&s, "One.")].revised.is_empty(), "what stayed is not marked");
+}
+
+#[test]
 fn copy_scene_gives_fountain_that_pastes_back_the_same() {
     let registry = Registry::new();
     let mut s = Session::new(
