@@ -742,6 +742,70 @@ fn moving_a_scene_leaves_act_lines_and_locked_pages_where_they_are() {
 }
 
 #[test]
+fn bookmarks_go_to_undo_and_keep_to_one_place() {
+    let registry = Registry::new();
+    let mut s = Session::new(storyteller_core::fountain::parse(RANGE_SCRIPT).unwrap());
+    assert!(registry.run("bookmark.remove", &mut s, &Map::new()).is_err(), "nothing to remove where the caret is");
+    run(&registry, &mut s, "bookmark.add", json!({ "index": 3, "name": "  The turn " }));
+    run(&registry, &mut s, "bookmark.add", json!({ "index": 1, "name": "Top" }));
+    let list = run(&registry, &mut s, "bookmark.list", json!({}));
+    assert_eq!(list["value"][0]["name"], "Top");
+    assert_eq!(list["value"][1]["name"], "The turn", "trimmed, and in script order");
+    assert_eq!(list["value"][1]["element"], 3);
+    assert_eq!(list["value"][1]["page"], 1);
+
+    // By name in any case, or enough of its start.
+    for name in ["the turn", "THE", "t h"] {
+        let found = registry.run("nav.go_to", &mut s, json!({ "bookmark": name }).as_object().unwrap());
+        if name == "t h" {
+            assert!(found.is_err());
+        } else {
+            assert_eq!(found.unwrap().value["element"], 3, "{name}");
+            assert_eq!(s.caret.element, 3);
+        }
+    }
+    run(&registry, &mut s, "bookmark.add", json!({ "index": 4, "name": "Tail" }));
+    assert!(registry.run("nav.go_to", &mut s, json!({ "bookmark": "t" }).as_object().unwrap()).is_err(), "more than one starts so");
+
+    // A name used again moves; one Undo puts it back. Removing is one Undo too.
+    run(&registry, &mut s, "bookmark.add", json!({ "index": 0, "name": "TOP" }));
+    assert!(s.script.elements[1].bookmark.is_none());
+    assert_eq!(s.script.elements[0].bookmark.as_deref(), Some("TOP"));
+    run(&registry, &mut s, "edit.undo", json!({}));
+    assert_eq!(s.script.elements[1].bookmark.as_deref(), Some("Top"));
+    run(&registry, &mut s, "bookmark.remove", json!({ "index": 1 }));
+    assert!(s.script.elements[1].bookmark.is_none());
+    run(&registry, &mut s, "edit.undo", json!({}));
+    assert!(s.script.elements[1].bookmark.is_some());
+    assert!(registry.run("bookmark.add", &mut s, json!({ "name": "  " }).as_object().unwrap()).is_err(), "a name is needed");
+
+    // Open Screenplay Format and .fdx keep them, escaped; Fountain says it cannot.
+    run(&registry, &mut s, "bookmark.add", json!({ "index": 2, "name": "A & \"B\" <c>" }));
+    let osf = storyteller_core::osf::parse(&storyteller_core::osf::write(&s.script)).unwrap();
+    let fdx = storyteller_core::fdx::parse(&storyteller_core::fdx::write(&s.script)).unwrap();
+    for script in [&osf, &fdx] {
+        let names: Vec<Option<&str>> = script.elements.iter().map(|e| e.bookmark.as_deref()).collect();
+        assert_eq!(names[..5], [None, Some("Top"), Some("A & \"B\" <c>"), Some("The turn"), Some("Tail")]);
+    }
+    let warnings = storyteller_engine::files::save_warnings(&s.script, storyteller_engine::files::FileFormat::Fountain);
+    assert!(warnings.iter().any(|w| w.contains("3 bookmarks") || w.contains("4 bookmarks")), "{warnings:?}");
+    assert!(storyteller_engine::files::save_warnings(&s.script, storyteller_engine::files::FileFormat::Osf).iter().all(|w| !w.contains("bookmark")));
+    // A second round trip through either is the same text.
+    assert_eq!(
+        storyteller_core::osf::write(&osf),
+        storyteller_core::osf::write(&storyteller_core::osf::parse(&storyteller_core::osf::write(&osf)).unwrap())
+    );
+    assert_eq!(
+        storyteller_core::fdx::write(&fdx),
+        storyteller_core::fdx::write(&storyteller_core::fdx::parse(&storyteller_core::fdx::write(&fdx)).unwrap())
+    );
+    // A copied range does not bring a bookmark along.
+    let copied = run(&registry, &mut s, "edit.copy_range", range((1, 0), (2, 3)));
+    let text = copied["value"]["text"].as_str().unwrap();
+    assert_eq!(s.copied_elements(text).unwrap().iter().filter(|e| e.bookmark.is_some()).count(), 0);
+}
+
+#[test]
 fn copy_scene_gives_fountain_that_pastes_back_the_same() {
     let registry = Registry::new();
     let mut s = Session::new(

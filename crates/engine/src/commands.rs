@@ -339,6 +339,26 @@ fn go_to(session: &mut Session, scene: Option<String>, page: Option<usize>) -> R
         .ok_or_else(|| CommandError::Invalid { name: "page", reason: format!("page {page} has no script text") })
 }
 
+/// The paragraph a bookmark's name, or the start of one, points to.
+fn find_bookmark(script: &Script, wanted: &str) -> Result<usize, CommandError> {
+    let wanted = wanted.trim().to_lowercase();
+    let named: Vec<(usize, String)> =
+        script.elements.iter().enumerate().filter_map(|(i, e)| e.bookmark.as_ref().map(|name| (i, name.to_lowercase()))).collect();
+    if let Some((index, _)) = named.iter().find(|(_, name)| *name == wanted) {
+        return Ok(*index);
+    }
+    let starts: Vec<usize> = named.iter().filter(|(_, name)| !wanted.is_empty() && name.starts_with(&wanted)).map(|(i, _)| *i).collect();
+    match starts.as_slice() {
+        [only] => Ok(*only),
+        [] => Err(CommandError::Invalid { name: "bookmark", reason: format!("there is no bookmark {}", wanted) }),
+        _ => Err(CommandError::Invalid { name: "bookmark", reason: format!("more than one bookmark starts with {}", wanted) }),
+    }
+}
+
+fn has_bookmark(s: &Session) -> bool {
+    s.script.elements.get(s.caret.element).is_some_and(|e| e.bookmark.is_some())
+}
+
 // ---------------------------------------------------------------------------------------------
 // Parameter helpers
 
@@ -789,6 +809,7 @@ fn range_elements(s: &Session, from: Caret, to: Caret) -> Vec<Element> {
         part.set_text(element.text.get(start..end).unwrap_or_default().to_string());
         // Where the page starts and what was revised belong to this draft, not to the copy.
         part.page_starts.clear();
+        part.bookmark = None;
         part.revised.clear();
         part.deletions.clear();
         out.push(part);
@@ -1309,16 +1330,17 @@ fn all_commands() -> Vec<Command> {
                     param("scene", String, false, "Scene number as printed (12, 12A), or its position when scenes are unnumbered"),
                     param("page", Integer, false, "Page number"),
                     param("act", String, false, "Act: its position counted from 1, or its name (TAG, ACT TWO, two)"),
+                    param("bookmark", String, false, "A bookmark's name, or enough of its start to tell it from the others"),
                 ]
             },
             enabled: always,
             run: |s, p| {
-                let index = match opt_string(p, "act")? {
-                    Some(act) => s
-                        .script
-                        .find_act(&act)
-                        .ok_or_else(|| CommandError::Invalid { name: "act", reason: format!("there is no act {}", act.trim()) })?,
-                    None => go_to(s, opt_string(p, "scene")?, opt_index(p, "page")?)?,
+                let index = if let Some(name) = opt_string(p, "bookmark")? {
+                    find_bookmark(&s.script, &name)?
+                } else if let Some(act) = opt_string(p, "act")? {
+                    s.script.find_act(&act).ok_or_else(|| CommandError::Invalid { name: "act", reason: format!("there is no act {}", act.trim()) })?
+                } else {
+                    go_to(s, opt_string(p, "scene")?, opt_index(p, "page")?)?
                 };
                 s.caret = Caret { element: index, offset: 0 };
                 s.break_typing();
@@ -2020,6 +2042,71 @@ fn all_commands() -> Vec<Command> {
                 let index = element_index(s, p)?;
                 let merged = merge_previous(s, index)?;
                 Ok(Outcome::value(json!({ "merged": merged })))
+            },
+        },
+        Command {
+            id: "bookmark.add",
+            label: "Add Bookmark",
+            menu: "",
+            shortcut: None,
+            params: const { &[INDEX, param("name", String, true, "The bookmark's name")] },
+            enabled: always,
+            run: |s, p| {
+                let index = element_index(s, p)?;
+                let name = string(p, "name")?.trim().to_string();
+                if name.is_empty() {
+                    return Err(CommandError::Invalid { name: "name", reason: "a bookmark needs a name".into() });
+                }
+                s.checkpoint(EditKind::Other);
+                // A name points to one place: used again, it moves here.
+                for element in &mut s.script.elements {
+                    if element.bookmark.as_deref().is_some_and(|old| old.eq_ignore_ascii_case(&name)) {
+                        element.bookmark = None;
+                    }
+                }
+                if let Some(element) = s.script.elements.get_mut(index) {
+                    element.bookmark = Some(name);
+                }
+                Ok(Outcome::done())
+            },
+        },
+        Command {
+            id: "bookmark.remove",
+            label: "Remove Bookmark",
+            menu: "Edit/Remove Bookmark",
+            shortcut: None,
+            params: const { &[INDEX] },
+            enabled: has_bookmark,
+            run: |s, p| {
+                let index = element_index(s, p)?;
+                if s.script.elements.get(index).is_some_and(|e| e.bookmark.is_some()) {
+                    s.checkpoint(EditKind::Other);
+                    if let Some(element) = s.script.elements.get_mut(index) {
+                        element.bookmark = None;
+                    }
+                }
+                Ok(Outcome::done())
+            },
+        },
+        Command {
+            id: "bookmark.list",
+            label: "List Bookmarks",
+            menu: "",
+            shortcut: None,
+            params: &[],
+            enabled: always,
+            run: |s, _| {
+                let pages = s.paginated().element_pages.clone();
+                let rows: Vec<Value> = s
+                    .script
+                    .elements
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, e)| {
+                        e.bookmark.as_ref().map(|name| json!({ "name": name, "element": i, "page": pages.get(i).copied().unwrap_or(0) }))
+                    })
+                    .collect();
+                Ok(Outcome::value(json!(rows)))
             },
         },
         Command {

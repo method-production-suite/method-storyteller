@@ -251,6 +251,12 @@ pub fn save_warnings(script: &Script, format: FileFormat) -> Vec<String> {
         }
         FileFormat::Fdx | FileFormat::Pdf | FileFormat::Mstory => {}
     }
+    if format == FileFormat::Fountain {
+        let bookmarks = script.elements.iter().filter(|e| e.bookmark.is_some()).count();
+        if bookmarks > 0 {
+            warnings.push(format!("{} will be left out (Fountain has no bookmarks)", plural(bookmarks, "bookmark", "bookmarks")));
+        }
+    }
     warnings
 }
 

@@ -646,6 +646,34 @@ fn dragging_a_scene_in_the_navigator_moves_it() {
 }
 
 #[test]
+fn add_a_bookmark_then_go_to_it() {
+    let (mut harness, _file) = harness(RANGE_SCRIPT);
+    harness.state_mut().editor.pending_focus = Some((3, 0));
+    harness.run_steps(3);
+    harness.state_mut().queued.push("app.add_bookmark".into());
+    harness.run_steps(3);
+    harness.get_by_role_and_label(egui::accesskit::Role::Button, "Add").click();
+    harness.run_steps(3);
+    assert!(harness.state().bookmark.as_ref().is_some_and(|d| d.error.is_some()), "a name is needed");
+    harness.input_mut().events.push(egui::Event::Text("Turn".into()));
+    harness.run_steps(2);
+    harness.get_by_role_and_label(egui::accesskit::Role::Button, "Add").click();
+    harness.run_steps(3);
+    assert!(harness.state().bookmark.is_none(), "the dialog closes");
+    assert_eq!(harness.state().session.script.elements[3].bookmark.as_deref(), Some("Turn"));
+
+    harness.state_mut().editor.pending_focus = Some((0, 0));
+    harness.run_steps(3);
+    open_go_to(&mut harness);
+    harness.get_by_label("Bookmark").click();
+    harness.run_steps(3);
+    harness.get_by_label("Turn").click();
+    harness.run_steps(3);
+    assert!(harness.state().go_to.is_none(), "the dialog closes on success");
+    assert_eq!(harness.state().session.caret.element, 3);
+}
+
+#[test]
 fn copy_scene_puts_the_scene_on_the_clipboard() {
     let (mut harness, _file) = harness("INT. HUT - DAY\n\nOne.\n\nEXT. RIDGE - DAWN\n\nNORA\nIt held.\n");
     harness.state_mut().editor.pending_focus = Some((3, 0));

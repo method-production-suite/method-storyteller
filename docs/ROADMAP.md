@@ -245,8 +245,8 @@ wait for a decision above.
    check, script notes in all three `.fdx` generations and OSF, Copy Scene and pasting
    screenplay text as elements (decision 9, first half), scene titles, summaries and colours,
    the character table, a selection across paragraphs that copies and cuts with its element
-   types (decision 9, second half), drag to reorder scenes in the navigator (one Undo). Next, in
-   order: bookmarks for Go To, show and hide outline paragraphs.
+   types (decision 9, second half), drag to reorder scenes in the navigator (one Undo), bookmarks
+   for Go To. Next: show and hide outline paragraphs.
 8. **Lossless `.fdx`** [have, the owner's check to come] M (owner, 2026-10-18). Everything `.fdx` and Open Screenplay
    Format can both hold converts exactly both ways (OSF to `.fdx`, `.fdx` to OSF, `.fdx` to
    `.fdx`), proven by round-trip tests on files we write ourselves. Today an imported `.fdx`

@@ -7,6 +7,9 @@ for its own version in Help > What's New, once after an update.
 
 ### New
 
+- Bookmarks: Edit > Add Bookmark… names the paragraph you are in, and Go To has a Bookmark tab
+  that lists them. They are kept in `.osf`, `.fdx` and `.mstory`; Save As Fountain says it will
+  leave them out.
 - Drag a scene in the navigator to move it, with everything in it, as one Undo. It can go to
   another place in its act or into another act; the act lines stay where they are. In revision
   mode the moved scene reads as revised.

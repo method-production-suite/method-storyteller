@@ -39,7 +39,7 @@ const GO_TO_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Alt+G" } else { "Cmd
 const FIND_NEXT_KEY: &str = if cfg!(target_os = "macos") { "Cmd+G" } else { "F3" };
 const FIND_PREVIOUS_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Shift+G" } else { "Shift+F3" };
 
-const APP_COMMANDS: [AppCommand; 47] = [
+const APP_COMMANDS: [AppCommand; 48] = [
     AppCommand { id: "app.close", label: "Close", menu: "File/Close", shortcut: Some("Cmd+W") },
     AppCommand { id: "app.title_page", label: "Title Page…", menu: "File/Title Page…", shortcut: Some("Cmd+Shift+T") },
     AppCommand {
@@ -77,6 +77,7 @@ const APP_COMMANDS: [AppCommand; 47] = [
     AppCommand { id: "app.mark_revised", label: "Mark Revised", menu: "Production/Mark Revised", shortcut: Some("Cmd+CloseBracket") },
     AppCommand { id: "app.clear_revised", label: "Clear Revised", menu: "Production/Clear Revised", shortcut: Some("Cmd+OpenBracket") },
     AppCommand { id: "app.go_to", label: "Go To…", menu: "Edit/Go To…", shortcut: Some(GO_TO_KEY) },
+    AppCommand { id: "app.add_bookmark", label: "Add Bookmark…", menu: "Edit/Add Bookmark…", shortcut: None },
     AppCommand { id: "prefs.smart_quotes", label: "Smart Quotes", menu: "Format/Smart Quotes", shortcut: None },
     AppCommand { id: "app.bold", label: "Bold", menu: "Format/Bold", shortcut: Some("Cmd+B") },
     AppCommand { id: "app.italic", label: "Italic", menu: "Format/Italic", shortcut: Some("Cmd+I") },
@@ -244,6 +245,14 @@ enum GoToMode {
     Scene,
     Page,
     Act,
+    Bookmark,
+}
+
+/// Edit > Add Bookmark…: the name being typed.
+struct BookmarkDraft {
+    name: String,
+    focused: bool,
+    error: Option<String>,
 }
 
 /// The Go To dialog: a scene number, a page or an act.
@@ -280,6 +289,7 @@ pub struct StorytellerApp {
     recovery_name: String,
     title_dialog: Option<TitleDraft>,
     go_to: Option<GoToDraft>,
+    bookmark: Option<BookmarkDraft>,
     /// File > New TV Script: the shape chosen so far.
     new_tv: Option<storyteller_core::model::TvShape>,
     rename: Option<RenameDraft>,
@@ -412,6 +422,7 @@ impl StorytellerApp {
             recovery_name: String::new(),
             title_dialog: None,
             go_to: None,
+            bookmark: None,
             new_tv: None,
             rename: None,
             scene_dialog: None,
@@ -530,6 +541,11 @@ impl StorytellerApp {
                 self.title_dialog = Some(TitleDraft { fields });
             }
             "app.go_to" => self.go_to = Some(GoToDraft::default()),
+            "app.add_bookmark" => {
+                self.session.clamp_caret();
+                let name = self.session.element(self.session.caret.element).and_then(|e| e.bookmark.clone()).unwrap_or_default();
+                self.bookmark = Some(BookmarkDraft { name, focused: false, error: None });
+            }
             // The text field the caret is in acts on these as on its own keys. Clicking the menu
             // drawn in the window can take its focus, so it gets the focus back first; its
             // selection is kept with it. Paste asks the window, which reads the clipboard.
@@ -2694,7 +2710,9 @@ impl StorytellerApp {
                 self.automation.add("dialog.go_to.page", "radio", "Page", &page);
                 let act = ui.selectable_value(&mut draft.mode, GoToMode::Act, "Act");
                 self.automation.add("dialog.go_to.act", "radio", "Act", &act);
-                if scene.clicked() || page.clicked() || act.clicked() {
+                let bookmark = ui.selectable_value(&mut draft.mode, GoToMode::Bookmark, "Bookmark");
+                self.automation.add("dialog.go_to.bookmark", "radio", "Bookmark", &bookmark);
+                if scene.clicked() || page.clicked() || act.clicked() || bookmark.clicked() {
                     draft.refocus = true;
                     ui.ctx().request_repaint();
                 }
@@ -2703,6 +2721,7 @@ impl StorytellerApp {
                 GoToMode::Scene => "Scene number, such as 12 or 12A",
                 GoToMode::Page => "Page number",
                 GoToMode::Act => "Act, such as 2, TAG or ACT TWO",
+                GoToMode::Bookmark => "Bookmark name",
             };
             let response = ui.add(egui::TextEdit::singleline(&mut draft.text).hint_text(hint).desired_width(240.0));
             self.automation.add("dialog.go_to.text", "textbox", "Go to", &response);
@@ -2715,6 +2734,23 @@ impl StorytellerApp {
             }
             if let Some(error) = &draft.error {
                 ui.colored_label(ui.visuals().error_fg_color, error);
+            }
+            if draft.mode == GoToMode::Bookmark {
+                ui.add_space(theme::SPACE_1);
+                let names: Vec<&str> = self.session.script.elements.iter().filter_map(|e| e.bookmark.as_deref()).collect();
+                if names.is_empty() {
+                    ui.label(egui::RichText::new(crate::messages::NO_BOOKMARKS).weak());
+                }
+                egui::ScrollArea::vertical().max_height(160.0).show(ui, |ui| {
+                    for (n, name) in names.iter().enumerate() {
+                        let row = ui.selectable_label(false, *name);
+                        self.automation.add(format!("dialog.go_to.bookmark.{n}"), "option", name.to_string(), &row);
+                        if row.clicked() {
+                            draft.text = name.to_string();
+                            go = true;
+                        }
+                    }
+                });
             }
             ui.add_space(theme::SPACE_2);
             ui.horizontal(|ui| {
@@ -2745,6 +2781,7 @@ impl StorytellerApp {
             },
             GoToMode::Scene => params(&[("scene", json!(text))]),
             GoToMode::Act => params(&[("act", json!(text))]),
+            GoToMode::Bookmark => params(&[("bookmark", json!(text))]),
         };
         match self.registry.run("nav.go_to", &mut self.session, &target) {
             Ok(_) => {
@@ -2755,6 +2792,59 @@ impl StorytellerApp {
             }
             Err(error) => {
                 if let Some(draft) = &mut self.go_to {
+                    draft.error = Some(match error {
+                        storyteller_engine::CommandError::Invalid { reason, .. } => capitalise(&reason),
+                        other => other.to_string(),
+                    });
+                }
+            }
+        }
+    }
+
+    fn bookmark_dialog(&mut self, ctx: &egui::Context) {
+        let Some(draft) = &mut self.bookmark else { return };
+        let mut add = false;
+        let mut close = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+        egui::Window::new("Add Bookmark").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_TOP, [0.0, 120.0]).show(ctx, |ui| {
+            let response = ui.add(egui::TextEdit::singleline(&mut draft.name).hint_text("Name").desired_width(240.0));
+            self.automation.add("dialog.bookmark.name", "textbox", "Bookmark name", &response);
+            if !draft.focused {
+                response.request_focus();
+                draft.focused = true;
+            }
+            add |= response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            if let Some(error) = &draft.error {
+                ui.colored_label(ui.visuals().error_fg_color, error);
+            }
+            ui.add_space(theme::SPACE_2);
+            ui.horizontal(|ui| {
+                let ok = ui.button("Add");
+                self.automation.add("dialog.bookmark.ok", "button", "Add", &ok);
+                let cancel = ui.button("Cancel");
+                self.automation.add("dialog.bookmark.cancel", "button", "Cancel", &cancel);
+                add |= ok.clicked();
+                close |= cancel.clicked();
+            });
+        });
+        if close {
+            self.bookmark = None;
+            self.refocus();
+            return;
+        }
+        if !add {
+            return;
+        }
+        let request = params(&[("index", json!(self.session.caret.element)), ("name", json!(draft.name))]);
+        match self.registry.run("bookmark.add", &mut self.session, &request) {
+            Ok(_) => {
+                self.bookmark = None;
+                self.status = "Added the bookmark".to_string();
+                self.refocus();
+            }
+            Err(error) => {
+                if let Some(draft) = &mut self.bookmark {
+                    // Back in the field, ready to type the name.
+                    draft.focused = false;
                     draft.error = Some(match error {
                         storyteller_engine::CommandError::Invalid { reason, .. } => capitalise(&reason),
                         other => other.to_string(),
@@ -2835,6 +2925,7 @@ impl StorytellerApp {
         self.apply(ui.ctx(), actions);
         self.title_page_dialog(&ctx);
         self.go_to_dialog(&ctx);
+        self.bookmark_dialog(&ctx);
         self.new_tv_dialog(&ctx);
         self.spelling_dialog(&ctx);
         self.rename_dialog(&ctx);
