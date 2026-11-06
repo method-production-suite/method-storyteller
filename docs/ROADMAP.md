@@ -240,13 +240,13 @@ One small PR per item, each to MReview, the next item started without waiting fo
 Items that touch separate files run side by side in their own sessions; items marked *owner*
 wait for a decision above.
 
-7. **M4, notes and navigation** [partial] M. Done: scene lengths in the navigator, a click
+7. **M4, notes and navigation** [have] M. Done: scene lengths in the navigator, a click
    into the scene's action, Go To (page, scene), find and replace, rename a character, spell
    check, script notes in all three `.fdx` generations and OSF, Copy Scene and pasting
    screenplay text as elements (decision 9, first half), scene titles, summaries and colours,
    the character table, a selection across paragraphs that copies and cuts with its element
    types (decision 9, second half), drag to reorder scenes in the navigator (one Undo), bookmarks
-   for Go To. Next: show and hide outline paragraphs.
+   for Go To, show and hide outline paragraphs. M4 is done.
 8. **Lossless `.fdx`** [have, the owner's check to come] M (owner, 2026-10-18). Everything `.fdx` and Open Screenplay
    Format can both hold converts exactly both ways (OSF to `.fdx`, `.fdx` to OSF, `.fdx` to
    `.fdx`), proven by round-trip tests on files we write ourselves. Today an imported `.fdx`

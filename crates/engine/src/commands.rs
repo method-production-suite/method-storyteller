@@ -2555,6 +2555,23 @@ fn all_commands() -> Vec<Command> {
             },
         },
         Command {
+            id: "view.outline",
+            label: "Show Outline",
+            menu: "View/Show Outline",
+            shortcut: None,
+            params: const { &[param("show", Bool, false, "Show (true) or hide (false); toggles when omitted")] },
+            enabled: always,
+            run: |s, p| {
+                s.show_outline = opt_bool(p, "show")?.unwrap_or(!s.show_outline);
+                // A caret in a paragraph going out of sight moves to the nearest one still there.
+                let shown = s.nearest_shown(s.caret.element);
+                if shown != s.caret.element {
+                    s.caret = Caret { element: shown, offset: 0 };
+                }
+                Ok(Outcome::value(json!({ "show": s.show_outline })))
+            },
+        },
+        Command {
             id: "view.page_colours",
             label: "Revised Page Colours",
             menu: "View/Revised Page Colours",

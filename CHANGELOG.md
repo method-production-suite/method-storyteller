@@ -7,6 +7,8 @@ for its own version in Help > What's New, once after an update.
 
 ### New
 
+- View > Show Outline shows or hides sections and synopses on screen. They stay in the script,
+  and the setting is remembered.
 - Bookmarks: Edit > Add Bookmark… names the paragraph you are in, and Go To has a Bookmark tab
   that lists them. They are kept in `.osf`, `.fdx` and `.mstory`; Save As Fountain says it will
   leave them out.

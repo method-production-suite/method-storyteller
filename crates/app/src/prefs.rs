@@ -96,6 +96,8 @@ pub struct View {
     pub revisions: storyteller_core::model::ShowRevisions,
     /// View > Revised Page Colours.
     pub page_colours: bool,
+    /// View > Show Outline: sections and synopses on screen.
+    pub outline: bool,
 }
 
 impl Default for View {
@@ -108,6 +110,7 @@ impl Default for View {
             check_spelling: true,
             revisions: storyteller_core::model::ShowRevisions::All,
             page_colours: false,
+            outline: true,
         }
     }
 }

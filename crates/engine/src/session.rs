@@ -54,6 +54,8 @@ pub struct Session {
     pub show_revisions: storyteller_core::model::ShowRevisions,
     /// View > Revised Page Colours: revised pages on screen in their set's page colour.
     pub page_colours: bool,
+    /// View > Show Outline: sections and synopses on screen. They are never printed.
+    pub show_outline: bool,
     /// The last range copied, as text and as elements: pasting that same text back gives these.
     copied: Option<(String, Vec<Element>)>,
 }
@@ -87,8 +89,20 @@ impl Session {
             spelling: crate::spell::Personal::default(),
             show_revisions: Default::default(),
             page_colours: false,
+            show_outline: true,
             copied: None,
         }
+    }
+
+    /// Whether element `index` is drawn: an outline paragraph is not while outlines are hidden.
+    pub fn is_shown(&self, index: usize) -> bool {
+        self.show_outline || !self.script.elements.get(index).is_some_and(|e| matches!(e.kind, ElementKind::Section | ElementKind::Synopsis))
+    }
+
+    /// The nearest element drawn from `index`, looking forward first, or back if none follows.
+    pub fn nearest_shown(&self, index: usize) -> usize {
+        let count = self.script.elements.len();
+        (index..count).find(|&i| self.is_shown(i)).or_else(|| (0..index.min(count)).rfind(|&i| self.is_shown(i))).unwrap_or(index)
     }
 
     /// Remembers a range copied to the clipboard as `text`.

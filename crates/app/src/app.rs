@@ -663,6 +663,12 @@ impl StorytellerApp {
                 let show = self.session.layout.show_scene_numbers;
                 self.prefs.update(|p| p.view.scene_numbers = show);
             }
+            "view.outline" => {
+                self.run(id, Map::new());
+                let show = self.session.show_outline;
+                self.prefs.update(|p| p.view.outline = show);
+                self.refocus();
+            }
             "view.page_colours" => {
                 self.run(id, Map::new());
                 let show = self.session.page_colours;
@@ -947,6 +953,7 @@ impl StorytellerApp {
         self.session.layout.show_scene_numbers = view.scene_numbers;
         self.session.show_revisions = view.revisions;
         self.session.page_colours = view.page_colours;
+        self.session.show_outline = view.outline;
     }
 
     fn after_open(&mut self) {
@@ -1379,6 +1386,7 @@ impl StorytellerApp {
             "view.page_view" => Some(self.prefs.get().view.page_view),
             "view.scene_numbers" => Some(self.session.layout.show_scene_numbers),
             "view.page_colours" => Some(self.session.page_colours),
+            "view.outline" => Some(self.session.show_outline),
             "view.revisions_all" => Some(self.session.show_revisions == storyteller_core::model::ShowRevisions::All),
             "view.revisions_active" => Some(self.session.show_revisions == storyteller_core::model::ShowRevisions::Active),
             "view.revisions_none" => Some(self.session.show_revisions == storyteller_core::model::ShowRevisions::None),

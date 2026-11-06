@@ -280,6 +280,9 @@ Limits: inputs over 32 MiB or 200 000 elements are refused with a message, not a
   paragraph keeps its type and takes what follows the selection in the last; in revision mode
   the join leaves a deletion mark. Bold, italic, underline, Mark Revised and Clear Revised still
   work within one paragraph, and say so.
+- View > Show Outline shows or hides sections and synopses, kept in the settings (`view.outline`).
+  Hidden, they stay in the script and are saved; the arrows pass over them, and Go To or Find
+  landing on one stops at the next paragraph drawn. A selection across them takes them with it.
 - Edit > Add Bookmark… names the paragraph the caret is in, shown by a small ribbon beside it
   and never printed; Edit > Remove Bookmark takes it off (`bookmark.add`, `bookmark.remove`,
   `bookmark.list`). A name points to one place: used again, it moves there. Go To's Bookmark tab

@@ -140,17 +140,18 @@ fn step_from(session: &Session, head: Caret, back: bool) -> Caret {
     if back {
         match text.get(..head.offset).and_then(|t| t.char_indices().last()) {
             Some((at, _)) => Caret { element: head.element, offset: at },
-            None if head.element > 0 => {
-                let element = head.element - 1;
-                Caret { element, offset: session.element(element).map_or(0, |e| e.text.len()) }
-            }
-            None => head,
+            None => match (0..head.element).rfind(|&i| session.is_shown(i)) {
+                Some(element) => Caret { element, offset: session.element(element).map_or(0, |e| e.text.len()) },
+                None => head,
+            },
         }
     } else {
         match text.get(head.offset..).and_then(|t| t.chars().next()) {
             Some(c) => Caret { element: head.element, offset: head.offset + c.len_utf8() },
-            None if head.element + 1 < session.script.elements.len() => Caret { element: head.element + 1, offset: 0 },
-            None => head,
+            None => match (head.element + 1..session.script.elements.len()).find(|&i| session.is_shown(i)) {
+                Some(element) => Caret { element, offset: 0 },
+                None => head,
+            },
         }
     }
 }
@@ -434,6 +435,10 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
     if editor.span.is_some_and(|span| span.edits != session.edits() || editor.pending_focus.is_some()) {
         editor.span = None;
     }
+    // Go To, Find or a bookmark can land in an outline paragraph that is hidden.
+    if let Some((target, _)) = editor.pending_focus.filter(|(target, _)| !session.is_shown(*target)) {
+        editor.pending_focus = Some((session.nearest_shown(target), 0));
+    }
     // The caret and selection before this frame's clicks move them.
     let before_click = (session.caret, editor.selection);
     span_keys(ui, session, editor, &mut actions);
@@ -514,6 +519,9 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                     let mut in_speech = false;
                     let mut last_page = 0u32;
                     for (index, element) in session.script.elements.iter().enumerate() {
+                        if !session.is_shown(index) {
+                            continue;
+                        }
                         let kind = element.kind;
                         let style = layout.style(kind);
                         let continues_speech = in_speech && (kind.is_dialogue_part() || kind == ElementKind::Lyrics);
@@ -830,6 +838,9 @@ fn handle_keys(
     let has_selection = range.is_some_and(|r| r.primary != r.secondary);
     let caret = char_to_byte(text, caret_char);
     let popup = editor.completion.visible_for(index);
+    // The paragraphs the arrows move to: the nearest drawn ones.
+    let above = (0..index).rfind(|&i| session.is_shown(i));
+    let below = (index + 1..count).find(|&i| session.is_shown(i));
     if editor.span.is_none() {
         let far = range.map_or(caret, |r| char_to_byte(text, r.secondary.index.into()));
         let anchor = Caret { element: index, offset: far };
@@ -843,13 +854,13 @@ fn handle_keys(
             return;
         }
         if !popup {
-            let up = editor.first_row && index > 0 && ui.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::ArrowUp));
-            let down = !up && editor.last_row && index + 1 < count && ui.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::ArrowDown));
+            let up = editor.first_row && above.is_some() && ui.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::ArrowUp));
+            let down = !up && editor.last_row && below.is_some() && ui.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::ArrowDown));
             if up || down {
                 span = row_from(&editor.fields, session, head, None, up).map(|(head, x)| Span { head, column: Some(x), ..start(None) });
-            } else if caret_char == 0 && index > 0 && ui.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::ArrowLeft)) {
+            } else if caret_char == 0 && above.is_some() && ui.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::ArrowLeft)) {
                 span = Some(Span { head: step_from(session, head, true), ..start(None) });
-            } else if caret_char == chars && index + 1 < count && ui.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::ArrowRight)) {
+            } else if caret_char == chars && below.is_some() && ui.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::ArrowRight)) {
                 span = Some(Span { head: step_from(session, head, false), ..start(None) });
             }
         }
@@ -910,10 +921,10 @@ fn handle_keys(
             actions.push(EditAction::Tab { index, back: false });
         } else if index > 0 && !has_selection && caret_char == 0 && input.consume_key(Modifiers::NONE, Key::Backspace) {
             actions.push(EditAction::MergePrevious { index });
-        } else if !popup && index > 0 && editor.first_row && input.consume_key(Modifiers::NONE, Key::ArrowUp) {
-            actions.push(EditAction::Focus { index: index - 1, offset: usize::MAX });
-        } else if !popup && index + 1 < count && editor.last_row && input.consume_key(Modifiers::NONE, Key::ArrowDown) {
-            actions.push(EditAction::Focus { index: index + 1, offset: 0 });
+        } else if !popup && above.is_some() && editor.first_row && input.consume_key(Modifiers::NONE, Key::ArrowUp) {
+            actions.extend(above.map(|index| EditAction::Focus { index, offset: usize::MAX }));
+        } else if !popup && below.is_some() && editor.last_row && input.consume_key(Modifiers::NONE, Key::ArrowDown) {
+            actions.extend(below.map(|index| EditAction::Focus { index, offset: 0 }));
         }
     });
 }
