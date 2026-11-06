@@ -217,7 +217,8 @@ impl StorytellerApp {
                         let pick = ui.selectable_value(&mut dialog.change_to, suggestion.clone(), suggestion.as_str());
                         self.automation.add(format!("dialog.spelling.suggestion.{suggestion}"), "option", suggestion.clone(), &pick);
                     }
-                    let field = ui.add(egui::TextEdit::singleline(&mut dialog.change_to).hint_text("Change to").desired_width(240.0));
+                    let field =
+                        crate::theme::field(ui, egui::TextEdit::singleline(&mut dialog.change_to).hint_text("Change to").desired_width(240.0));
                     self.automation.add("dialog.spelling.change_to", "textbox", "Change to", &field);
                     if std::mem::take(&mut dialog.focus) {
                         field.request_focus();

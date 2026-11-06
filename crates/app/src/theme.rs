@@ -201,6 +201,50 @@ pub fn modal_frame(style: &egui::Style) -> egui::Frame {
     egui::Frame::popup(style).inner_margin(SPACE_4).corner_radius(CornerRadius::same(RADIUS_WINDOW))
 }
 
+/// A colour Scene Properties offers: the value saved in the file, and how its stripe draws in
+/// each theme. A stripe carries meaning, so it holds 3:1 against the panel it sits on; the file
+/// keeps one value whichever theme the writer works in.
+pub struct SceneColour {
+    pub name: &'static str,
+    pub file: &'static str,
+    pub light: Color32,
+    pub dark: Color32,
+}
+
+pub const SCENE_COLOURS: [SceneColour; 8] = [
+    SceneColour { name: "Red", file: "#E06666", light: rgb(0xE06666), dark: rgb(0xE06666) },
+    SceneColour { name: "Orange", file: "#F6B26B", light: rgb(0xB6834F), dark: rgb(0xF6B26B) },
+    SceneColour { name: "Yellow", file: "#FFD966", light: rgb(0xA38A41), dark: rgb(0xFFD966) },
+    SceneColour { name: "Green", file: "#93C47D", light: rgb(0x719660), dark: rgb(0x93C47D) },
+    SceneColour { name: "Teal", file: "#76A5AF", light: rgb(0x6A949D), dark: rgb(0x76A5AF) },
+    SceneColour { name: "Blue", file: "#6FA8DC", light: rgb(0x6092BF), dark: rgb(0x6FA8DC) },
+    SceneColour { name: "Purple", file: "#8E7CC3", light: rgb(0x8E7CC3), dark: rgb(0x8E7CC3) },
+    SceneColour { name: "Pink", file: "#C27BA0", light: rgb(0xBE789C), dark: rgb(0xC27BA0) },
+];
+
+/// How a scene colour draws in this theme. A colour from a file that is none of ours draws as it is.
+pub fn scene_stripe(rgb_value: (u8, u8, u8), dark: bool) -> Color32 {
+    let (r, g, b) = rgb_value;
+    let wanted = format!("#{r:02X}{g:02X}{b:02X}");
+    SCENE_COLOURS.iter().find(|c| c.file == wanted).map_or(Color32::from_rgb(r, g, b), |c| if dark { c.dark } else { c.light })
+}
+
+/// A text box with the border that finds it on a dialog (3:1 against the window in both themes).
+/// While it has the keyboard the field draws its own, in the accent.
+pub fn field(ui: &mut egui::Ui, edit: egui::TextEdit<'_>) -> egui::Response {
+    let response = ui.add(edit);
+    field_border(ui, &response);
+    response
+}
+
+/// The border [`field`] draws, for a text box added some other way.
+pub fn field_border(ui: &egui::Ui, response: &egui::Response) {
+    if !response.has_focus() {
+        let colour = if ui.visuals().dark_mode { DARK.rule_strong } else { LIGHT.rule_strong };
+        ui.painter().rect_stroke(response.rect, ui.visuals().widgets.inactive.corner_radius, Stroke::new(1.0, colour), egui::StrokeKind::Inside);
+    }
+}
+
 const fn rgb(hex: u32) -> Color32 {
     Color32::from_rgb((hex >> 16) as u8, (hex >> 8) as u8, hex as u8)
 }
@@ -292,7 +336,21 @@ mod tests {
             ("error on window", p.error, p.window, 4.5),
             ("error on panel", p.error, p.panel, 4.5),
             ("rule-strong on panel", p.rule_strong, p.panel, 3.0),
+            ("rule-strong on window", p.rule_strong, p.window, 3.0),
         ]
+    }
+
+    #[test]
+    fn scene_colours_hold_three_to_one_on_the_panel() {
+        for colour in &SCENE_COLOURS {
+            let (light, dark) = (contrast(colour.light, LIGHT.panel), contrast(colour.dark, DARK.panel));
+            assert!(light >= 3.0, "{} in light: {light:.2}", colour.name);
+            assert!(dark >= 3.0, "{} in dark: {dark:.2}", colour.name);
+        }
+        // Drawn by theme from the value in the file; an unknown colour as it came.
+        assert_eq!(scene_stripe((0xFF, 0xD9, 0x66), false), SCENE_COLOURS[2].light);
+        assert_eq!(scene_stripe((0xFF, 0xD9, 0x66), true), SCENE_COLOURS[2].dark);
+        assert_eq!(scene_stripe((1, 2, 3), false), Color32::from_rgb(1, 2, 3));
     }
 
     #[test]

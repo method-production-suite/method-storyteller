@@ -213,18 +213,6 @@ struct SceneDraft {
     focused: bool,
 }
 
-/// The colours a scene can take, as the Scene Properties dialog offers them: name and #RRGGBB.
-const SCENE_COLORS: [(&str, &str); 8] = [
-    ("Red", "#E06666"),
-    ("Orange", "#F6B26B"),
-    ("Yellow", "#FFD966"),
-    ("Green", "#93C47D"),
-    ("Teal", "#76A5AF"),
-    ("Blue", "#6FA8DC"),
-    ("Purple", "#8E7CC3"),
-    ("Pink", "#C27BA0"),
-];
-
 /// The Rename Character dialog.
 #[derive(Default)]
 struct RenameDraft {
@@ -1667,21 +1655,21 @@ impl StorytellerApp {
             let text = ui.visuals().text_color();
             let selected_fill = ui.visuals().selection.bg_fill;
             let hover_fill = ui.visuals().widgets.hovered.weak_bg_fill;
-            let strong = ui.visuals().strong_text_color();
+            let ink_soft = ui.visuals().widgets.noninteractive.fg_stroke.color;
             let act_row = |ui: &mut egui::Ui, automation: &mut Automation, k: usize, name: &str| {
                 let name = if name.is_empty() { "(untitled act)" } else { name };
                 let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), theme::NAV_ROW_HEIGHT), egui::Sense::click());
                 if response.hovered() {
                     ui.painter().rect_filled(rect, 5.0, hover_fill);
                 }
-                // Small capitals in the strong colour, like the SCENES label above.
+                // Small capitals in ink-soft, the token section labels use.
                 let font = egui::FontId::proportional(theme::TYPE_SMALL);
                 ui.painter().with_clip_rect(rect).text(
                     rect.left_center() + egui::vec2(8.0, 0.0),
                     egui::Align2::LEFT_CENTER,
                     name.to_uppercase(),
                     font,
-                    strong,
+                    ink_soft,
                 );
                 automation.add(format!("navigator.act.{k}"), "listitem", name.to_string(), &response);
                 (response.clicked(), rect)
@@ -1716,9 +1704,9 @@ impl StorytellerApp {
                     ui.painter().rect_filled(rect, 5.0, if selected { selected_fill } else { hover_fill });
                 }
                 let painter = ui.painter().with_clip_rect(rect);
-                if let Some((r, g, b)) = meta.rgb() {
+                if let Some(colour) = meta.rgb() {
                     let stripe = egui::Rect::from_min_size(rect.left_top() + egui::vec2(2.0, 4.0), egui::vec2(4.0, rect.height() - 8.0));
-                    painter.rect_filled(stripe, 2.0, egui::Color32::from_rgb(r, g, b));
+                    painter.rect_filled(stripe, 2.0, theme::scene_stripe(colour, ui.visuals().dark_mode));
                 }
                 let small = egui::FontId::proportional(theme::TYPE_SMALL);
                 painter.text(rect.left_center() + egui::vec2(30.0, 0.0), egui::Align2::RIGHT_CENTER, number, small.clone(), weak);
@@ -1943,7 +1931,7 @@ impl StorytellerApp {
                     ui.label(key.as_str());
                     let multiline = matches!(key.as_str(), "Contact" | "Notes" | "Title" | "Author");
                     let edit = if multiline { egui::TextEdit::multiline(value).desired_rows(2) } else { egui::TextEdit::singleline(value) };
-                    let response = ui.add(edit.desired_width(320.0));
+                    let response = theme::field(ui, edit.desired_width(320.0));
                     self.automation.add(format!("dialog.title_page.{}", key.to_lowercase().replace(' ', "_")), "textbox", key.clone(), &response);
                     ui.end_row();
                 }
@@ -2159,6 +2147,7 @@ impl StorytellerApp {
             ui.horizontal(|ui| {
                 ui.label("Start at");
                 let start = ui.add_enabled(!draft.keep_existing, egui::TextEdit::singleline(&mut draft.start).desired_width(60.0));
+                theme::field_border(ui, &start);
                 self.automation.add("dialog.numbering.start", "textbox", "Start at", &start);
             });
             let keep = ui.checkbox(&mut draft.keep_existing, "Keep existing numbers (new scenes get letters, such as 12A)");
@@ -2245,7 +2234,7 @@ impl StorytellerApp {
             ui.horizontal(|ui| {
                 let pages = ui.radio_value(&mut draft.which, ExportPages::Pages, "Pages");
                 self.automation.add("dialog.export_pdf.pages", "radio", "Pages", &pages);
-                let text = ui.add(egui::TextEdit::singleline(&mut draft.pages).hint_text("12-18, 22A").desired_width(140.0));
+                let text = theme::field(ui, egui::TextEdit::singleline(&mut draft.pages).hint_text("12-18, 22A").desired_width(140.0));
                 self.automation.add("dialog.export_pdf.page_range", "textbox", "Page range", &text);
                 if text.changed() {
                     draft.which = ExportPages::Pages;
@@ -2254,7 +2243,7 @@ impl StorytellerApp {
             ui.horizontal(|ui| {
                 let scenes = ui.radio_value(&mut draft.which, ExportPages::Scenes, "Scenes");
                 self.automation.add("dialog.export_pdf.scenes", "radio", "Scenes", &scenes);
-                let text = ui.add(egui::TextEdit::singleline(&mut draft.scenes).hint_text("12-15").desired_width(140.0));
+                let text = theme::field(ui, egui::TextEdit::singleline(&mut draft.scenes).hint_text("12-15").desired_width(140.0));
                 self.automation.add("dialog.export_pdf.scene_range", "textbox", "Scene range", &text);
                 if text.changed() {
                     draft.which = ExportPages::Scenes;
@@ -2367,13 +2356,13 @@ impl StorytellerApp {
                             run.push(("revisions.set_active", vec![("id", json!(set.id))]));
                         }
                         let name = draft.names.entry(set.id).or_insert_with(|| set.name.clone());
-                        let field = ui.add(egui::TextEdit::singleline(name).desired_width(220.0));
+                        let field = theme::field(ui, egui::TextEdit::singleline(name).desired_width(220.0));
                         self.automation.add(format!("revisions.name.{}", set.id), "textbox", "Name", &field);
                         if field.lost_focus() && *name != set.name {
                             run.push(("revisions.update", vec![("id", json!(set.id)), ("name", json!(name.clone()))]));
                         }
                         let mark = draft.marks.entry(set.id).or_insert_with(|| set.mark.clone());
-                        let field = ui.add(egui::TextEdit::singleline(mark).desired_width(28.0).char_limit(2));
+                        let field = theme::field(ui, egui::TextEdit::singleline(mark).desired_width(28.0).char_limit(2));
                         self.automation.add(format!("revisions.mark.{}", set.id), "textbox", "Mark", &field);
                         if field.lost_focus() && *mark != set.mark {
                             run.push(("revisions.update", vec![("id", json!(set.id)), ("mark", json!(mark.clone()))]));
@@ -2460,7 +2449,8 @@ impl StorytellerApp {
         let mut close = ctx.input(|i| i.key_pressed(egui::Key::Escape));
         egui::Window::new("Edit Scene Number").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_TOP, [0.0, 120.0]).show(ctx, |ui| {
             ui.label(egui::RichText::new(heading.as_str()).strong());
-            let number = ui.add(egui::TextEdit::singleline(&mut draft.number).hint_text("Such as 12 or 12A; empty for none").desired_width(200.0));
+            let number =
+                theme::field(ui, egui::TextEdit::singleline(&mut draft.number).hint_text("Such as 12 or 12A; empty for none").desired_width(200.0));
             self.automation.add("dialog.scene_number.number", "textbox", "Number", &number);
             if !draft.focused {
                 number.request_focus();
@@ -2523,15 +2513,18 @@ impl StorytellerApp {
             ui.label(egui::RichText::new(if heading.trim().is_empty() { "(untitled scene)" } else { heading.as_str() }).strong());
             ui.add_space(theme::SPACE_2);
             ui.label("Title");
-            let title = ui.add(egui::TextEdit::singleline(&mut draft.title).hint_text("A few words for the navigator").desired_width(320.0));
+            let title =
+                theme::field(ui, egui::TextEdit::singleline(&mut draft.title).hint_text("A few words for the navigator").desired_width(320.0));
             self.automation.add("dialog.scene.title", "textbox", "Title", &title);
             if !draft.focused {
                 title.request_focus();
                 draft.focused = true;
             }
             ui.label("Summary");
-            let summary =
-                ui.add(egui::TextEdit::multiline(&mut draft.summary).hint_text("What happens in the scene").desired_rows(3).desired_width(320.0));
+            let summary = theme::field(
+                ui,
+                egui::TextEdit::multiline(&mut draft.summary).hint_text("What happens in the scene").desired_rows(3).desired_width(320.0),
+            );
             self.automation.add("dialog.scene.summary", "textbox", "Summary", &summary);
             ui.label("Colour");
             ui.horizontal(|ui| {
@@ -2540,11 +2533,9 @@ impl StorytellerApp {
                 if none.clicked() {
                     draft.color = None;
                 }
-                for (name, hex) in SCENE_COLORS {
-                    let fill = storyteller_core::model::SceneMeta { color: Some(hex.to_string()), ..Default::default() }
-                        .rgb()
-                        .map(|(r, g, b)| egui::Color32::from_rgb(r, g, b))
-                        .unwrap_or_default();
+                for colour in &theme::SCENE_COLOURS {
+                    let (name, hex) = (colour.name, colour.file);
+                    let fill = if ui.visuals().dark_mode { colour.dark } else { colour.light };
                     let chosen = draft.color.as_deref() == Some(hex);
                     let (rect, swatch) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
                     ui.painter().rect_filled(rect.shrink(2.0), 4.0, fill);
@@ -2602,7 +2593,7 @@ impl StorytellerApp {
                 self.automation.add("dialog.rename.from", "combobox", "Character", &combo.response);
                 ui.end_row();
                 ui.label("New name");
-                let to = ui.add(egui::TextEdit::singleline(&mut draft.to).desired_width(240.0));
+                let to = theme::field(ui, egui::TextEdit::singleline(&mut draft.to).desired_width(240.0));
                 self.automation.add("dialog.rename.to", "textbox", "New name", &to);
                 if !draft.focused {
                     to.request_focus();
@@ -2731,7 +2722,7 @@ impl StorytellerApp {
                 GoToMode::Act => "Act, such as 2, TAG or ACT TWO",
                 GoToMode::Bookmark => "Bookmark name",
             };
-            let response = ui.add(egui::TextEdit::singleline(&mut draft.text).hint_text(hint).desired_width(240.0));
+            let response = theme::field(ui, egui::TextEdit::singleline(&mut draft.text).hint_text(hint).desired_width(240.0));
             self.automation.add("dialog.go_to.text", "textbox", "Go to", &response);
             if !draft.focused {
                 response.request_focus();
@@ -2814,7 +2805,7 @@ impl StorytellerApp {
         let mut add = false;
         let mut close = ctx.input(|i| i.key_pressed(egui::Key::Escape));
         egui::Window::new("Add Bookmark").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_TOP, [0.0, 120.0]).show(ctx, |ui| {
-            let response = ui.add(egui::TextEdit::singleline(&mut draft.name).hint_text("Name").desired_width(240.0));
+            let response = theme::field(ui, egui::TextEdit::singleline(&mut draft.name).hint_text("Name").desired_width(240.0));
             self.automation.add("dialog.bookmark.name", "textbox", "Bookmark name", &response);
             if !draft.focused {
                 response.request_focus();

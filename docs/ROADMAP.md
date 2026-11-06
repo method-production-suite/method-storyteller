@@ -225,13 +225,13 @@ says otherwise.
 5. **Brand** [have] S. docs/BRAND.md, the mark, the app icon.
 6. **Pictures** [have] M. A capture command retakes every README picture from an invented
    Field Station script, 1280×800, light and dark.
-7. **Method Launcher rules** (§2, §3, §6, adopted 2026-10-18) [partial] S each:
+7. **Method Launcher rules** (§2, §3, §6, adopted 2026-10-18) [have] S each:
    - every release attaches exactly one `SHA256SUMS` listing every downloadable asset [have];
    - the app accepts `--check-for-updates` and `--open-sample` [have];
    - `recent.json` in the data folder, `[{"path": "/abs", "opened": "<RFC 3339>"}]`, newest
      first, replacing the recent list in settings, which moves over once [have];
-   - installed names: the Linux package `method-storyteller`, the Windows uninstall name
-     `Method Storyteller`;
+   - installed names: the Linux package `method-storyteller` with `method-storyteller-app` on
+     the PATH, the Windows uninstall name `Method Storyteller` [have];
    - the whole-lock crate-age check on every push to main and weekly [have].
 
 ### V1 milestones, worked continuously
