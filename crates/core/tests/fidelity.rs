@@ -232,7 +232,13 @@ const ROWS: &[Row] = &[
     },
     Row { what: "Run fonts, colours and highlights", fidelity: NotMapped, how: "not kept yet in either format", check: None },
     Row {
-        what: "Beat Board, cast, tags, SmartType lists, header and footer, scene number options, spelling lists",
+        what: "Autocomplete lists and bookmarks",
+        fidelity: Approximated,
+        how: "both ways through our own data: `.fdx` `SmartType` and a `StorytellerBookmark` child, OSF `method_storyteller_lists` and `method_storyteller_bookmark`; other OSF apps do not read them",
+        check: None,
+    },
+    Row {
+        what: "Beat Board, cast, tags, header and footer, scene number options, spelling lists",
         fidelity: NotMapped,
         how: "kept in the format they came in; not converted (OSF lists and spelling likewise)",
         check: None,

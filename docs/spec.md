@@ -281,6 +281,13 @@ Limits: inputs over 32 MiB or 200 000 elements are refused with a message, not a
   paragraph keeps its type and takes what follows the selection in the last; in revision mode
   the join leaves a deletion mark. Bold, italic, underline, Mark Revised and Clear Revised still
   work within one paragraph, and say so.
+- Production > Autocomplete Lists… shows the six lists a script keeps (`lists.get`, `lists.add`,
+  `lists.remove`, `lists.rebuild`, each edit one Undo). A list only adds suggestions: everything
+  the script uses is offered anyway. Saving an edited script learns what it uses; an unedited one
+  is written back as it came. `.fdx` keeps them in `SmartType`, written back byte for byte while
+  they are the same. OSF has no place for them, so they ride in our own
+  `method_storyteller_lists` section; Fountain leaves them out, and rebuilds as it is used.
+- Production > Tab After a Name Opens Extensions (off by default, decision 3).
 - View > Show Outline shows or hides sections and synopses, kept in the settings (`view.outline`).
   Hidden, they stay in the script and are saved; the arrows pass over them, and Go To or Find
   landing on one stops at the next paragraph drawn. A selection across them takes them with it.

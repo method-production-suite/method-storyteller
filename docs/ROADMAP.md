@@ -33,7 +33,7 @@ says otherwise.
    its gaps are closed first (below).
 3. **Tab after text in a character cue.** The usual convention starts a parenthetical, with an
    option to open the extension list. **Built on the recommendation: parenthetical**; the
-   extension option comes with stored autocomplete lists. To confirm in the parity check (M7).
+   extension option is Production > Tab After a Name Opens Extensions. To confirm in the parity check (M7).
 4. **⌘0.** Some screenwriting apps use it for a General element, which the model does not have; here it is
    Actual Size. **Built on the recommendation: keep Actual Size.**
 5. **"Paginate like…" profiles for other apps.** Only one app's pagination is calibrated against
@@ -320,8 +320,8 @@ signed `.app.tar.gz`), the OSF and Fountain study, and the design pass. Each is 
   instead of lengthening the first.
 - **Imports** [partial] S each. `.highland` [have]. PDF waits on Method Reader's crates being
   relicensed. `.celtx` waits on a saved file to read, since there is no public description of it.
-- **Stored autocomplete lists** [missing] M. Lists kept in the document, learned as you type,
-  editable; the extension-on-Tab option.
+- **Stored autocomplete lists** [have] M. Lists kept in the document, learned on save, editable;
+  the extension-on-Tab option.
 - **Scene CONTINUED** [missing] S. Off by default; measured only if a corpus file turns it on.
 - **File > Open Recent and Close** [have] S. Open Recent needs a menu built at run time (the
   menu is fixed today); Close (⌘W) closes the script and leaves an empty one (decision 15).

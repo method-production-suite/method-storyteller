@@ -355,6 +355,15 @@ fn find_bookmark(script: &Script, wanted: &str) -> Result<usize, CommandError> {
     }
 }
 
+/// The list a command names.
+fn list_name(s: &Session, p: &Params) -> Result<std::string::String, CommandError> {
+    let name = string(p, "list")?;
+    if s.script.lists.list(&name).is_none() {
+        return Err(CommandError::Invalid { name: "list", reason: format!("there is no list {name}") });
+    }
+    Ok(name)
+}
+
 fn has_bookmark(s: &Session) -> bool {
     s.script.elements.get(s.caret.element).is_some_and(|e| e.bookmark.is_some())
 }
@@ -963,6 +972,16 @@ pub fn tab(session: &mut Session, index: usize) -> Result<(), CommandError> {
         session.caret = Caret { element: index, offset: caret };
         return Ok(());
     }
+    // Tab after a name can open the extension list instead (decision 3).
+    if session.tab_opens_extensions
+        && element.kind == ElementKind::Character
+        && !element.text.contains('(')
+        && let Some(text) = session.script.elements.get(index).map(|e| format!("{} (", e.text.trim_end()))
+    {
+        set_text(session, index, &text, false)?;
+        session.caret = Caret { element: index, offset: text.len() };
+        return Ok(());
+    }
     start_after(session, index, rule.tab_next)
 }
 
@@ -1086,6 +1105,7 @@ fn all_commands() -> Vec<Command> {
         param("to_index", Integer, true, "Element the range ends in"),
         param("to_offset", Integer, true, "Byte offset where it ends"),
     ];
+    const LIST_NAME: ParamSpec = param("list", String, true, "characters, extensions, intros, locations, times or transitions");
     const FIND_TEXT: ParamSpec = param("text", String, true, "Text to find");
     const FIND_CASE: ParamSpec = param("case", Bool, false, "Match case exactly");
     const FIND_WORD: ParamSpec = param("whole_word", Bool, false, "Whole words only");
@@ -1163,6 +1183,7 @@ fn all_commands() -> Vec<Command> {
             enabled: has_path,
             run: |s, _| {
                 let path = s.path.clone().ok_or(CommandError::Missing("path"))?;
+                s.learn_before_saving();
                 files::save(&s.script, &path, s.format, &s.layout)?;
                 s.dirty = false;
                 s.break_typing();
@@ -1182,6 +1203,7 @@ fn all_commands() -> Vec<Command> {
                     FileFormat::Pdf => return Err(CommandError::Invalid { name: "path", reason: "use file.export_pdf for PDF".into() }),
                     other => other,
                 };
+                s.learn_before_saving();
                 files::save(&s.script, &path, format, &s.layout)?;
                 s.path = Some(path.clone());
                 s.format = format;
@@ -1509,6 +1531,12 @@ fn all_commands() -> Vec<Command> {
                 s.checkpoint(EditKind::Other);
                 let mark = s.marking_set();
                 let (mut cues, mut mentions) = (0, 0);
+                // The name in the lists goes with it, so the old one is not offered again.
+                let old_name = from.to_uppercase();
+                if s.script.lists.characters.iter().any(|name| name.to_uppercase() == old_name) {
+                    s.script.lists.characters.retain(|name| name.to_uppercase() != old_name);
+                    storyteller_core::autocomplete::Lists::add(&mut s.script.lists.characters, &new_name);
+                }
                 for element in &mut s.script.elements {
                     if is_cue(element) {
                         // Keep the extensions: `NORA (V.O.)` becomes `EMMA (V.O.)`.
@@ -2113,6 +2141,69 @@ fn all_commands() -> Vec<Command> {
                     })
                     .collect();
                 Ok(Outcome::value(json!(rows)))
+            },
+        },
+        Command {
+            id: "lists.get",
+            label: "Autocomplete Lists",
+            menu: "",
+            shortcut: None,
+            params: &[],
+            enabled: always,
+            run: |s, _| Ok(Outcome::value(json!(s.script.lists))),
+        },
+        Command {
+            id: "lists.add",
+            label: "Add to an Autocomplete List",
+            menu: "",
+            shortcut: None,
+            params: const { &[LIST_NAME, param("entry", String, true, "The entry, stored in capitals")] },
+            enabled: always,
+            run: |s, p| {
+                let name = list_name(s, p)?;
+                let entry = string(p, "entry")?;
+                let present = s.script.lists.list(&name).is_some_and(|list| list.iter().any(|e| e.eq_ignore_ascii_case(entry.trim())));
+                if entry.trim().is_empty() || present {
+                    return Ok(Outcome::value(json!({ "added": false })));
+                }
+                s.checkpoint(EditKind::Other);
+                let added = s.script.lists.list_mut(&name).is_some_and(|list| storyteller_core::autocomplete::Lists::add(list, &entry));
+                Ok(Outcome::value(json!({ "added": added })))
+            },
+        },
+        Command {
+            id: "lists.remove",
+            label: "Remove from an Autocomplete List",
+            menu: "",
+            shortcut: None,
+            params: const { &[LIST_NAME, param("entry", String, true, "The entry")] },
+            enabled: always,
+            run: |s, p| {
+                let name = list_name(s, p)?;
+                let entry = string(p, "entry")?;
+                let present = s.script.lists.list(&name).is_some_and(|list| list.iter().any(|e| e.eq_ignore_ascii_case(entry.trim())));
+                if present {
+                    s.checkpoint(EditKind::Other);
+                    if let Some(list) = s.script.lists.list_mut(&name) {
+                        list.retain(|e| !e.eq_ignore_ascii_case(entry.trim()));
+                    }
+                }
+                Ok(Outcome::value(json!({ "removed": present })))
+            },
+        },
+        Command {
+            id: "lists.rebuild",
+            label: "Rebuild Autocomplete Lists",
+            menu: "",
+            shortcut: None,
+            params: &[],
+            enabled: always,
+            run: |s, _| {
+                s.checkpoint(EditKind::Other);
+                let mut lists = std::mem::take(&mut s.script.lists);
+                lists.rebuild(&s.script);
+                s.script.lists = lists;
+                Ok(Outcome::done())
             },
         },
         Command {

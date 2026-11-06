@@ -54,6 +54,9 @@ pub struct Session {
     pub show_revisions: storyteller_core::model::ShowRevisions,
     /// View > Revised Page Colours: revised pages on screen in their set's page colour.
     pub page_colours: bool,
+    /// Tab after text in a character cue opens the extension list (decision 3), rather than
+    /// starting a parenthetical. The app keeps it in its settings.
+    pub tab_opens_extensions: bool,
     /// View > Show Outline: sections and synopses on screen. They are never printed.
     pub show_outline: bool,
     /// The last range copied, as text and as elements: pasting that same text back gives these.
@@ -89,8 +92,19 @@ impl Session {
             spelling: crate::spell::Personal::default(),
             show_revisions: Default::default(),
             page_colours: false,
+            tab_opens_extensions: false,
             show_outline: true,
             copied: None,
+        }
+    }
+
+    /// A script being saved after edits keeps what it now uses in its lists. An unedited one is
+    /// written back exactly as it came.
+    pub fn learn_before_saving(&mut self) {
+        if self.dirty {
+            let mut lists = std::mem::take(&mut self.script.lists);
+            lists.learn(&self.script);
+            self.script.lists = lists;
         }
     }
 

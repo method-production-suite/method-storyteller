@@ -4,7 +4,123 @@
 
 use std::collections::HashMap;
 
+use serde::{Deserialize, Serialize};
+
 use crate::model::{ElementKind, Script, character_name};
+
+/// Most entries kept in one list.
+pub const MAX_LIST: usize = 2_000;
+
+/// The six lists a script keeps for autocomplete: what it has learned, and what the writer added.
+/// A list only adds suggestions; what the script itself uses is always offered too.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Lists {
+    pub characters: Vec<String>,
+    pub extensions: Vec<String>,
+    pub intros: Vec<String>,
+    pub locations: Vec<String>,
+    pub times: Vec<String>,
+    pub transitions: Vec<String>,
+    /// What follows a scene intro, as `.fdx` says it (`. `). Kept for writing back.
+    pub intro_separator: Option<String>,
+    /// What comes before a time of day, as `.fdx` says it (` - `). Kept for writing back.
+    pub time_separator: Option<String>,
+}
+
+/// The lists by name, as the commands and files call them.
+pub const LIST_NAMES: [&str; 6] = ["characters", "extensions", "intros", "locations", "times", "transitions"];
+
+impl Lists {
+    pub fn is_empty(&self) -> bool {
+        *self == Lists::default()
+    }
+
+    pub fn list(&self, name: &str) -> Option<&Vec<String>> {
+        match name {
+            "characters" => Some(&self.characters),
+            "extensions" => Some(&self.extensions),
+            "intros" => Some(&self.intros),
+            "locations" => Some(&self.locations),
+            "times" => Some(&self.times),
+            "transitions" => Some(&self.transitions),
+            _ => None,
+        }
+    }
+
+    pub fn list_mut(&mut self, name: &str) -> Option<&mut Vec<String>> {
+        match name {
+            "characters" => Some(&mut self.characters),
+            "extensions" => Some(&mut self.extensions),
+            "intros" => Some(&mut self.intros),
+            "locations" => Some(&mut self.locations),
+            "times" => Some(&mut self.times),
+            "transitions" => Some(&mut self.transitions),
+            _ => None,
+        }
+    }
+
+    /// Adds `entry` to a list, in capitals, once. Returns whether it was new.
+    pub fn add(list: &mut Vec<String>, entry: &str) -> bool {
+        let entry = entry.trim().to_uppercase();
+        if entry.is_empty() || list.len() >= MAX_LIST || list.iter().any(|e| e.to_uppercase() == entry) {
+            return false;
+        }
+        list.push(entry);
+        true
+    }
+
+    /// Adds what `script` uses that the lists do not have yet. Returns whether anything was new.
+    pub fn learn(&mut self, script: &Script) -> bool {
+        let mut new = false;
+        for element in &script.elements {
+            let text = element.text.trim();
+            match element.kind {
+                ElementKind::Character => {
+                    new |= Self::add(&mut self.characters, character_name(text));
+                    if let (Some(open), Some(close)) = (text.find('('), text.rfind(')'))
+                        && let Some(extension) = text.get(open + 1..close)
+                    {
+                        new |= Self::add(&mut self.extensions, extension);
+                    }
+                }
+                ElementKind::SceneHeading => {
+                    let upper = text.to_uppercase();
+                    let (prefix, location, time) = split_heading(&upper);
+                    if let Some(prefix) = prefix {
+                        new |= Self::add(&mut self.intros, prefix);
+                        new |= Self::add(&mut self.locations, location);
+                        new |= time.is_some_and(|time| Self::add(&mut self.times, time));
+                    }
+                }
+                ElementKind::Transition => new |= Self::add(&mut self.transitions, text),
+                _ => {}
+            }
+        }
+        new
+    }
+
+    /// Empties the lists and fills them from `script` alone, keeping the separators.
+    pub fn rebuild(&mut self, script: &Script) {
+        for name in LIST_NAMES {
+            if let Some(list) = self.list_mut(name) {
+                list.clear();
+            }
+        }
+        self.learn(script);
+    }
+
+    /// A scene intro as it is offered: `INT` with a `. ` separator reads `INT.`.
+    fn intro(&self, entry: &str) -> String {
+        let entry = entry.trim().to_uppercase();
+        let separator = self.intro_separator.as_deref().unwrap_or("").trim_end();
+        if entry.ends_with(separator) { entry } else { format!("{entry}{separator}") }
+    }
+}
+
+fn weighted(list: &[String]) -> impl Iterator<Item = (String, usize)> + '_ {
+    list.iter().map(|entry| (entry.trim().to_uppercase(), 1))
+}
 
 /// Most suggestions returned.
 pub const MAX_SUGGESTIONS: usize = 10;
@@ -104,34 +220,43 @@ pub fn suggest(script: &Script, kind: ElementKind, text: &str) -> Vec<String> {
             if let Some(open) = typed.rfind('(') {
                 let base = typed.get(..open).unwrap_or("").trim_end();
                 let partial = typed.get(open + 1..).unwrap_or("");
-                return rank(partial, EXTENSIONS.iter().map(|e| (e.to_string(), 1))).into_iter().map(|e| format!("{base} ({e})")).collect();
+                return rank(partial, weighted(&script.lists.extensions).chain(EXTENSIONS.iter().map(|e| (e.to_string(), 1))))
+                    .into_iter()
+                    .map(|e| format!("{base} ({e})"))
+                    .collect();
             }
             let names = script.elements.iter().filter(|e| e.kind == ElementKind::Character).map(|e| (character_name(&e.text).to_uppercase(), 1));
-            rank(&typed, names)
+            rank(&typed, names.chain(weighted(&script.lists.characters)))
         }
         ElementKind::SceneHeading => {
             let (prefix, location, time) = split_heading(&typed);
             let headings: Vec<String> =
                 script.elements.iter().filter(|e| e.kind == ElementKind::SceneHeading).map(|e| e.text.to_uppercase()).collect();
             match (prefix, time) {
-                (None, _) => rank(&typed, SCENE_PREFIXES.iter().map(|p| (p.to_string(), 1))),
+                (None, _) => {
+                    let stored = script.lists.intros.iter().map(|intro| (script.lists.intro(intro), 1));
+                    rank(&typed, SCENE_PREFIXES.iter().map(|p| (p.to_string(), 1)).chain(stored))
+                }
                 (Some(prefix), None) => {
                     let locations = headings.iter().filter_map(|h| {
                         let (_, location, _) = split_heading(h);
                         (!location.is_empty()).then(|| (location.to_string(), 1))
                     });
-                    rank(location, locations).into_iter().map(|l| format!("{prefix} {l}")).collect()
+                    rank(location, locations.chain(weighted(&script.lists.locations))).into_iter().map(|l| format!("{prefix} {l}")).collect()
                 }
                 (Some(prefix), Some(time)) => {
                     let used = headings.iter().filter_map(|h| split_heading(h).2.map(|t| (t.to_string(), 2)));
                     let builtin = TIMES_OF_DAY.iter().map(|t| (t.to_string(), 1));
-                    rank(time, used.chain(builtin)).into_iter().map(|t| format!("{prefix} {location} - {t}")).collect()
+                    rank(time, used.chain(builtin).chain(weighted(&script.lists.times)))
+                        .into_iter()
+                        .map(|t| format!("{prefix} {location} - {t}"))
+                        .collect()
                 }
             }
         }
         ElementKind::Transition => {
             let used = script.elements.iter().filter(|e| e.kind == ElementKind::Transition).map(|e| (e.text.to_uppercase(), 2));
-            rank(typed.trim_start(), used.chain(TRANSITIONS.iter().map(|t| (t.to_string(), 1))))
+            rank(typed.trim_start(), used.chain(TRANSITIONS.iter().map(|t| (t.to_string(), 1))).chain(weighted(&script.lists.transitions)))
         }
         _ => Vec::new(),
     }
@@ -156,6 +281,37 @@ mod tests {
             ],
             ..Script::default()
         }
+    }
+
+    #[test]
+    fn stored_lists_add_suggestions_and_learn_what_the_script_uses() {
+        let mut lists = Lists { characters: vec!["MARTHA".into()], extensions: vec!["PRELAP".into()], ..Lists::default() };
+        lists.intros.push("INT".into());
+        lists.intro_separator = Some(". ".into());
+        lists.locations.push("KIOSK".into());
+        lists.times.push("GOLDEN HOUR".into());
+        lists.transitions.push("SMASH TO:".into());
+        let script = Script { lists, ..script() };
+        assert_eq!(suggest(&script, ElementKind::Character, "mart"), ["MARTHA"]);
+        assert_eq!(suggest(&script, ElementKind::Character, "NORA (pre"), ["NORA (PRELAP)"]);
+        assert_eq!(suggest(&script, ElementKind::SceneHeading, "int. ki"), ["INT. KITCHEN", "INT. KITCHEN GARDEN", "INT. KIOSK"]);
+        assert_eq!(suggest(&script, ElementKind::SceneHeading, "INT. HALL - go"), ["INT. HALL - GOLDEN HOUR"]);
+        assert!(suggest(&script, ElementKind::Transition, "SM").iter().any(|t| t == "SMASH TO:"));
+        // With INT. stored as `INT` and a separator, the intro is offered once.
+        assert_eq!(suggest(&script, ElementKind::SceneHeading, "i"), ["INT.", "INT./EXT.", "I/E"]);
+
+        // What the script uses is learned once, in capitals, after what was there.
+        let mut lists = Lists { characters: vec!["MARCUS".into()], ..Lists::default() };
+        assert!(lists.learn(&script));
+        assert_eq!(lists.characters, ["MARCUS", "MARGARET"]);
+        assert_eq!(lists.extensions, ["V.O."]);
+        assert_eq!(lists.locations, ["KITCHEN", "KITCHEN GARDEN"]);
+        assert_eq!(lists.intros, ["INT.", "EXT."]);
+        assert_eq!(lists.times, ["NIGHT", "DAY"]);
+        assert!(!lists.learn(&script), "nothing new the second time");
+        lists.characters.push("GONE".into());
+        lists.rebuild(&script);
+        assert_eq!(lists.characters, ["MARGARET", "MARCUS"], "a rebuild keeps only what the script uses");
     }
 
     #[test]

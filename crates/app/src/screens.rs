@@ -121,7 +121,8 @@ fn gallery() {
     let script = root.join("examples/field-station.fountain");
     // One shot by name, when only that one is wanted.
     let only = std::env::var("STORYTELLER_GALLERY_ONLY").ok();
-    let states: [(&str, &[&str]); 31] = [
+    let states: [(&str, &[&str]); 32] = [
+        ("autocomplete-lists", &["app.lists"]),
         ("go-to-act", &["app.go_to"]),
         ("go-to-bookmark", &["app.go_to"]),
         ("add-bookmark", &["app.add_bookmark"]),

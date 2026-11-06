@@ -728,6 +728,8 @@ pub struct OsfDocument {
     /// The words `<spelling><ignored>` held as read; the section is written back as it was while
     /// the script's list is the same.
     pub spelling_ignored: Vec<String>,
+    /// The autocomplete lists as read; their section is written back as it was while they are the same.
+    pub lists: crate::autocomplete::Lists,
 }
 
 /// A member of a ZIP archive, kept compressed exactly as read so it can be written back.
@@ -795,6 +797,9 @@ pub struct FdxDocument {
     /// The words `SpellCheckIgnoreLists/IgnoredWords` held as read; the section is written back
     /// as it was while the script's list is the same.
     pub spelling_ignored: Vec<String>,
+    /// The autocomplete lists as read; the `SmartType` section is written back as it was while
+    /// they are the same.
+    pub lists: crate::autocomplete::Lists,
 }
 
 /// One top-level section of an imported Final Draft document.
@@ -1212,6 +1217,9 @@ pub struct Script {
     /// for them). Spell check compares them without case.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub spelling_ignored: Vec<String>,
+    /// The autocomplete lists kept in the script (see [`crate::autocomplete::Lists`]).
+    #[serde(default, skip_serializing_if = "crate::autocomplete::Lists::is_empty")]
+    pub lists: crate::autocomplete::Lists,
 }
 
 impl Script {
