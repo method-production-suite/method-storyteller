@@ -9,6 +9,9 @@ use storyteller_engine::files::FileProblem;
 pub const NO_SCENES_TITLE: &str = "No scenes yet";
 pub const NO_SCENES_BODY: &str = "Start a line with INT. or EXT. and it appears here as a scene.";
 
+/// Go To with no bookmarks in the script.
+pub const NO_BOOKMARKS: &str = "No bookmarks yet. Edit > Add Bookmark… marks the paragraph you are in.";
+
 /// Bold, Italic, Underline, Mark Revised or Clear Revised with a selection across paragraphs.
 pub const WITHIN_ONE_PARAGRAPH: &str = "Select within one paragraph to use this.";
 

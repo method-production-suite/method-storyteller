@@ -50,6 +50,8 @@ const PAGE_MARKER: &str = "method_storyteller_page";
 const SCENE_MARKER: &str = "method_storyteller_scene";
 /// Our element for the scene an omitted heading keeps, as Fountain.
 const OMITTED_MARKER: &str = "method_storyteller_omitted";
+/// Our element for a paragraph's bookmark, by name.
+const BOOKMARK_MARKER: &str = "method_storyteller_bookmark";
 /// Our element for a place revised text was deleted, which OSF's own marks may not say.
 const DELETION_MARKER: &str = "method_storyteller_deletion";
 /// Revision mode on, an attribute of the revision list (other apps ignore it).
@@ -537,6 +539,9 @@ fn read_para(
     {
         element.omitted = Some(get(&omitted, "fountain").unwrap_or_default().to_string());
     }
+    if let Some(bookmark) = tags(&para.children).into_iter().find(|(tag, _)| tag == BOOKMARK_MARKER).map(|(_, a)| a) {
+        element.bookmark = get(&bookmark, "name").filter(|name| !name.trim().is_empty()).map(str::to_string);
+    }
     // Locked pages: a page starts with the paragraph whose page number changes, unless our own
     // page elements say exactly which pages start in it.
     if let Some(current) = page.as_mut() {
@@ -595,6 +600,7 @@ fn strip_ours(children: &str) -> String {
                             | "method_storyteller_page"
                             | "method_storyteller_scene"
                             | "method_storyteller_omitted"
+                            | "method_storyteller_bookmark"
                             | "method_storyteller_deletion"
                     ) =>
             {
@@ -1267,6 +1273,11 @@ fn write_para(element: &Element, extras: &ParaExtras, spelling: Spelling, styles
     {
         out.push_str(&format!("      <{OMITTED_MARKER}"));
         write_attr("fountain", omitted, out);
+        out.push_str("/>\n");
+    }
+    if let Some(name) = element.bookmark.as_deref() {
+        out.push_str(&format!("      <{BOOKMARK_MARKER}"));
+        write_attr("name", name, out);
         out.push_str("/>\n");
     }
     if !element.notes.is_empty() {

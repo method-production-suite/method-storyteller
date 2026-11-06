@@ -370,6 +370,9 @@ pub struct Element {
     /// heading and all, for Unomit; empty when the file kept nothing to bring back.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub omitted: Option<String>,
+    /// The name of the bookmark on this paragraph, for Go To. Never printed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bookmark: Option<String>,
 }
 
 /// What an omitted scene's heading says.
@@ -824,6 +827,7 @@ impl Element {
             boneyard: Vec::new(),
             scene: SceneMeta::default(),
             omitted: None,
+            bookmark: None,
             deletions: Vec::new(),
         };
         if kind == ElementKind::Section {

@@ -243,11 +243,13 @@ pub(crate) fn set_tag_attr(tag: &str, name: &str, value: &str) -> String {
 /// Our child of an omitted scene's heading: the scene it replaced, as Fountain. Final Draft
 /// keeps an omitted scene's content in a way no saved file has shown yet; this keeps ours.
 const OMITTED_CHILD: &str = "StorytellerOmitted";
+/// Our child of a paragraph with a bookmark: its name.
+const BOOKMARK_CHILD: &str = "StorytellerBookmark";
 
-/// The scene our child keeps, and the children without it.
-fn take_omitted(children: &str) -> Option<(String, String)> {
-    let open = format!("<{OMITTED_CHILD}>");
-    let close = format!("</{OMITTED_CHILD}>");
+/// The text of our child `tag`, and the children without it.
+fn take_child(children: &str, tag: &str) -> Option<(String, String)> {
+    let open = format!("<{tag}>");
+    let close = format!("</{tag}>");
     let start = children.find(&open)?;
     let end = start + children.get(start..)?.find(&close)? + close.len();
     let raw = children.get(start + open.len()..end - close.len())?;
@@ -426,6 +428,12 @@ fn write_paragraph(element: &Element, scene: Option<(&str, u32)>, new_page: bool
         out.push_str(&format!("  <{OMITTED_CHILD}>"));
         escape(omitted, out);
         out.push_str(&format!("</{OMITTED_CHILD}>\n"));
+    }
+    if let Some(name) = element.bookmark.as_deref() {
+        out.push_str(indent);
+        out.push_str(&format!("  <{BOOKMARK_CHILD}>"));
+        escape(name, out);
+        out.push_str(&format!("</{BOOKMARK_CHILD}>\n"));
     }
     write_body(element, &format!("{indent}  "), out);
     out.push_str(indent);
@@ -1059,9 +1067,13 @@ impl Importer {
         // The scene an omitted heading keeps, in our own child: modelled, so not kept raw.
         let mut children = paragraph.children;
         if kind == ElementKind::SceneHeading
-            && let Some((omitted, rest)) = take_omitted(&children)
+            && let Some((omitted, rest)) = take_child(&children, OMITTED_CHILD)
         {
             element.omitted = Some(omitted);
+            children = rest;
+        }
+        if let Some((name, rest)) = take_child(&children, BOOKMARK_CHILD) {
+            element.bookmark = Some(name).filter(|name| !name.trim().is_empty());
             children = rest;
         }
         if type_name != fdx_type(&element) || !attributes.is_empty() || !children.is_empty() {

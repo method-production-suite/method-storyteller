@@ -627,6 +627,13 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                             format!("{}: {}", kind.label(), preview(&element.text)),
                             response,
                         );
+                        if element.bookmark.is_some() {
+                            // A small ribbon just left of the text, on screen only.
+                            let at = response.rect.left_top() + vec2(-row * 0.75, row * 0.15);
+                            let (w, h) = (row * 0.4, row * 0.7);
+                            let points = vec![at, at + vec2(w, 0.0), at + vec2(w, h), at + vec2(w * 0.5, h * 0.72), at + vec2(0.0, h)];
+                            ui.painter().add(egui::Shape::convex_polygon(points, faint, Stroke::NONE));
+                        }
                         if kind == ElementKind::SceneHeading
                             && layout.show_scene_numbers
                             && let Some(number) = &element.scene_number
