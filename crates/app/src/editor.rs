@@ -1089,13 +1089,16 @@ fn revision_marks(
     }
 }
 
+/// A range of bytes in a paragraph's text, if there is one.
+type TextRange = Option<(usize, usize)>;
+
 /// One element's text laid out: bold, italic and underlined text in Courier Prime's own faces,
 /// with the markup that says so (and notes) drawn faint; the current find match (or spelling
 /// word) on a rose wash, the selection across paragraphs on `wash`; and misspelled words with a thin red underline. Ranges are bytes; any
 /// that no longer fit the text (it changed this frame) are skipped.
 fn marked_job(
     text: &str,
-    (marked, spanned, wash): (Option<(usize, usize)>, Option<(usize, usize)>, Color32),
+    (marked, spanned, wash): (TextRange, TextRange, Color32),
     misspelled: &[(usize, usize)],
     revised: &[(usize, usize, Color32)],
     font: &FontId,
