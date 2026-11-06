@@ -147,9 +147,9 @@ says otherwise.
   each of a few known edits ([research/locked-pages.md](research/locked-pages.md)); until then
   locks read from `.fdx` are kept but paginate as unlocked. Prepared files and a click list
   come before the session.
-- **The design pass (D).** Look at the contact sheet ([design-pass.md](design-pass.md), section 3)
-  once it is drawn, or for now the offscreen pictures of the icon, the editor and every panel
-  in light and dark, and say what feels off. Nothing needs the app open on your screen.
+- **The design pass (D).** Look at the contact sheet ([design-pass.md](design-pass.md)): every
+  surface, light beside dark, in one picture, and say what feels off. Ready now; a few minutes.
+  Nothing needs the app open on your screen.
 - **Private corpus.** New `.fdx` and PDF pairs exported together (same day, same draft) widen
   the ground truth. The harness never prints script text; the files stay on one machine.
 
@@ -297,7 +297,7 @@ wait for a decision above.
    and CSV (`method-storyteller report`), the Production > Reports… window and the reports as PDF
    tables, File > Export Plain Text…, and File > Export for Method Schedule… (the `.mscenes`
    file, §4.4). M6 is done.
-11. **D, the design pass** M (new, owner 2026-10-18). What is done and what is left:
+11. **D, the design pass** [have, the owner's look to come] M (new, owner 2026-10-18). What is done and what is left:
    [design-pass.md](design-pass.md). Matched to the family (Method Budget's and
     Method Schedule's BRAND.md), every step pictured offscreen in light and dark:
     - the final mark and wordmark (replacing the provisional ones in docs/brand and site/);

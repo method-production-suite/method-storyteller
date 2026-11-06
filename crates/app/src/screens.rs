@@ -6,6 +6,8 @@
 use std::path::{Path, PathBuf};
 
 use egui_kittest::Harness;
+use storyteller_core::model::TvShape;
+use storyteller_engine::Caret;
 
 use super::StorytellerApp;
 
@@ -119,7 +121,22 @@ fn gallery() {
     let script = root.join("examples/field-station.fountain");
     // One shot by name, when only that one is wanted.
     let only = std::env::var("STORYTELLER_GALLERY_ONLY").ok();
-    let states: [(&str, &[&str]); 16] = [
+    let states: [(&str, &[&str]); 31] = [
+        ("go-to-act", &["app.go_to"]),
+        ("go-to-bookmark", &["app.go_to"]),
+        ("add-bookmark", &["app.add_bookmark"]),
+        ("new-tv", &["file.new_tv"]),
+        ("navigator-tv", &[]),
+        ("navigator-scenes", &[]),
+        ("scene-properties", &[]),
+        ("characters", &["app.characters"]),
+        ("recovery", &[]),
+        ("styled-text", &[]),
+        ("multi-cam-page", &[]),
+        ("open-recent", &[]),
+        ("spelling", &["app.spelling"]),
+        ("picker", &[]),
+        ("selection-across", &[]),
         ("find", &["app.find"]),
         ("go-to", &["app.go_to"]),
         ("rename", &["app.rename_character"]),
@@ -158,7 +175,107 @@ fn gallery() {
             for command in commands {
                 harness.state_mut().queued.push((*command).into());
             }
+            let recovery_dir = tempfile::tempdir().ok();
             match name {
+                "go-to-act" | "go-to-bookmark" => {
+                    let app = harness.state_mut();
+                    for (index, bookmark) in [(6, "The map"), (120, "The turn"), (400, "Last act")] {
+                        if let Some(element) = app.session.script.elements.get_mut(index) {
+                            element.bookmark = Some(bookmark.into());
+                        }
+                    }
+                    harness.run_steps(3);
+                    if let Some(draft) = harness.state_mut().go_to.as_mut() {
+                        draft.mode = if name == "go-to-act" { super::GoToMode::Act } else { super::GoToMode::Bookmark };
+                    }
+                }
+                "navigator-tv" | "multi-cam-page" => {
+                    let shape = if name == "navigator-tv" { TvShape::OneHour } else { TvShape::MultiCam };
+                    let app = harness.state_mut();
+                    app.run("file.new_tv", super::params(&[("shape", serde_json::json!(shape.id()))]));
+                    if name == "multi-cam-page" {
+                        // An invented scene on the first lettered page.
+                        let at = app.session.script.scene_indices().first().copied().unwrap_or(0);
+                        let lines = "INT. DINER - DAY\n\nJO WIPES THE COUNTER. BEN WATCHES THE DOOR.\n\nJO\nYou're early.\n\nBEN\nI'm hiding.\n";
+                        app.run("edit.paste_screenplay", super::params(&[("index", serde_json::json!(at)), ("text", serde_json::json!(lines))]));
+                        app.session.caret = Caret { element: at, offset: 0 };
+                        app.editor.pending_focus = Some((at, 0));
+                    }
+                    app.status.clear();
+                }
+                "navigator-scenes" | "scene-properties" => {
+                    let app = harness.state_mut();
+                    let headings = app.session.script.scene_indices();
+                    let notes = [
+                        ("The long walk", "#E06666"),
+                        ("Nobody home", "#FFD966"),
+                        ("The radio", "#93C47D"),
+                        ("Up the mast", "#6FA8DC"),
+                        ("Static", "#C27BA0"),
+                    ];
+                    for (&heading, (title, colour)) in headings.iter().zip(notes) {
+                        if let Some(element) = app.session.script.elements.get_mut(heading) {
+                            element.scene.title = title.into();
+                            element.scene.color = Some(colour.into());
+                            element.scene.summary = "Mara and Delacroix reach the station and find it empty.".into();
+                        }
+                    }
+                    if name == "scene-properties" {
+                        app.open_scene_dialog(headings.first().copied().unwrap_or(0));
+                    }
+                    harness.run_steps(3);
+                    if name == "navigator-scenes" {
+                        for each in [egui::Theme::Light, egui::Theme::Dark] {
+                            harness.ctx.style_mut_of(each, |style| style.interaction.tooltip_delay = 0.0);
+                        }
+                        let at = harness.state().automation.find("navigator.scene.1").map(|row| row.rect.center());
+                        if let Some(at) = at {
+                            harness.input_mut().events.push(egui::Event::PointerMoved(at));
+                        }
+                    }
+                }
+                "recovery" => {
+                    if let Some(dir) = &recovery_dir {
+                        let _ = crate::recovery::write(dir.path(), "Field Station", b"INT. LOST - NIGHT\n\nThe unsaved line.\n");
+                        harness.state_mut().recovery_dir = Some(dir.path().to_path_buf());
+                        harness.state_mut().find_recovery();
+                    }
+                }
+                "styled-text" => {
+                    let app = harness.state_mut();
+                    if let Some(element) = app.session.script.elements.get_mut(2) {
+                        element.text = "A **bold** word, an *italic* word and an _underlined_ one, each with its markup faint.".into();
+                    }
+                    app.session.invalidate_layout();
+                    app.editor.pending_focus = Some((0, 0));
+                }
+                "open-recent" => {
+                    let app = harness.state_mut();
+                    for script in ["Pilot.mstory", "Field Station.osf", "Second Act.fountain"] {
+                        app.recent.push(&format!("/scripts/{script}"));
+                    }
+                    use egui_kittest::kittest::Queryable;
+                    harness.run_steps(3);
+                    harness.get_by_label("File").click();
+                    harness.run_steps(3);
+                    harness.get_by_label_contains("Open Recent").hover();
+                }
+                "spelling" => {
+                    harness.state_mut().prefs.update(|p| p.view.check_spelling = true);
+                }
+                "picker" => {
+                    let app = harness.state_mut();
+                    app.run("element.insert", super::params(&[("index", serde_json::json!(5)), ("kind", serde_json::json!("action"))]));
+                    app.session.caret = Caret { element: 6, offset: 0 };
+                    app.editor.pending_focus = Some((6, 0));
+                    app.editor.picker = Some(crate::editor::Picker { index: 6, selected: 1 });
+                    app.status.clear();
+                }
+                "selection-across" => {
+                    let app = harness.state_mut();
+                    let edits = app.session.edits();
+                    app.editor.span = Some(crate::editor::Span::between(Caret { element: 6, offset: 12 }, Caret { element: 10, offset: 8 }, edits));
+                }
                 "find" | "nothing-found" => {
                     harness.run_steps(3);
                     if let Some(bar) = harness.state_mut().find.as_mut() {
@@ -211,6 +328,83 @@ fn gallery() {
                 panic!("{}: {error}", path.display());
             }
             println!("  {}", path.display());
+            drop(recovery_dir);
         }
     }
+    if only.is_none() {
+        contact_sheet(&out, &states.map(|(name, _)| name));
+    }
+}
+
+/// The owner's one picture: every shot, light beside dark, labelled.
+fn contact_sheet(out: &Path, names: &[&str]) {
+    let thumb = egui::vec2(320.0, 200.0);
+    let per_row = 3.0;
+    let rows = (names.len() as f32 / per_row).ceil();
+    let size = egui::vec2((thumb.x * 2.0 + 24.0) * per_row + 16.0, (thumb.y + 36.0) * rows + 16.0);
+    let mut textures: Vec<(String, egui::TextureHandle, egui::TextureHandle)> = Vec::new();
+    let names: Vec<String> = names.iter().map(ToString::to_string).collect();
+    let dir = out.to_path_buf();
+    let mut harness = Harness::builder().with_size(size).with_pixels_per_point(1.0).with_theme(egui::Theme::Light).build_ui(move |ui| {
+        if textures.is_empty() {
+            for name in &names {
+                let load = |suffix: &str| {
+                    let image = read_png(&dir.join(format!("{name}-{suffix}.png")));
+                    ui.ctx().load_texture(format!("{name}-{suffix}"), image, egui::TextureOptions::LINEAR)
+                };
+                textures.push((name.clone(), load("light"), load("dark")));
+            }
+        }
+        egui::Grid::new("sheet").spacing(egui::vec2(16.0, 8.0)).show(ui, |ui| {
+            for (n, (name, light, dark)) in textures.iter().enumerate() {
+                ui.vertical(|ui| {
+                    ui.label(egui::RichText::new(name).strong());
+                    ui.horizontal(|ui| {
+                        ui.add(egui::Image::new(light).fit_to_exact_size(thumb));
+                        ui.add(egui::Image::new(dark).fit_to_exact_size(thumb));
+                    });
+                });
+                if (n + 1) % 3 == 0 {
+                    ui.end_row();
+                }
+            }
+        });
+    });
+    harness.run_steps(3);
+    let image = match harness.render() {
+        Ok(image) => image,
+        Err(error) => panic!("rendering the contact sheet: {error}"),
+    };
+    let path = out.join("contact-sheet.png");
+    if let Err(error) = write_png(&path, image.width(), image.height(), &image.into_raw()) {
+        panic!("{}: {error}", path.display());
+    }
+    println!("  {}", path.display());
+}
+
+fn read_png(path: &Path) -> egui::ColorImage {
+    let bytes = std::fs::read(path).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+    let mut reader = png::Decoder::new(std::io::Cursor::new(bytes)).read_info().unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+    let mut data = vec![0; reader.output_buffer_size().unwrap_or(0)];
+    let info = reader.next_frame(&mut data).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+    // A quarter the width and height, each pixel the mean of four across: a thumbnail, and within
+    // the largest texture the renderer takes.
+    let (width, height) = (info.width as usize, info.height as usize);
+    let step = 4;
+    let (small_width, small_height) = (width / step, height / step);
+    let mut small = Vec::with_capacity(small_width * small_height * 4);
+    for y in 0..small_height {
+        for x in 0..small_width {
+            for channel in 0..4 {
+                let sum: u32 = (0..step * step)
+                    .map(|n| {
+                        let at = ((y * step + n / step) * width + x * step + n % step) * 4 + channel;
+                        u32::from(data.get(at).copied().unwrap_or(255))
+                    })
+                    .sum();
+                small.push((sum / (step * step) as u32) as u8);
+            }
+        }
+    }
+    egui::ColorImage::from_rgba_unmultiplied([small_width, small_height], &small)
 }
