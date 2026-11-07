@@ -9,10 +9,11 @@ Writers trust this app with their work; a crash can lose it.
 - No `unwrap`, `expect`, `panic!`, `unreachable!`, `todo!`, `unimplemented!` or indexing that
   can panic outside tests (the workspace lints deny them). Return `Result` and propagate with
   `?`; use `get()`, `let … else`, checked or saturating maths.
-- No `unsafe` (forbidden workspace-wide). The one exception is `crates/platform`: a few
-  Objective-C messages with no safe binding, each block with a `// SAFETY:` comment, which clippy enforces there
-  (`undocumented_unsafe_blocks = "deny"`); the owner approved this exception on 2026-10-18. Nothing else goes
-  there, and no other crate opts out of the workspace lints.
+- No `unsafe` (forbidden workspace-wide). The one exception is `crates/platform`: only what the operating
+  system alone can say and no safe binding offers (files opened from the Finder, the local date, the region),
+  each block with a `// SAFETY:` comment, which clippy enforces there (`undocumented_unsafe_blocks = "deny"`).
+  The owner approved this exception on 2026-10-18, and its scope as worded here on 2026-11-06. Anything new goes
+  there only with the owner's yes, and no other crate opts out of the workspace lints.
 - Every file, control-channel request and CLI argument is hostile: cap sizes
   (`MAX_INPUT_BYTES`, `MAX_ELEMENTS`), bound loops and recursion, never divide by a value that
   can be zero.
