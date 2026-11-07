@@ -65,9 +65,11 @@ says otherwise.
    page), and an app icon of the white mark on a rose square like Method Budget's and Method
    Schedule's. Reversible: the drawing is one function in `scripts/make-brand.py`. Pictures
    are in the brand pull request.
-11. **`unsafe` for files opened from the Finder.** **Decided by the owner, 2026-10-18:**
-   `crates/platform` is the one crate allowed `unsafe`, with a SAFETY comment on every block
-   (enforced by clippy). Recorded in AGENTS.md.
+11. **`unsafe` for what only the operating system can say.** **Decided by the owner, 2026-10-18,
+   for files opened from the Finder; its scope, 2026-11-06:** `crates/platform` is the one crate
+   allowed `unsafe`, for files opened from the Finder, the local date and the region, with a SAFETY
+   comment on every block (enforced by clippy). Anything new goes there only with the owner's yes.
+   Recorded in AGENTS.md.
 13. **TV structure (new, 2026-10-19).** **Decided by the owner: build it all** (act breaks,
    End of Act, Teaser, Cold Open and Tag, a New TV Script layout, acts in the navigator and Go
    To, and acts in every format). A new TV script asks each time: one-hour (Teaser, Acts One to
