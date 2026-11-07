@@ -1,4 +1,4 @@
-//! Files opened from the Finder: a double-click, Open With, a drop on the Dock icon, or
+//! What only the operating system can say. On macOS, files opened from the Finder: a double-click, Open With, a drop on the Dock icon, or
 //! `open -a`. macOS sends these as an "open documents" Apple Event, not as arguments.
 //!
 //! [`install`] listens for the app about to finish launching. That is where the handler must be

@@ -1942,8 +1942,8 @@ dependencies = [
  "serde_json",
  "storyteller-core",
  "storyteller-engine",
- "storyteller-macos-open",
  "storyteller-pdf",
+ "storyteller-platform",
  "tempfile",
 ]
 
@@ -3425,20 +3425,10 @@ dependencies = [
  "serde_json",
  "spellbook",
  "storyteller-core",
- "storyteller-macos-open",
  "storyteller-pdf",
+ "storyteller-platform",
  "tempfile",
  "thiserror 2.0.21",
-]
-
-[[package]]
-name = "storyteller-macos-open"
-version = "0.6.0"
-dependencies = [
- "libc",
- "objc2 0.6.5",
- "objc2-foundation 0.3.2",
- "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3448,6 +3438,16 @@ dependencies = [
  "craft-pdf",
  "storyteller-core",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "storyteller-platform"
+version = "0.6.0"
+dependencies = [
+ "libc",
+ "objc2 0.6.5",
+ "objc2-foundation 0.3.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

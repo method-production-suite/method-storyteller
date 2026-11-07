@@ -384,7 +384,7 @@ impl StorytellerApp {
         // settings in memory (tests) stay with US English, whatever the machine's region.
         let mut prefs = prefs;
         if prefs.get().general.spelling_language.is_empty() {
-            let region = if in_memory { None } else { storyteller_macos_open::region() };
+            let region = if in_memory { None } else { storyteller_platform::region() };
             let language = region.map_or(storyteller_engine::spell::Language::Us, |r| storyteller_engine::spell::Language::for_region(&r));
             prefs.update(|p| p.general.spelling_language = language.id().into());
         }
@@ -468,7 +468,7 @@ impl StorytellerApp {
         }
         app.view_into_session();
         let ctx = cc.egui_ctx.clone();
-        storyteller_macos_open::set_wake(move || ctx.request_repaint());
+        storyteller_platform::set_wake(move || ctx.request_repaint());
         // What to open (sample::launch_choice). The first launch retires the sample whatever
         // opens: a writer who starts with their own script never sees it unasked.
         let from_finder = app.first_from_finder();
@@ -1041,7 +1041,7 @@ impl StorytellerApp {
     /// The first of the files opened from the Finder. The window holds one script, so any
     /// others are named in the status line rather than dropped silently.
     fn first_from_finder(&mut self) -> Option<PathBuf> {
-        let mut paths = storyteller_macos_open::take().into_iter();
+        let mut paths = storyteller_platform::take().into_iter();
         let first = paths.next()?;
         let others: Vec<String> =
             paths.map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| p.display().to_string())).collect();

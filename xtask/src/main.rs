@@ -21,10 +21,10 @@ use std::process::{Command, ExitCode};
 const LAYERS: [(&str, &[&str]); 6] = [
     ("storyteller-core", &[]),
     ("storyteller-pdf", &["storyteller-core"]),
-    ("storyteller-engine", &["storyteller-core", "storyteller-pdf", "storyteller-macos-open"]),
+    ("storyteller-engine", &["storyteller-core", "storyteller-pdf", "storyteller-platform"]),
     ("storyteller-cli", &["storyteller-core", "storyteller-engine"]),
-    ("storyteller-macos-open", &[]),
-    ("method-storyteller", &["storyteller-core", "storyteller-engine", "storyteller-pdf", "storyteller-macos-open"]),
+    ("storyteller-platform", &[]),
+    ("method-storyteller", &["storyteller-core", "storyteller-engine", "storyteller-pdf", "storyteller-platform"]),
 ];
 /// Dependencies only the desktop app may use.
 const UI_ONLY: [&str; 5] = ["egui", "eframe", "winit", "rfd", "craft-quit"];
