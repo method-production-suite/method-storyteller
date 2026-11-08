@@ -656,6 +656,40 @@ fn replacing_a_range_joins_its_ends_in_one_undo() {
 }
 
 #[test]
+fn a_range_within_one_paragraph_keeps_what_is_anchored_after_it() {
+    use storyteller_core::model::{PageStart, Revised, ScriptNote};
+    let registry = Registry::new();
+    let mut s = Session::new(storyteller_core::fountain::parse("Rain falls on the hut tonight.\n").unwrap());
+    // "tonight" is revised, a page starts at "hut" and a note covers "tonight".
+    let at = |word: &str| u32::try_from("Rain falls on the hut tonight.".find(word).unwrap()).unwrap();
+    let element = &mut s.script.elements[0];
+    element.revised.push(Revised { from: at("tonight"), to: at("."), set: 1 });
+    element.page_starts.push(PageStart { at: at("hut"), label: "2".into(), ..PageStart::default() });
+    element.notes.push(ScriptNote { text: "Which night?".into(), range: Some((at("tonight"), at("."))), ..ScriptNote::default() });
+
+    // Cut "on the " out.
+    run(&registry, &mut s, "edit.replace_range", range((0, "Rain falls ".len()), (0, "Rain falls on the ".len())));
+    let element = &s.script.elements[0];
+    assert_eq!(element.text, "Rain falls hut tonight.");
+    let at = |word: &str| u32::try_from("Rain falls hut tonight.".find(word).unwrap()).unwrap();
+    assert_eq!(element.revised, [Revised { from: at("tonight"), to: at("."), set: 1 }]);
+    assert_eq!(element.page_starts.iter().map(|p| p.at).collect::<Vec<_>>(), [at("hut")]);
+    assert_eq!(element.notes[0].range, Some((at("tonight"), at("."))));
+
+    // Replaced with text, they move by its length.
+    run(&registry, &mut s, "edit.undo", json!({}));
+    let mut params = range((0, "Rain falls ".len()), (0, "Rain falls on the ".len()));
+    params["text"] = json!("near the old ");
+    run(&registry, &mut s, "edit.replace_range", params);
+    let element = &s.script.elements[0];
+    assert_eq!(element.text, "Rain falls near the old hut tonight.");
+    let at = |word: &str| u32::try_from("Rain falls near the old hut tonight.".find(word).unwrap()).unwrap();
+    assert_eq!(element.page_starts.iter().map(|p| p.at).collect::<Vec<_>>(), [at("hut")]);
+    assert_eq!(element.notes[0].range, Some((at("tonight"), at("."))));
+    assert!(element.revised.contains(&Revised { from: at("tonight"), to: at("."), set: 1 }), "{:?}", element.revised);
+}
+
+#[test]
 fn in_revision_mode_a_replaced_range_is_marked() {
     let registry = Registry::new();
     let mut s = Session::new(storyteller_core::fountain::parse(RANGE_SCRIPT).unwrap());
