@@ -2,7 +2,7 @@
 //!
 //! Suggestions are complete replacement texts for the element, best first.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -72,18 +72,26 @@ impl Lists {
 
     /// Adds what `script` uses that the lists do not have yet. Returns whether anything was new.
     pub fn learn(&mut self, script: &Script) -> bool {
+        // What each list holds, so a long script is read in one pass however often it repeats.
+        let held = |list: &[String]| -> HashSet<String> { list.iter().map(|entry| entry.to_uppercase()).collect() };
+        let mut characters = held(&self.characters);
+        let mut extensions = held(&self.extensions);
+        let mut intros = held(&self.intros);
+        let mut locations = held(&self.locations);
+        let mut times = held(&self.times);
+        let mut transitions = held(&self.transitions);
         let mut new = false;
         for element in &script.elements {
             let text = element.text.trim();
             match element.kind {
                 ElementKind::Character => {
-                    new |= Self::add(&mut self.characters, character_name(text));
+                    new |= add_unheld(&mut self.characters, &mut characters, character_name(text));
                     // Each bracketed part is an extension of its own: `(V.O.) (CONT'D)` is two.
                     let mut rest = text;
                     while let Some(open) = rest.find('(') {
                         let inner = rest.get(open + 1..).unwrap_or_default();
                         let Some(close) = inner.find(')') else { break };
-                        new |= Self::add(&mut self.extensions, inner.get(..close).unwrap_or_default());
+                        new |= add_unheld(&mut self.extensions, &mut extensions, inner.get(..close).unwrap_or_default());
                         rest = inner.get(close + 1..).unwrap_or_default();
                     }
                 }
@@ -91,12 +99,12 @@ impl Lists {
                     let upper = text.to_uppercase();
                     let (prefix, location, time) = split_heading(&upper);
                     if let Some(prefix) = prefix {
-                        new |= Self::add(&mut self.intros, prefix);
-                        new |= Self::add(&mut self.locations, location);
-                        new |= time.is_some_and(|time| Self::add(&mut self.times, time));
+                        new |= add_unheld(&mut self.intros, &mut intros, prefix);
+                        new |= add_unheld(&mut self.locations, &mut locations, location);
+                        new |= time.is_some_and(|time| add_unheld(&mut self.times, &mut times, time));
                     }
                 }
-                ElementKind::Transition => new |= Self::add(&mut self.transitions, text),
+                ElementKind::Transition => new |= add_unheld(&mut self.transitions, &mut transitions, text),
                 _ => {}
             }
         }
@@ -119,6 +127,16 @@ impl Lists {
         let separator = self.intro_separator.as_deref().unwrap_or("").trim_end();
         if entry.ends_with(separator) { entry } else { format!("{entry}{separator}") }
     }
+}
+
+/// [`Lists::add`], with what the list holds already known.
+fn add_unheld(list: &mut Vec<String>, held: &mut HashSet<String>, entry: &str) -> bool {
+    let entry = entry.trim().to_uppercase();
+    if entry.is_empty() || list.len() >= MAX_LIST || !held.insert(entry.clone()) {
+        return false;
+    }
+    list.push(entry);
+    true
 }
 
 fn weighted(list: &[String]) -> impl Iterator<Item = (String, usize)> + '_ {

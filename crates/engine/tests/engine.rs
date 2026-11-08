@@ -690,6 +690,85 @@ fn a_range_within_one_paragraph_keeps_what_is_anchored_after_it() {
 }
 
 #[test]
+fn text_put_in_at_a_caret_goes_in_front_of_what_is_anchored_after_it() {
+    use storyteller_core::model::{PageStart, ScriptNote};
+    let registry = Registry::new();
+    let line = "Rain falls on the hut tonight.";
+    let mut s = Session::new(storyteller_core::fountain::parse(&format!("{line}\n")).unwrap());
+    let at = |line: &str, word: &str| u32::try_from(line.find(word).unwrap()).unwrap();
+    let element = &mut s.script.elements[0];
+    element.page_starts.push(PageStart { at: at(line, "hut"), label: "2".into(), ..PageStart::default() });
+    element.notes.push(ScriptNote { text: "Which night?".into(), range: Some((at(line, "tonight"), at(line, "."))), ..ScriptNote::default() });
+
+    let mut params = range((0, "Rain falls ".len()), (0, "Rain falls ".len()));
+    params["text"] = json!("hard ");
+    run(&registry, &mut s, "edit.replace_range", params);
+    let line = "Rain falls hard on the hut tonight.";
+    let element = &s.script.elements[0];
+    assert_eq!(element.text, line);
+    assert_eq!(element.page_starts[0].at, at(line, "hut"));
+    assert_eq!(element.notes[0].range, Some((at(line, "tonight"), at(line, "."))));
+}
+
+#[test]
+fn a_note_across_the_end_of_a_range_keeps_what_is_left_of_it() {
+    use storyteller_core::model::ScriptNote;
+    let registry = Registry::new();
+    let line = "Rain falls on the hut tonight.";
+    let mut s = Session::new(storyteller_core::fountain::parse(&format!("{line}\n")).unwrap());
+    let at = |line: &str, word: &str| u32::try_from(line.find(word).unwrap()).unwrap();
+    // The note covers "falls on the hut"; "on the " goes.
+    s.script.elements[0].notes.push(ScriptNote {
+        text: "Check.".into(),
+        range: Some((at(line, "falls"), at(line, " tonight"))),
+        ..ScriptNote::default()
+    });
+    run(&registry, &mut s, "edit.replace_range", range((0, "Rain falls ".len()), (0, "Rain falls on the ".len())));
+    let line = "Rain falls hut tonight.";
+    assert_eq!(s.script.elements[0].text, line);
+    assert_eq!(s.script.elements[0].notes[0].range, Some((at(line, "falls"), at(line, " tonight"))));
+}
+
+#[test]
+fn a_range_across_paragraphs_keeps_what_is_anchored_after_it() {
+    use storyteller_core::model::{PageStart, Revised, ScriptNote};
+    let registry = Registry::new();
+    let mut s = Session::new(storyteller_core::fountain::parse("First line here.\n\nSecond line tonight.\n").unwrap());
+    let second = "Second line tonight.";
+    let at = |line: &str, word: &str| u32::try_from(line.find(word).unwrap()).unwrap();
+    let element = &mut s.script.elements[1];
+    element.revised.push(Revised { from: at(second, "tonight"), to: at(second, "."), set: 1 });
+    element.page_starts.push(PageStart { at: at(second, "line"), label: "2".into(), ..PageStart::default() });
+    element.notes.push(ScriptNote { text: "Which night?".into(), range: Some((at(second, "tonight"), at(second, "."))), ..ScriptNote::default() });
+
+    // From "here." to "line", with nothing put in.
+    let params = range((0, "First line ".len()), (1, "Second ".len()));
+    run(&registry, &mut s, "edit.replace_range", params.clone());
+    let line = "First line line tonight.";
+    assert_eq!(s.script.elements.len(), 1, "the second paragraph joined the first");
+    let element = &s.script.elements[0];
+    assert_eq!(element.text, line);
+    let tonight = at(line, "tonight");
+    assert_eq!(element.revised, [Revised { from: tonight, to: at(line, "."), set: 1 }]);
+    assert_eq!(element.page_starts[0].at, u32::try_from("First line ".len()).unwrap());
+    assert_eq!(element.notes[0].range, Some((tonight, at(line, "."))));
+
+    // With text put in, they come after it.
+    run(&registry, &mut s, "edit.undo", json!({}));
+    let mut params = params;
+    params["text"] = json!("and the ");
+    run(&registry, &mut s, "edit.replace_range", params);
+    let line = "First line and the line tonight.";
+    assert_eq!(s.script.elements.len(), 1, "the second paragraph joined the first");
+    let element = &s.script.elements[0];
+    assert_eq!(element.text, line);
+    let tonight = at(line, "tonight");
+    assert_eq!(element.revised, [Revised { from: tonight, to: at(line, "."), set: 1 }]);
+    assert_eq!(element.page_starts[0].at, u32::try_from("First line and the ".len()).unwrap());
+    assert_eq!(element.notes[0].range, Some((tonight, at(line, "."))));
+}
+
+#[test]
 fn in_revision_mode_a_replaced_range_is_marked() {
     let registry = Registry::new();
     let mut s = Session::new(storyteller_core::fountain::parse(RANGE_SCRIPT).unwrap());

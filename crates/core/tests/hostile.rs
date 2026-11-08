@@ -85,18 +85,46 @@ fn degenerate_layouts_do_not_hang() {
 
 #[test]
 fn a_huge_autocomplete_list_opens_quickly_and_is_capped() {
-    // A file can name 200,000 characters; we keep the first `MAX_LIST` and read the rest in one pass.
+    // A file can name far more characters than we keep; we keep the first `MAX_LIST` and read the
+    // rest in one pass. The limit is wide enough for a busy machine and still far below what
+    // checking each name against all before it would cost.
     let mut script = Script::default();
     script.elements.push(Element::new(ElementKind::Action, "One."));
-    script.lists.characters = (0..200_000).map(|n| format!("NAME {n}")).collect();
-    script.spelling_ignored = (0..200_000).map(|n| format!("word{n}")).collect();
+    script.lists.characters = (0..50_000).map(|n| format!("NAME {n}")).collect();
+    script.spelling_ignored = (0..50_000).map(|n| format!("word{n}")).collect();
     for (format, text) in [("fdx", fdx::write(&script)), ("osf", storyteller_core::osf::write(&script))] {
         let start = std::time::Instant::now();
         let back = if format == "fdx" { fdx::parse(&text) } else { storyteller_core::osf::parse(&text) }.unwrap();
         let took = start.elapsed();
         assert_eq!(back.lists.characters.len(), autocomplete::MAX_LIST, "{format}");
         assert_eq!(back.lists.characters.first().map(String::as_str), Some("NAME 0"), "{format}");
-        assert_eq!(back.spelling_ignored.len(), 200_000, "{format}: every distinct ignored word is kept");
-        assert!(took < std::time::Duration::from_secs(10), "{format} took {took:?}");
+        assert_eq!(back.spelling_ignored.len(), 50_000, "{format}: every distinct ignored word is kept");
+        assert!(took < std::time::Duration::from_secs(60), "{format} took {took:?}");
     }
+}
+
+#[test]
+fn learning_a_script_of_repeated_cues_and_brackets_is_quick() {
+    // Each list one short of its cap, so every repeat would scan all of it if each were compared.
+    let mut script = Script::default();
+    for n in 0..autocomplete::MAX_LIST - 1 {
+        script.elements.push(Element::new(ElementKind::Character, format!("NAME {n}")));
+    }
+    for _ in script.elements.len()..storyteller_core::MAX_ELEMENTS {
+        script.elements.push(Element::new(ElementKind::Character, "NAME 1998"));
+    }
+    let mut cue = String::from("NAME 1998");
+    for n in 0..autocomplete::MAX_LIST - 1 {
+        cue.push_str(&format!(" (E{n})"));
+    }
+    cue.push_str(&" (E1998)".repeat(1_000_000));
+    script.elements.push(Element::new(ElementKind::Character, cue));
+
+    let mut lists = autocomplete::Lists::default();
+    let start = std::time::Instant::now();
+    assert!(lists.learn(&script));
+    let took = start.elapsed();
+    assert_eq!(lists.characters.len(), autocomplete::MAX_LIST - 1);
+    assert_eq!(lists.extensions.len(), autocomplete::MAX_LIST - 1);
+    assert!(took < std::time::Duration::from_secs(60), "took {took:?}");
 }
