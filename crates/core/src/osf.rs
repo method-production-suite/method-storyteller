@@ -57,7 +57,7 @@ fn read_lists(raw: &str) -> crate::autocomplete::Lists {
     let mut lists = crate::autocomplete::Lists::default();
     for name in crate::autocomplete::LIST_NAMES {
         if let Some(list) = lists.list_mut(name) {
-            *list = crate::fdx::ignored_words(raw, name);
+            *list = crate::fdx::ignored_words(raw, name, crate::autocomplete::MAX_LIST);
         }
     }
     let attributes = tags(raw).into_iter().next().map(|(_, a)| a).unwrap_or_default();
@@ -462,7 +462,7 @@ pub fn parse(source: &str) -> Result<Script, CoreError> {
         .any(|s| tags(&s.raw).first().is_some_and(|(_, a)| truthy(get(a, "pages_locked"))));
     let section = |name: &str| top.iter().find(|s| s.name.eq_ignore_ascii_case(name)).map(|s| s.raw.as_str());
     let format = crate::format::from_osf(section("settings"), section("styles"))?;
-    let spelling_ignored = section("spelling").map(|raw| crate::fdx::ignored_words(raw, "ignored")).unwrap_or_default();
+    let spelling_ignored = section("spelling").map(|raw| crate::fdx::ignored_words(raw, "ignored", crate::MAX_ELEMENTS)).unwrap_or_default();
     let lists = section(LISTS_SECTION).map(read_lists).unwrap_or_default();
     let mut document = OsfDocument {
         version,

@@ -82,3 +82,21 @@ fn degenerate_layouts_do_not_hang() {
     narrow.action.width = 1;
     let _ = paginate(&script, &narrow);
 }
+
+#[test]
+fn a_huge_autocomplete_list_opens_quickly_and_is_capped() {
+    // A file can name 200,000 characters; we keep the first `MAX_LIST` and read the rest in one pass.
+    let mut script = Script::default();
+    script.elements.push(Element::new(ElementKind::Action, "One."));
+    script.lists.characters = (0..200_000).map(|n| format!("NAME {n}")).collect();
+    script.spelling_ignored = (0..200_000).map(|n| format!("word{n}")).collect();
+    for (format, text) in [("fdx", fdx::write(&script)), ("osf", storyteller_core::osf::write(&script))] {
+        let start = std::time::Instant::now();
+        let back = if format == "fdx" { fdx::parse(&text) } else { storyteller_core::osf::parse(&text) }.unwrap();
+        let took = start.elapsed();
+        assert_eq!(back.lists.characters.len(), autocomplete::MAX_LIST, "{format}");
+        assert_eq!(back.lists.characters.first().map(String::as_str), Some("NAME 0"), "{format}");
+        assert_eq!(back.spelling_ignored.len(), 200_000, "{format}: every distinct ignored word is kept");
+        assert!(took < std::time::Duration::from_secs(10), "{format} took {took:?}");
+    }
+}
