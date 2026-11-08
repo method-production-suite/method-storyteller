@@ -855,14 +855,16 @@ fn replace_range(s: &mut Session, from: Caret, to: Caret, text: &str) -> Result<
         tail.set_text(after.clone());
     }
     // Within one paragraph, what is anchored after the cut is lifted out the same way, so it
-    // comes back after the join rather than being cut off with the text.
+    // comes back after the join rather than being cut off with the text. A note that runs across
+    // the cut stays, and how far it ran past the cut is kept for after the join.
+    let mut runs_past: Vec<(usize, u32)> = Vec::new();
     if from.element == to.element
-        && to.offset > from.offset
         && let Some(element) = s.script.elements.get_mut(from.element)
     {
         let cut = u32::try_from(inline::plain(element.text.get(..to.offset).unwrap_or_default()).chars().count()).unwrap_or(u32::MAX);
         let mut moved = Element::new(kind, "");
         element.split_anchors(cut, &mut moved);
+        runs_past = element.notes.iter().enumerate().filter_map(|(n, note)| note.range.filter(|r| r.1 > cut).map(|r| (n, r.1 - cut))).collect();
         tail = Some(moved);
     }
     if from.element < to.element {
@@ -888,6 +890,11 @@ fn replace_range(s: &mut Session, from: Caret, to: Caret, text: &str) -> Result<
     }
     let joined_at = u32::try_from(inline::plain(&inserted).chars().count()).unwrap_or(u32::MAX);
     element.set_text(format!("{inserted}{after}"));
+    for (note, past) in runs_past {
+        if let Some(range) = element.notes.get_mut(note).and_then(|note| note.range.as_mut()) {
+            range.1 = joined_at.saturating_add(past);
+        }
+    }
     if let Some(tail) = tail.as_mut() {
         element.absorb_anchors(tail, joined_at);
     }

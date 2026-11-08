@@ -295,8 +295,9 @@ Limits: inputs over 32 MiB or 200 000 elements are refused with a message, not a
   and never printed; Edit > Remove Bookmark takes it off (`bookmark.add`, `bookmark.remove`,
   `bookmark.list`). A name points to one place: used again, it moves there. Go To's Bookmark tab
   lists them and takes a name or enough of its start (`nav.go_to` with `bookmark`). OSF keeps them
-  in a `method_storyteller_bookmark` child, `.fdx` in a `StorytellerBookmark` child, which other
-  apps may drop; Fountain has no place for them, and saving there says so.
+  in a `method_storyteller_bookmark` child, `.fdx` in a `StorytellerBookmark` child. Another
+  program may drop either when it saves the file; that is untested. Fountain has no place for
+  them, and saving there says so.
 - Dragging a scene's row in the navigator moves the scene, as one Undo (`scene.move`). A line
   shows where it would land. It takes its paragraphs up to the next heading or the act lines
   that close its act, which stay put. Its scene number goes with it. In revision mode its

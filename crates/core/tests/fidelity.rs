@@ -234,7 +234,7 @@ const ROWS: &[Row] = &[
     Row {
         what: "Autocomplete lists and bookmarks",
         fidelity: Approximated,
-        how: "both ways through our own data: `.fdx` `SmartType` and a `StorytellerBookmark` child, OSF `method_storyteller_lists` and `method_storyteller_bookmark`; other OSF apps do not read them",
+        how: "both ways through our own data: `.fdx` `SmartType` and a `StorytellerBookmark` child, OSF `method_storyteller_lists` and `method_storyteller_bookmark`; other OSF apps do not read them, and another program may drop the bookmark children when it saves the file (untested)",
         check: None,
     },
     Row {
