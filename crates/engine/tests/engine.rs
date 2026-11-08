@@ -776,6 +776,26 @@ fn moving_a_scene_leaves_act_lines_and_locked_pages_where_they_are() {
 }
 
 #[test]
+fn locked_pages_a_moved_scene_leaves_behind_print_as_one() {
+    use storyteller_core::model::PageStart;
+    let registry = Registry::new();
+    let mut s = Session::new(storyteller_core::fountain::parse("INT. A - DAY\n\nOne.\n\nEXT. B - DAY\n\nTwo.\n\nINT. C - DAY\n\nThree.\n").unwrap());
+    let lock = |label: &str, at: u32| PageStart { at, label: label.into(), ..PageStart::default() };
+    s.script.elements[0].page_starts.push(lock("1", 0));
+    s.script.elements[2].page_starts.push(lock("2", 0));
+    s.script.elements[3].page_starts.push(lock("3", 2));
+    s.script.elements[4].page_starts.push(lock("4", 0));
+    // B and both its pages move to the end: pages 2 and 3 now start where 4 does.
+    run(&registry, &mut s, "scene.move", json!({ "index": 2, "to": 6 }));
+    let c = s.script.elements.iter().position(|e| e.text == "INT. C - DAY").unwrap();
+    assert_eq!(s.script.elements[c].page_starts.iter().map(|p| (p.at, p.label.as_str())).collect::<Vec<_>>(), [(0, "2"), (0, "3"), (0, "4")]);
+    let pages = storyteller_core::paginate::paginate(&s.script, &s.layout).pages;
+    let labels: Vec<String> = pages.iter().map(storyteller_core::paginate::Page::label).collect();
+    // Pages 2 and 3 are empty and 4's text fits on page 1, so they print as one page.
+    assert_eq!(labels, ["1-4"], "docs/production-spec.md: an empty locked page prints with the one before");
+}
+
+#[test]
 fn bookmarks_go_to_undo_and_keep_to_one_place() {
     let registry = Registry::new();
     let mut s = Session::new(storyteller_core::fountain::parse(RANGE_SCRIPT).unwrap());
