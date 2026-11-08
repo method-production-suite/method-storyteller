@@ -854,36 +854,50 @@ fn replace_range(s: &mut Session, from: Caret, to: Caret, text: &str) -> Result<
     if let Some(tail) = tail.as_mut() {
         tail.set_text(after.clone());
     }
+    // Within one paragraph, what is anchored after the cut is lifted out the same way, so it
+    // comes back after the join rather than being cut off with the text.
+    if from.element == to.element
+        && to.offset > from.offset
+        && let Some(element) = s.script.elements.get_mut(from.element)
+    {
+        let cut = u32::try_from(inline::plain(element.text.get(..to.offset).unwrap_or_default()).chars().count()).unwrap_or(u32::MAX);
+        let mut moved = Element::new(kind, "");
+        element.split_anchors(cut, &mut moved);
+        tail = Some(moved);
+    }
     if from.element < to.element {
         s.script.elements.drain(from.element + 1..=to.element);
     }
+    // Plain text goes in before the join, so what was anchored after the range comes after it.
+    let text = if as_elements || text.is_empty() {
+        String::new()
+    } else {
+        let text = if caps { text.to_uppercase() } else { text.replace('\r', "") };
+        if kind.is_single_line() { text.replace('\n', " ") } else { text }
+    };
+    let marking = s.marking_set();
     let Some(element) = s.script.elements.get_mut(from.element) else { return Ok(()) };
     element.kind = kind;
-    // Set in two steps, so the first paragraph's anchors stop at the cut and the last one's come
-    // along after it.
+    // Set in steps, so the first paragraph's anchors stop at the cut and the last one's come
+    // along after it (and after any new text).
     element.set_text(before.clone());
-    let joined_at = u32::try_from(inline::plain(&before).chars().count()).unwrap_or(u32::MAX);
-    element.set_text(format!("{before}{after}"));
+    let cut_at = u32::try_from(inline::plain(&before).chars().count()).unwrap_or(u32::MAX);
+    let inserted = format!("{before}{text}");
+    if !text.is_empty() {
+        element.set_text_revised(inserted.clone(), marking);
+    }
+    let joined_at = u32::try_from(inline::plain(&inserted).chars().count()).unwrap_or(u32::MAX);
+    element.set_text(format!("{inserted}{after}"));
     if let Some(tail) = tail.as_mut() {
         element.absorb_anchors(tail, joined_at);
     }
     if let Some(set) = mark.filter(|_| from != to) {
-        element.mark_deletion(joined_at, set);
+        element.mark_deletion(cut_at, set);
     }
     element.normalize();
-    s.caret = Caret { element: from.element, offset: before.len() };
-    if as_elements {
-        if !pasted.is_empty() {
-            place_pasted(s, from.element, before.len(), before.len(), pasted);
-        }
-    } else if !text.is_empty() {
-        let text = if caps { text.to_uppercase() } else { text.replace('\r', "") };
-        let text = if kind.is_single_line() { text.replace('\n', " ") } else { text };
-        let marking = s.marking_set();
-        if let Some(element) = s.script.elements.get_mut(from.element) {
-            element.set_text_revised(format!("{before}{text}{after}"), marking);
-        }
-        s.caret = Caret { element: from.element, offset: before.len() + text.len() };
+    s.caret = Caret { element: from.element, offset: inserted.len() };
+    if as_elements && !pasted.is_empty() {
+        place_pasted(s, from.element, before.len(), before.len(), pasted);
     }
     Ok(())
 }

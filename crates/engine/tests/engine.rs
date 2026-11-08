@@ -656,6 +656,40 @@ fn replacing_a_range_joins_its_ends_in_one_undo() {
 }
 
 #[test]
+fn a_range_within_one_paragraph_keeps_what_is_anchored_after_it() {
+    use storyteller_core::model::{PageStart, Revised, ScriptNote};
+    let registry = Registry::new();
+    let mut s = Session::new(storyteller_core::fountain::parse("Rain falls on the hut tonight.\n").unwrap());
+    // "tonight" is revised, a page starts at "hut" and a note covers "tonight".
+    let at = |word: &str| u32::try_from("Rain falls on the hut tonight.".find(word).unwrap()).unwrap();
+    let element = &mut s.script.elements[0];
+    element.revised.push(Revised { from: at("tonight"), to: at("."), set: 1 });
+    element.page_starts.push(PageStart { at: at("hut"), label: "2".into(), ..PageStart::default() });
+    element.notes.push(ScriptNote { text: "Which night?".into(), range: Some((at("tonight"), at("."))), ..ScriptNote::default() });
+
+    // Cut "on the " out.
+    run(&registry, &mut s, "edit.replace_range", range((0, "Rain falls ".len()), (0, "Rain falls on the ".len())));
+    let element = &s.script.elements[0];
+    assert_eq!(element.text, "Rain falls hut tonight.");
+    let at = |word: &str| u32::try_from("Rain falls hut tonight.".find(word).unwrap()).unwrap();
+    assert_eq!(element.revised, [Revised { from: at("tonight"), to: at("."), set: 1 }]);
+    assert_eq!(element.page_starts.iter().map(|p| p.at).collect::<Vec<_>>(), [at("hut")]);
+    assert_eq!(element.notes[0].range, Some((at("tonight"), at("."))));
+
+    // Replaced with text, they move by its length.
+    run(&registry, &mut s, "edit.undo", json!({}));
+    let mut params = range((0, "Rain falls ".len()), (0, "Rain falls on the ".len()));
+    params["text"] = json!("near the old ");
+    run(&registry, &mut s, "edit.replace_range", params);
+    let element = &s.script.elements[0];
+    assert_eq!(element.text, "Rain falls near the old hut tonight.");
+    let at = |word: &str| u32::try_from("Rain falls near the old hut tonight.".find(word).unwrap()).unwrap();
+    assert_eq!(element.page_starts.iter().map(|p| p.at).collect::<Vec<_>>(), [at("hut")]);
+    assert_eq!(element.notes[0].range, Some((at("tonight"), at("."))));
+    assert!(element.revised.contains(&Revised { from: at("tonight"), to: at("."), set: 1 }), "{:?}", element.revised);
+}
+
+#[test]
 fn in_revision_mode_a_replaced_range_is_marked() {
     let registry = Registry::new();
     let mut s = Session::new(storyteller_core::fountain::parse(RANGE_SCRIPT).unwrap());
@@ -739,6 +773,26 @@ fn moving_a_scene_leaves_act_lines_and_locked_pages_where_they_are() {
     let c = at(&s, "INT. C - DAY");
     assert_eq!(s.script.elements[c].page_starts[0].label, "2");
     assert!(s.script.elements[at(&s, "One.")].revised.is_empty(), "what stayed is not marked");
+}
+
+#[test]
+fn locked_pages_a_moved_scene_leaves_behind_print_as_one() {
+    use storyteller_core::model::PageStart;
+    let registry = Registry::new();
+    let mut s = Session::new(storyteller_core::fountain::parse("INT. A - DAY\n\nOne.\n\nEXT. B - DAY\n\nTwo.\n\nINT. C - DAY\n\nThree.\n").unwrap());
+    let lock = |label: &str, at: u32| PageStart { at, label: label.into(), ..PageStart::default() };
+    s.script.elements[0].page_starts.push(lock("1", 0));
+    s.script.elements[2].page_starts.push(lock("2", 0));
+    s.script.elements[3].page_starts.push(lock("3", 2));
+    s.script.elements[4].page_starts.push(lock("4", 0));
+    // B and both its pages move to the end: pages 2 and 3 now start where 4 does.
+    run(&registry, &mut s, "scene.move", json!({ "index": 2, "to": 6 }));
+    let c = s.script.elements.iter().position(|e| e.text == "INT. C - DAY").unwrap();
+    assert_eq!(s.script.elements[c].page_starts.iter().map(|p| (p.at, p.label.as_str())).collect::<Vec<_>>(), [(0, "2"), (0, "3"), (0, "4")]);
+    let pages = storyteller_core::paginate::paginate(&s.script, &s.layout).pages;
+    let labels: Vec<String> = pages.iter().map(storyteller_core::paginate::Page::label).collect();
+    // Pages 2 and 3 are empty and 4's text fits on page 1, so they print as one page.
+    assert_eq!(labels, ["1-4"], "docs/production-spec.md: an empty locked page prints with the one before");
 }
 
 #[test]
