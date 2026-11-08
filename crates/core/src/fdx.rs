@@ -258,7 +258,7 @@ fn read_lists(xml: &str) -> crate::autocomplete::Lists {
     let mut lists = crate::autocomplete::Lists::default();
     for (name, section, _) in SMART_TYPE {
         if let Some(list) = lists.list_mut(name) {
-            *list = ignored_words(xml, &loose(section));
+            *list = ignored_words(xml, &loose(section), crate::autocomplete::MAX_LIST);
         }
     }
     let separator = |section: &str| -> Option<String> {
@@ -1325,7 +1325,7 @@ impl Importer {
             .sections
             .iter()
             .find_map(|s| match s {
-                FdxSection::Raw(xml) if section_is(xml, "SpellCheckIgnoreLists") => Some(ignored_words(xml, "ignoredwords")),
+                FdxSection::Raw(xml) if section_is(xml, "SpellCheckIgnoreLists") => Some(ignored_words(xml, "ignoredwords", MAX_ELEMENTS)),
                 _ => None,
             })
             .unwrap_or_default();
@@ -1960,17 +1960,18 @@ fn loose(name: &str) -> String {
 }
 
 /// The words in the child list `list` (compared loosely) of a section: each entry's text, or its
-/// `word` attribute. As written, each once whatever its case, in order.
-pub(crate) fn ignored_words(xml: &str, list: &str) -> Vec<String> {
+/// `word` attribute. As written, each once whatever its case, in order, and at most `max`.
+pub(crate) fn ignored_words(xml: &str, list: &str, max: usize) -> Vec<String> {
     let mut reader = quick_xml::Reader::from_str(xml);
     let mut depth = 0usize;
     let mut in_list = false;
     let mut entry: Option<String> = None;
     let mut words: Vec<String> = Vec::new();
-    let push = |word: &str, words: &mut Vec<String>| {
+    // What is in `words` already, lowercased, so a long list is read in one pass.
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut push = |word: &str, words: &mut Vec<String>| {
         let word = word.trim();
-        let lower = word.to_lowercase();
-        if !word.is_empty() && !words.iter().any(|w| w.to_lowercase() == lower) && words.len() < MAX_ELEMENTS {
+        if !word.is_empty() && words.len() < max && seen.insert(word.to_lowercase()) {
             words.push(word.to_string());
         }
     };

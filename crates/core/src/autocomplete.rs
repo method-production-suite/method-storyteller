@@ -78,10 +78,13 @@ impl Lists {
             match element.kind {
                 ElementKind::Character => {
                     new |= Self::add(&mut self.characters, character_name(text));
-                    if let (Some(open), Some(close)) = (text.find('('), text.rfind(')'))
-                        && let Some(extension) = text.get(open + 1..close)
-                    {
-                        new |= Self::add(&mut self.extensions, extension);
+                    // Each bracketed part is an extension of its own: `(V.O.) (CONT'D)` is two.
+                    let mut rest = text;
+                    while let Some(open) = rest.find('(') {
+                        let inner = rest.get(open + 1..).unwrap_or_default();
+                        let Some(close) = inner.find(')') else { break };
+                        new |= Self::add(&mut self.extensions, inner.get(..close).unwrap_or_default());
+                        rest = inner.get(close + 1..).unwrap_or_default();
                     }
                 }
                 ElementKind::SceneHeading => {
@@ -309,6 +312,10 @@ mod tests {
         assert_eq!(lists.intros, ["INT.", "EXT."]);
         assert_eq!(lists.times, ["NIGHT", "DAY"]);
         assert!(!lists.learn(&script), "nothing new the second time");
+        let mut two = script.clone();
+        two.elements.push(crate::model::Element::new(ElementKind::Character, "NORA (O.S.) (CONT'D)"));
+        assert!(lists.learn(&two));
+        assert_eq!(lists.extensions, ["V.O.", "O.S.", "CONT'D"], "each bracketed part on its own");
         lists.characters.push("GONE".into());
         lists.rebuild(&script);
         assert_eq!(lists.characters, ["MARGARET", "MARCUS"], "a rebuild keeps only what the script uses");
