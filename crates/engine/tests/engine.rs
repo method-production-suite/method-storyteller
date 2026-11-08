@@ -718,7 +718,11 @@ fn a_note_across_the_end_of_a_range_keeps_what_is_left_of_it() {
     let mut s = Session::new(storyteller_core::fountain::parse(&format!("{line}\n")).unwrap());
     let at = |line: &str, word: &str| u32::try_from(line.find(word).unwrap()).unwrap();
     // The note covers "falls on the hut"; "on the " goes.
-    s.script.elements[0].notes.push(ScriptNote { text: "Check.".into(), range: Some((at(line, "falls"), at(line, " tonight"))), ..ScriptNote::default() });
+    s.script.elements[0].notes.push(ScriptNote {
+        text: "Check.".into(),
+        range: Some((at(line, "falls"), at(line, " tonight"))),
+        ..ScriptNote::default()
+    });
     run(&registry, &mut s, "edit.replace_range", range((0, "Rain falls ".len()), (0, "Rain falls on the ".len())));
     let line = "Rain falls hut tonight.";
     assert_eq!(s.script.elements[0].text, line);
