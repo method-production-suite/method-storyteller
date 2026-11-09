@@ -858,10 +858,13 @@ fn replace_range(s: &mut Session, from: Caret, to: Caret, text: &str) -> Result<
     // comes back after the join rather than being cut off with the text. A note that runs across
     // the cut stays, and how far it ran past the cut is kept for after the join.
     let mut runs_past: Vec<(usize, u32)> = Vec::new();
+    // Text put in at a caret takes the revision mark of the character after it, as typing does.
+    let mut carried = None;
     if from.element == to.element
         && let Some(element) = s.script.elements.get_mut(from.element)
     {
         let cut = u32::try_from(inline::plain(element.text.get(..to.offset).unwrap_or_default()).chars().count()).unwrap_or(u32::MAX);
+        carried = (from == to).then(|| element.revision_at(cut)).flatten();
         let mut moved = Element::new(kind, "");
         element.split_anchors(cut, &mut moved);
         runs_past = element.notes.iter().enumerate().filter_map(|(n, note)| note.range.filter(|r| r.1 > cut).map(|r| (n, r.1 - cut))).collect();
@@ -897,6 +900,10 @@ fn replace_range(s: &mut Session, from: Caret, to: Caret, text: &str) -> Result<
     }
     if let Some(tail) = tail.as_mut() {
         element.absorb_anchors(tail, joined_at);
+    }
+    // In revision mode the new text is already marked in the active set.
+    if let Some(set) = carried.filter(|_| !text.is_empty() && marking.is_none_or(|m| m == 0)) {
+        element.mark_range(cut_at, joined_at, Some(set));
     }
     if let Some(set) = mark.filter(|_| from != to) {
         element.mark_deletion(cut_at, set);
