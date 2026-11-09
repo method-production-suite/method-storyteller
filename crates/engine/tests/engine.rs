@@ -1557,3 +1557,35 @@ fn typing_holds_the_pages_on_screen_and_nothing_else() {
     s.hold_pages = false;
     assert!(s.shown_pages().element_pages[yard] > 1);
 }
+
+/// With revision mode off, text put in at a caret takes the revision marks typing gives it:
+/// inside a revised span the span grows over it, so a paste and a key agree (MReview on #158).
+#[test]
+fn text_put_in_at_a_caret_marks_as_typing_does() {
+    use storyteller_core::model::Revised;
+    let registry = Registry::new();
+    let marked = || {
+        let mut s = Session::new(storyteller_core::fountain::parse("INT. HUT - DAY\n\nShe waits by the door.\n").unwrap());
+        // "waits by" (characters 4..12) revised in set 1; revision mode stays off.
+        s.script.elements[1].revised = vec![Revised { from: 4, to: 12, set: 1 }];
+        s
+    };
+    for at in [4, 8, 12] {
+        let mut typed = marked();
+        let mut text = typed.script.elements[1].text.clone();
+        text.insert_str(at, "now ");
+        run(&registry, &mut typed, "element.set_text", json!({ "index": 1, "text": text, "typing": true }));
+        let mut pasted = marked();
+        let mut params = range((1, at), (1, at));
+        params["text"] = json!("now ");
+        run(&registry, &mut pasted, "edit.replace_range", params);
+        assert_eq!(pasted.script.elements[1].text, typed.script.elements[1].text);
+        assert_eq!(pasted.script.elements[1].revised, typed.script.elements[1].revised, "inserted at {at}");
+    }
+    // Inside the span, both grow it over the new text.
+    let mut s = marked();
+    let mut params = range((1, 8), (1, 8));
+    params["text"] = json!("now ");
+    run(&registry, &mut s, "edit.replace_range", params);
+    assert_eq!(s.script.elements[1].revised, [Revised { from: 4, to: 16, set: 1 }]);
+}
