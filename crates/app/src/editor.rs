@@ -433,14 +433,16 @@ fn preview(text: &str) -> String {
 /// Draw the script and collect the edits to apply.
 pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automation: &mut Automation, zoom: f32, pages: bool) -> Vec<EditAction> {
     let mut actions = Vec::new();
-    let element_pages = session.paginated().element_pages.clone();
+    // While the writer types in a paragraph, the page breaks are the ones from before the typing
+    // began; they catch up after a pause (see `Session::hold_pages`).
+    let element_pages = session.shown_pages().element_pages.clone();
     let show = session.show_revisions;
     // Each page's revision label and paper (§3.5): the set it is issued in, and that set's page
     // colour when View > Revised Page Colours is on.
     let page_revisions: Vec<(Option<String>, Color32)> = {
         let revisions = session.script.revisions.clone();
         let colours = session.page_colours;
-        let pages = session.paginated().pages.iter().map(|page| page.revision(&revisions, show));
+        let pages = session.shown_pages().pages.iter().map(|page| page.revision(&revisions, show));
         pages
             .map(|set| {
                 let paper = set.filter(|_| colours).and_then(|s| s.page_color.as_deref()).and_then(crate::theme::hex);

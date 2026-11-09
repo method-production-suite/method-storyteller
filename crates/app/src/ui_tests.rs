@@ -1170,3 +1170,32 @@ fn lock_pages_asks_first_and_offers_revision_mode() {
     harness.run_steps(3);
     assert!(!harness.state().session.script.pages_locked());
 }
+
+#[test]
+fn typing_keeps_the_pages_until_a_pause_and_headings_follow_at_once() {
+    let script = format!("INT. HUT - DAY\n\n{}EXT. YARD - NIGHT\n\nRain.\n", "Short line.\n\n".repeat(20));
+    let (mut harness, _file) = harness(&script);
+    harness.state_mut().prefs.update(|p| p.view.navigator = true);
+    harness.state_mut().editor.pending_focus = Some((1, 0));
+    harness.run_steps(4);
+    let status = |harness: &Harness<'static, StorytellerApp>| harness.state().automation.find("status.page").map(|w| w.label.clone());
+    assert_eq!(status(&harness).as_deref(), Some("Page 1 of 1"));
+
+    // A long run of typing (one step is a quarter of a second here) fills a page and more.
+    harness.event(egui::Event::Text("A long while passes and nothing moves. ".repeat(80)));
+    harness.step();
+    harness.step();
+    assert!(harness.state().session.script.elements[1].text.len() > 3000, "the text went in");
+    assert_eq!(status(&harness).as_deref(), Some("Page 1 of 1"), "the pages wait for a pause");
+    harness.run_steps(2);
+    assert_ne!(status(&harness).as_deref(), Some("Page 1 of 1"), "and catch up after it");
+
+    // A heading being typed shows in the navigator at once.
+    harness.state_mut().editor.pending_focus = Some((0, 14));
+    harness.run_steps(4);
+    harness.event(egui::Event::Text(" 2".into()));
+    harness.step();
+    harness.step();
+    let row = harness.state().automation.find("navigator.scene.0").map(|w| w.label.clone());
+    assert_eq!(row.as_deref(), Some("INT. HUT - DAY 2"));
+}

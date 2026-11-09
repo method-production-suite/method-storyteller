@@ -347,16 +347,18 @@ signed `.app.tar.gz`), the OSF and Fountain study, and the design pass. Each is 
 - **Recovery copies at launch** [have] S. The app writes a recovery copy as the writer works
   but never offers it after a crash. Offer it at launch, ahead of the first-launch sample.
 - **The editor lays out only the rows on screen** [have] M. A paragraph well off screen takes
-  up its measured space and is not laid out. Typing on a long script still repaginates on every
-  key; that is the next thing to look at if long scripts feel slow.
+  up its measured space and is not laid out. Typing waits for a pause to repaginate (below).
 - **Capitals by display** [missing] S. Typing into a capitals type (a multi-camera script's
   action) stores capitals today; keep the writer's casing and show capitals on screen and page
   instead. Waits on the editor drawing its own text, as Page view does (MReview's note on #82).
 - **The editor draws its own text** [missing] L. What Page view and Capitals by display need, and
   what hiding the markup of bold and italic needs (8b). A large change to how typing works, so it
   is its own piece of work, best after the next release.
-- **Typing on long scripts** [missing] S to M. A key on a 239-page script takes about 90 ms in a
-  debug build, most of it repaginating. Paginate from the changed page on, or after a short pause.
+- **Typing on long scripts** [have] S. While the writer types in one paragraph, the screen keeps
+  the pages it had and lays the script out again half a second after typing stops; saving,
+  exporting, reports and Lock Pages always paginate the script as it is. On a 260-page script in
+  a debug build, a key went from about 49 ms over its two frames to about 22 ms. Paginating from
+  the changed page on would also shorten the one layout after the pause; not needed yet.
 - **UK English dictionary** [have] S (decision 16). US and UK English, a setting, the first
   run choosing from the system's region.
 
