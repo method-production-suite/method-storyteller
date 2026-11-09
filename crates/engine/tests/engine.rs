@@ -1505,3 +1505,55 @@ fn revision_mode_marks_typing_and_mark_and_clear_act_on_a_range() {
     run(&registry, &mut s, "edit.undo", json!({}));
     assert!(s.script.elements[1].revised.is_empty());
 }
+
+/// Typing keeps the pages the screen draws until the writer pauses; anything that saves,
+/// exports or counts pages sees the script as it is now.
+#[test]
+fn typing_holds_the_pages_on_screen_and_nothing_else() {
+    use storyteller_engine::commands::set_text;
+    let script = format!("INT. HUT - DAY\n\n{}EXT. YARD - NIGHT\n\nRain.\n", "Short line.\n\n".repeat(20));
+    let mut s = Session::new(storyteller_core::fountain::parse(&script).unwrap());
+    let yard = s.script.elements.iter().position(|e| e.text == "EXT. YARD - NIGHT").unwrap();
+    let before = s.shown_pages().clone();
+    assert_eq!(before.element_pages[yard], 1);
+    let long = "A long while passes and nothing moves. ".repeat(80);
+
+    // Typing a lot into the first action pushes the yard to a later page.
+    s.hold_pages = true;
+    set_text(&mut s, 1, &long, true).unwrap();
+    assert_eq!(s.shown_pages(), &before, "the screen keeps the pages it had");
+    assert_eq!(s.shown_scene_lengths()[1].page, 1);
+    assert!(s.paginated().element_pages[yard] > 1, "the current pages are laid out anew");
+    assert!(s.shown_pages().element_pages[yard] > 1, "and once laid out, the screen has them");
+
+    // Once the writer pauses, the screen catches up.
+    let mut s = Session::new(storyteller_core::fountain::parse(&script).unwrap());
+    s.shown_pages();
+    s.hold_pages = true;
+    set_text(&mut s, 1, &long, true).unwrap();
+    s.hold_pages = false;
+    assert!(s.shown_pages().element_pages[yard] > 1);
+    assert!(s.shown_scene_lengths()[1].page > 1);
+
+    // Any other edit (here Enter, which adds a paragraph) is not held.
+    let mut s = Session::new(storyteller_core::fountain::parse(&script).unwrap());
+    s.shown_pages();
+    s.hold_pages = true;
+    set_text(&mut s, 1, &long, true).unwrap();
+    storyteller_engine::commands::enter(&mut s, 1, long.len()).unwrap();
+    assert_eq!(s.shown_pages().element_pages.len(), s.script.elements.len());
+    assert!(s.shown_pages().element_pages[yard + 1] > 1);
+
+    // Undo is not held either.
+    let mut s = Session::new(storyteller_core::fountain::parse(&script).unwrap());
+    s.shown_pages();
+    s.hold_pages = true;
+    set_text(&mut s, 1, &long, true).unwrap();
+    assert!(s.undo());
+    assert_eq!(s.shown_pages().element_pages[yard], 1, "the pages as they are after the undo");
+    // Typing again holds the pages laid out after the undo.
+    set_text(&mut s, 1, &long, true).unwrap();
+    assert_eq!(s.shown_pages().element_pages[yard], 1);
+    s.hold_pages = false;
+    assert!(s.shown_pages().element_pages[yard] > 1);
+}

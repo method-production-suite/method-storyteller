@@ -8,6 +8,9 @@ for its own version in Help > What's New, once after an update.
 ### Changed
 
 - Long scripts draw faster: paragraphs well off screen are no longer laid out each frame.
+- Typing in a long script is quicker: page breaks, page numbers and scene lengths on screen
+  update half a second after typing stops, rather than on every key. Saving, printing and
+  reports always use the pages as they are.
 - Text boxes in dialogs and the find bar now have a visible border, in light and dark.
 - A scene's colour stripe is easier to see on the light navigator. The colour saved in the file
   is the same.

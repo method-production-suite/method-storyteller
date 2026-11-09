@@ -12,6 +12,9 @@ use crate::files::FileFormat;
 /// Undo steps kept.
 pub const MAX_UNDO: usize = 500;
 
+/// Nothing laid out, for [`Session::shown_pages`] when there is nothing to show.
+static EMPTY: Paginated = Paginated { title_page: None, pages: Vec::new(), scenes: Vec::new(), element_pages: Vec::new() };
+
 /// Caret position: element index and byte offset into its text (always on a char boundary).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Caret {
@@ -48,6 +51,12 @@ pub struct Session {
     edits: u64,
     paginated: Option<Paginated>,
     lengths: Option<Vec<SceneLength>>,
+    /// The pages and scene lengths from before the typing now going on, which the screen keeps
+    /// drawing while [`Session::hold_pages`] is set (see [`Session::shown_pages`]).
+    held: Option<(Paginated, Vec<SceneLength>)>,
+    /// Set by the app while the writer is typing: the screen draws the held pages rather than
+    /// laying the whole script out again on every key. Nothing else uses the held pages.
+    pub hold_pages: bool,
     /// The writer's learned words (see [`crate::spell::Personal`]); the app fills them from its settings.
     pub spelling: crate::spell::Personal,
     /// View > Show Revisions; the app keeps it in its settings (§3.5).
@@ -89,6 +98,8 @@ impl Session {
             edits: 0,
             paginated: None,
             lengths: None,
+            held: None,
+            hold_pages: false,
             spelling: crate::spell::Personal::default(),
             show_revisions: Default::default(),
             page_colours: false,
@@ -147,7 +158,16 @@ impl Session {
         self.last_edit = Some(kind);
         self.edits += 1;
         self.dirty = true;
-        self.paginated = None;
+        // Typing keeps the pages it started from for the screen; any other edit drops them.
+        // This runs before the edit, so the pages still match the script.
+        match (kind, self.paginated.take()) {
+            (EditKind::Typing(_), Some(pages)) => {
+                let lengths = self.lengths.take().unwrap_or_else(|| scene_lengths(&self.script, &pages, &self.layout));
+                self.held = Some((pages, lengths));
+            }
+            (EditKind::Typing(_), None) => {}
+            (EditKind::Other, _) => self.held = None,
+        }
         self.lengths = None;
     }
 
@@ -178,8 +198,7 @@ impl Session {
     fn after_history(&mut self) {
         self.last_edit = None;
         self.dirty = true;
-        self.paginated = None;
-        self.lengths = None;
+        self.invalidate_layout();
         self.clamp_caret();
     }
 
@@ -188,8 +207,7 @@ impl Session {
         self.undo.clear();
         self.redo.clear();
         self.last_edit = None;
-        self.paginated = None;
-        self.lengths = None;
+        self.invalidate_layout();
     }
 
     /// Mark the end of a typing run so the next keystroke starts a new undo step.
@@ -240,6 +258,33 @@ impl Session {
         self.lengths.as_deref().unwrap_or_default()
     }
 
+    /// Whether the screen draws the held pages: the writer is typing, the script has not been
+    /// laid out since, and the held pages still have a place for every paragraph.
+    fn showing_held(&self) -> bool {
+        self.hold_pages
+            && self.paginated.is_none()
+            && self.held.as_ref().is_some_and(|(pages, _)| pages.element_pages.len() == self.script.elements.len())
+    }
+
+    /// The pages to draw on screen. While the writer types in a paragraph ([`Session::hold_pages`]),
+    /// these are the pages from before the typing began, so a key does not lay the whole script
+    /// out again; the app clears `hold_pages` after a pause and the pages catch up. Saving,
+    /// exporting, reports and Lock Pages use [`Session::paginated`], which is always current.
+    pub fn shown_pages(&mut self) -> &Paginated {
+        if !self.showing_held() {
+            self.paginated();
+        }
+        self.paginated.as_ref().or(self.held.as_ref().map(|(pages, _)| pages)).unwrap_or(&EMPTY)
+    }
+
+    /// The scene lengths to draw on screen, held like [`Session::shown_pages`].
+    pub fn shown_scene_lengths(&mut self) -> &[SceneLength] {
+        if self.showing_held() {
+            return self.held.as_ref().map_or(&[], |(_, lengths)| lengths.as_slice());
+        }
+        self.scene_lengths()
+    }
+
     /// The set a change is marked in now: the active one, in revision mode (kept in the script,
     /// so a file saved in revision mode opens in it).
     pub fn marking_set(&self) -> Option<u32> {
@@ -273,6 +318,7 @@ impl Session {
     pub fn invalidate_layout(&mut self) {
         self.paginated = None;
         self.lengths = None;
+        self.held = None;
     }
 
     /// Window or tab title: file name and an unsaved marker.

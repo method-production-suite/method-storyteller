@@ -22,6 +22,9 @@ use crate::prefs::{APP_ID, Prefs, RECOVERY_DIR};
 use crate::theme;
 
 const AUTOSAVE_EVERY: Duration = Duration::from_secs(60);
+/// How long typing pauses before the screen lays the script out again. Until then a key in a
+/// long script does not wait on the whole script's pagination.
+const SETTLE: f64 = 0.5;
 const MENUS: [&str; 6] = ["File", "Edit", "Format", "Production", "View", "Help"];
 
 /// Commands that belong to the app rather than the document.
@@ -329,6 +332,9 @@ pub struct StorytellerApp {
     dragging_scene: Option<usize>,
     /// A caret to give the keyboard to on the next frame (after a click outside the editor).
     focus_next_frame: Option<(usize, usize)>,
+    /// The session's edit count when this frame last saw it change, and the time it did: the
+    /// screen keeps its pages while edits come within [`SETTLE`] of each other.
+    last_edit_seen: (u64, f64),
     /// Drawn for the offscreen pictures: the window as a Mac shows it, menus in the menu bar.
     #[cfg(test)]
     pictures: bool,
@@ -458,6 +464,7 @@ impl StorytellerApp {
             next_frame_input: Vec::new(),
             dragging_scene: None,
             focus_next_frame: None,
+            last_edit_seen: (0, 0.0),
             #[cfg(test)]
             pictures: false,
         };
@@ -1646,8 +1653,9 @@ impl StorytellerApp {
     }
 
     fn navigator(&mut self, ui: &mut egui::Ui) {
-        let scenes = self.session.paginated().scenes.clone();
-        let lengths: std::collections::HashMap<usize, u32> = self.session.scene_lengths().iter().map(|l| (l.element, l.eighths)).collect();
+        // While the writer types, pages and lengths are the ones from before (see `hold_pages`).
+        let scenes = self.session.shown_pages().scenes.clone();
+        let lengths: std::collections::HashMap<usize, u32> = self.session.shown_scene_lengths().iter().map(|l| (l.element, l.eighths)).collect();
         let current = self.current_scene();
         ui.add_space(theme::SPACE_2);
         ui.label(egui::RichText::new("SCENES").small().strong().color(ui.visuals().weak_text_color()));
@@ -1712,10 +1720,17 @@ impl StorytellerApp {
                     next_act += 1;
                 }
                 let number = scene.number.as_deref().unwrap_or("");
-                let heading = if scene.heading.trim().is_empty() { "(untitled scene)" } else { scene.heading.as_str() };
+                // The heading as typed now, which the held pages may not have yet.
+                let heading = self
+                    .session
+                    .script
+                    .elements
+                    .get(scene.element)
+                    .map_or_else(|| scene.heading.clone(), |e| storyteller_core::inline::plain(&e.text).to_uppercase());
+                let heading = if heading.trim().is_empty() { "(untitled scene)".to_string() } else { heading };
                 // A scene's own title stands in for its heading; its colour marks the row.
                 let meta = self.session.script.elements.get(scene.element).map(|e| e.scene.clone()).unwrap_or_default();
-                let shown = if meta.title.is_empty() { heading.to_string() } else { meta.title.clone() };
+                let shown = if meta.title.is_empty() { heading.clone() } else { meta.title.clone() };
                 // An omitted scene's row is muted: it is there, but not shot.
                 let omitted = self.session.script.elements.get(scene.element).is_some_and(storyteller_core::Element::is_omitted);
                 let text = if omitted { weak } else { text };
@@ -1851,6 +1866,22 @@ impl StorytellerApp {
         }
     }
 
+    /// While edits come close together, the screen keeps the pages it has (the session holds
+    /// them only through typing in one paragraph); once they pause for [`SETTLE`], it lays the
+    /// script out again.
+    fn hold_pages_while_typing(&mut self, ctx: &egui::Context) {
+        let now = ctx.input(|i| i.time);
+        let edits = self.session.edits();
+        if edits != self.last_edit_seen.0 {
+            self.last_edit_seen = (edits, now);
+        }
+        let left = SETTLE - (now - self.last_edit_seen.1);
+        self.session.hold_pages = left > 0.0;
+        if left > 0.0 {
+            ctx.request_repaint_after(Duration::from_secs_f64(left));
+        }
+    }
+
     /// The scene the caret is in, counted from 1 (0 before the first heading): the row the
     /// navigator highlights.
     fn current_scene(&self) -> usize {
@@ -1860,8 +1891,8 @@ impl StorytellerApp {
     fn status_bar(&mut self, ui: &mut egui::Ui) {
         let caret = self.session.caret;
         let kind = self.session.current().map_or(ElementKind::Action, |e| e.kind);
-        let pages = self.session.paginated().page_count().max(1);
-        let page = self.session.paginated().element_pages.get(caret.element).copied().unwrap_or(1).max(1);
+        let pages = self.session.shown_pages().page_count().max(1);
+        let page = self.session.shown_pages().element_pages.get(caret.element).copied().unwrap_or(1).max(1);
         ui.horizontal(|ui| {
             let mut chosen = kind;
             let response = egui::ComboBox::from_id_salt("storyteller.element_kind").selected_text(kind.label()).show_ui(ui, |ui| {
@@ -2995,6 +3026,7 @@ impl StorytellerApp {
 
     fn draw(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
+        self.hold_pages_while_typing(&ctx);
         if self.window_menu() {
             egui::Panel::top("storyteller.menu").show(ui, |ui| self.menu_bar(ui));
         }
