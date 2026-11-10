@@ -185,13 +185,15 @@ says otherwise.
   only. Published 2026-10-28 (tag `v0.6.0` on `4f7198f`, the owner's yes through MOrg; draft
   checked: checksums, both signatures, notarisation and Gatekeeper). Nothing waiting; the
   override line came out on 2026-11-06, when clipboard-win 5.4.3 turned 14 days old.
-- **The next release, 0.7.0:** not asked for yet. **Recommend asking once #148 is merged**: it
-  would carry selection across paragraphs, scene drag, bookmarks, View > Show Outline, autocomplete
-  lists, `.highland` import, the faster editor and the design pass. Called 0.7.0 because it adds
-  features. Three things the rehearsal must show before the tag: the Windows tests pass, the
-  local-date test among them (the first Windows run of `GetLocalTime`, merged 2026-11-04 as
-  `df8f701`); the sign job ran with the key (#148 has not run on GitHub yet); and its release notes
-  are written (`docs/releases/0.7.0.md`, not started).
+- **The next release, 0.7.0: recommend yes now.** #148 merged on 2026-11-06, so nothing in
+  the code waits. It carries locked pages and A-pages, the reports, the Method Schedule export,
+  selection across paragraphs, scene drag, bookmarks, View > Show Outline, autocomplete lists,
+  `.highland` import, the faster editor for long scripts and the design pass. Called 0.7.0
+  because it adds features. Its release notes are written (`docs/releases/0.7.0.md`). On a yes:
+  the version bump PR (it changes `Cargo.lock`, so MReview merges it), then the rehearsal, which
+  must show the Windows tests passing (the local-date test among them, the first Windows run of
+  `GetLocalTime`) and the sign job running with the key (#148's first run on GitHub), then the
+  tag.
 
 ### Deferred (the owner, 2026-10-20)
 
