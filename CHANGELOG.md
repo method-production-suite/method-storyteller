@@ -5,6 +5,8 @@ for its own version in Help > What's New, once after an update.
 
 ## Unreleased
 
+## 0.7.0
+
 ### Changed
 
 - Long scripts draw faster: paragraphs well off screen are no longer laid out each frame.
