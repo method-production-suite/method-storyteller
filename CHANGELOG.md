@@ -67,6 +67,8 @@ for its own version in Help > What's New, once after an update.
 
 ### Fixed
 
+- File > Open Recent no longer lists a script twice when another Method app wrote its path in a
+  different form, as can happen on Windows.
 - A new revision set is named with today's date where you are. It used the date in UTC, so in
   the evening in the Americas it could carry tomorrow's date.
 

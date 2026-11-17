@@ -62,10 +62,11 @@ impl Recent {
         self.entries.is_empty()
     }
 
-    /// `path` opened or saved now: first in the list, once.
+    /// `path` opened or saved now: first in the list, once. An entry is the same script when
+    /// its path, made absolute here, matches: another app may have written it in its own form.
     pub fn push(&mut self, path: &str) {
         let path = absolute(path);
-        let other = self.entries.iter().position(|e| e.path == path).map(|n| self.entries.remove(n).other).unwrap_or_default();
+        let other = self.entries.iter().position(|e| absolute(&e.path) == path).map(|n| self.entries.remove(n).other).unwrap_or_default();
         self.entries.insert(0, Entry { path, opened: storyteller_engine::commands::now_rfc3339(), other });
         self.entries.truncate(MAX);
         self.save();
@@ -111,10 +112,11 @@ mod tests {
         recent.push("/scripts/a.mstory");
         recent.push("/scripts/b.fountain");
         recent.push("/scripts/a.mstory");
-        assert_eq!(recent.paths().collect::<Vec<_>>(), ["/scripts/a.mstory", "/scripts/b.fountain"]);
+        // Absolute in this system's form: `D:\scripts\a.mstory` on Windows.
+        assert_eq!(recent.paths().collect::<Vec<_>>(), [absolute("/scripts/a.mstory"), absolute("/scripts/b.fountain")]);
         let file = read(dir.path());
         assert_eq!(file.len(), 2);
-        assert_eq!(file[0]["path"], "/scripts/a.mstory");
+        assert_eq!(file[0]["path"], absolute("/scripts/a.mstory"));
         let opened = file[0]["opened"].as_str().unwrap();
         assert_eq!(opened.len(), 20, "{opened}");
         assert!(opened.ends_with('Z') && opened.as_bytes()[10] == b'T', "{opened}");
@@ -132,7 +134,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let legacy = ["/scripts/new.mstory".to_string(), "/scripts/old.fdx".to_string()];
         let recent = Recent::open(Some(dir.path()), &legacy);
-        assert_eq!(recent.paths().collect::<Vec<_>>(), ["/scripts/new.mstory", "/scripts/old.fdx"]);
+        assert_eq!(recent.paths().collect::<Vec<_>>(), [absolute("/scripts/new.mstory"), absolute("/scripts/old.fdx")]);
         assert_eq!(read(dir.path()).len(), 2, "written straight away");
         // Once the file exists, the settings list is not read again.
         let mut again = Recent::open(Some(dir.path()), &["/scripts/stale.fountain".to_string()]);
@@ -149,6 +151,7 @@ mod tests {
         recent.push("/scripts/a.fdx");
         recent.push("relative.fountain");
         let file = read(dir.path());
+        assert_eq!(file.len(), 2, "the entry written as `/scripts/a.fdx` is the one pushed again");
         assert_eq!(file[1]["bookmark"], "abc");
         assert_ne!(file[1]["opened"], "2026-11-01T09:00:00Z", "opened again now");
         assert!(Path::new(file[0]["path"].as_str().unwrap()).is_absolute());
