@@ -56,7 +56,7 @@ pub fn workspace_version() -> Result<String, String> {
     version_from_manifest(&manifest).ok_or_else(|| "no version under [workspace.package] in Cargo.toml".into())
 }
 
-fn version_from_manifest(manifest: &str) -> Option<String> {
+pub(crate) fn version_from_manifest(manifest: &str) -> Option<String> {
     let mut in_package = false;
     for line in manifest.lines() {
         let line = line.trim();

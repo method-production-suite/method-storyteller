@@ -17,6 +17,8 @@ base64 = "0.23"
 flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
 tar = { version = "0.4", default-features = false }
 serde_json = { workspace = true }
+# SHA256SUMS for a release (src/release.rs), the version already in the lock.
+sha2 = "=0.10.9"
 
 [dev-dependencies]
 # The suite updater checks what updater.rs signs and packs, in its tests.

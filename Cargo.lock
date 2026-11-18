@@ -4696,6 +4696,7 @@ dependencies = [
  "method-update",
  "minisign",
  "serde_json",
+ "sha2",
  "storyteller-core",
  "tar",
 ]

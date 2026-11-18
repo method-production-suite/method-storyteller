@@ -83,52 +83,10 @@ jobs:
           INPUT_TAG: ${{ github.event.inputs.tag }}
           REF: ${{ github.ref }}
           REF_NAME: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          # A rehearsal: run by hand on main with no tag. It builds, signs and checks main's
-          # latest commit exactly as a release would, with its notes, and drafts nothing.
-          if [ "$EVENT" = workflow_dispatch ] && [ -z "$INPUT_TAG" ]; then
-            if [ "$REF" != refs/heads/main ]; then
-              echo "::error::A rehearsal runs on main."
-              exit 1
-            fi
-            version="$(cargo xtask version)"
-            notes="docs/releases/$version.md"
-            if [ ! -s "$notes" ] || grep -n '{{' "$notes"; then
-              echo "::error::$notes is missing or still has {{placeholders}}."
-              exit 1
-            fi
-            echo "Rehearsing v$version on main ($GITHUB_SHA)."
-            { echo "tag="; echo "ref=$GITHUB_SHA"; echo "version=$version"; echo "rehearsal=true"; } >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          tag="${INPUT_TAG:-$REF_NAME}"
-          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
-            echo "::error::$tag is not a version tag (vX.Y.Z or vX.Y.Z-pre)."
-            exit 1
-          fi
-          git checkout --quiet "refs/tags/$tag"
-          version="$(cargo xtask version)"
-          if [ "$tag" != "v$version" ]; then
-            echo "::error::The tag $tag is not v$version, the version in Cargo.toml."
-            exit 1
-          fi
-          # The draft's description; nothing is built without it.
-          notes="docs/releases/$version.md"
-          if [ ! -s "$notes" ]; then
-            echo "::error::$notes is missing: write it from docs/release-notes-template.md first."
-            exit 1
-          fi
-          if grep -n '{{' "$notes"; then
-            echo "::error::$notes still has {{placeholders}} from the skeleton."
-            exit 1
-          fi
-          # A tag on a side branch must not build a release.
-          if ! git merge-base --is-ancestor "$(git rev-list -n 1 "$tag")" origin/main; then
-            echo "::error::$tag points at a commit that is not on main."
-            exit 1
-          fi
-          { echo "tag=$tag"; echo "ref=$tag"; echo "version=$version"; echo "rehearsal=false"; } >> "$GITHUB_OUTPUT"
+        # xtask/src/release.rs: a rehearsal (by hand on main, no tag) builds main's latest commit;
+        # a tag must be vX.Y.Z or vX.Y.Z-pre, match Cargo.toml and point at a commit on main;
+        # either way the version's notes must be written.
+        run: cargo xtask release-check --event "$EVENT" --input-tag "$INPUT_TAG" --ref "$REF" --ref-name "$REF_NAME" --sha "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
       - name: Every locked crate is at least 14 days old, apart from security fixes
         # SUITE-STANDARDS.md §6: main may list a young crate in scripts/crate-age-exceptions.txt
         # while it ages out, but no release ships one; a listed security fix (RUSTSEC) may, and
@@ -482,45 +440,11 @@ jobs:
       - name: Every installer is here, under its version-free name
         env:
           VERSION: ${{ needs.check.outputs.version }}
-        run: |
-          set -euo pipefail
-          for f in Method-Storyteller-macOS.dmg Method-Storyteller-windows-x64-setup.exe \
-                   Method-Storyteller-linux-amd64.deb Method-Storyteller-linux-x86_64.AppImage; do
-            if [ ! -s "dist/$f" ]; then echo "::error::dist/$f is missing."; exit 1; fi
-          done
-          # The update manifest, when the Mac build brought the signed updater archive. It is
-          # checked against the app's own public key before it is written.
-          version="$VERSION"
-          archive="Method-Storyteller_${version}_universal.app.tar.gz"
-          if [ -s "dist/$archive" ] && [ -s "dist/$archive.sig" ]; then
-            cargo xtask update-manifest --dir dist --version "$version" --out dist/latest.json
-          else
-            echo "::notice::No updater archive in this release (no update key, or not notarized): no latest.json, so installed apps won't see it (docs/RELEASING.md)."
-          fi
-          # One SHA256SUMS, under exactly that name, listing every file the release offers,
-          # latest.json and the updater archive included (SUITE-STANDARDS.md, releases: the
-          # launcher and people verify downloads with it). Written last, so it covers everything else.
-          rm -f dist/SHA256SUMS
-          (cd dist && sha256sum -- * | tee "$RUNNER_TEMP/SHA256SUMS")
-          mv "$RUNNER_TEMP/SHA256SUMS" dist/
-          (cd dist && sha256sum --check --strict SHA256SUMS)
-          listed="$(wc -l < dist/SHA256SUMS)"
-          files="$(find dist -maxdepth 1 -type f ! -name SHA256SUMS | wc -l)"
-          if [ "$listed" -ne "$files" ]; then
-            echo "::error::SHA256SUMS lists $listed files, but the release has $files."
-            exit 1
-          fi
-          # The manifest offers the one universal archive to both kinds of Mac.
-          if [ -s dist/latest.json ]; then
-            python3 - "$version" <<'PY'
-          import json, sys
-          version = sys.argv[1]
-          platforms = json.load(open("dist/latest.json"))["platforms"]
-          assert sorted(platforms) == ["darwin-aarch64", "darwin-x86_64"], sorted(platforms)
-          urls = {p["url"] for p in platforms.values()}
-          assert urls == {f"https://github.com/method-production-suite/method-storyteller/releases/download/v{version}/Method-Storyteller_{version}_universal.app.tar.gz"}, urls
-          PY
-          fi
+        # xtask/src/release.rs: every installer under its version-free name, latest.json when the
+        # signed updater archive came (checked against the app's public key), then one
+        # SHA256SUMS listing every file, and the manifest offering the universal archive to both
+        # kinds of Mac.
+        run: cargo xtask release-files --dir dist --version "$VERSION"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-files

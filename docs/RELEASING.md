@@ -94,7 +94,8 @@ From an up-to-date `main` with a clean tree (`0.2.0` stands for the new version)
    it is approved and green.
 4. Rehearse: Actions > release > Run workflow on `main`, the tag left empty. It builds,
    signs, notarizes and checks the merge commit exactly as a release would, and drafts
-   nothing. Wait for green; it is the only full build before the tag.
+   nothing. It runs no tests, so also run Actions > full > Run workflow on `main`, the same
+   commit: the tests on macOS, Windows and Linux (0.7.0 found this). Wait for both to be green.
 5. Tag the rehearsed commit and push the tag, **with the owner's approval** (one yes covers
    the tag and publishing). Run each as its own command:
 
@@ -192,9 +193,9 @@ leaving GitHub. A red run means the next release's update would be refused: fix 
 
 | Job | Permissions | What it does |
 |---|---|---|
-| `check` | contents: read | the tag is `v` plus the version in `Cargo.toml`, points at a commit on `main`, and `docs/releases/<version>.md` is written; with no tag, on `main`, a rehearsal of main's latest commit |
+| `check` | contents: read | `cargo xtask release-check` (xtask/src/release.rs): the tag is `v` plus the version in `Cargo.toml`, points at a commit on `main`, and `docs/releases/<version>.md` is written; with no tag, on `main`, a rehearsal of main's latest commit |
 | `build` (macOS universal, Windows x64, Linux x64) | contents: read | compiles everything first, before any secret reaches the runner (on macOS both slices, joined with `lipo`); then packages each platform with `--no-build`; on macOS signs, notarizes, staples and verifies (every executable must be exactly `x86_64 arm64`), each only when its secrets are there; then, with the update key, packs and signs the updater archive; on Windows signs the app and the installer only with a certificate |
-| `assemble` | contents: read | checks all four installers are there, writes `latest.json` after checking the archive's signature against the app's public key (one universal archive under `darwin-aarch64` and `darwin-x86_64`), writes and checks `SHA256SUMS` (one line per file of the release); runs in a rehearsal too |
+| `assemble` | contents: read | `cargo xtask release-files` (xtask/src/release.rs): checks all four installers are there, writes `latest.json` after checking the archive's signature against the app's public key (one universal archive under `darwin-aarch64` and `darwin-x86_64`), writes and checks `SHA256SUMS` (one line per file of the release); runs in a rehearsal too |
 | `sign` | contents: read | builds the release tool, then signs `SHA256SUMS` with the update key as `SHA256SUMS.minisig`; fails without the key; runs in a rehearsal too |
 | `draft` | contents: write (the only job with it) | runs `gh release create --draft` with the notes and the files; skipped in a rehearsal |
 
