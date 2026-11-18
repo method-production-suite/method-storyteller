@@ -1414,18 +1414,18 @@ fn capitalise(text: &str) -> String {
     format!("{first}{}.", chars.as_str())
 }
 
-#[path = "documents.rs"]
-mod documents;
 #[path = "control_host.rs"]
 mod control_host;
+#[path = "dialogs.rs"]
+mod dialogs;
+#[path = "documents.rs"]
+mod documents;
+#[path = "find_bar.rs"]
+mod find_bar;
 #[path = "menus.rs"]
 mod menus;
 #[path = "navigator.rs"]
 mod navigator;
-#[path = "dialogs.rs"]
-mod dialogs;
-#[path = "find_bar.rs"]
-mod find_bar;
 #[path = "sample.rs"]
 mod sample;
 pub use sample::StartFlags;
