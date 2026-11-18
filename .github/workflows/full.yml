@@ -64,6 +64,9 @@ jobs:
       CARGO_INCREMENTAL: 0
       CARGO_PROFILE_DEV_DEBUG: line-tables-only
       CARGO_PROFILE_TEST_DEBUG: line-tables-only
+      # The PDF tests that read pages back with poppler's pdftotext must run on Linux, where
+      # it is installed below, rather than skip (crates/pdf/tests/export.rs).
+      STORYTELLER_REQUIRE_PDFTOTEXT: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -77,9 +80,9 @@ jobs:
             target
           key: gates-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: gates-${{ runner.os }}-
-      - name: Linux packages for eframe
+      - name: Linux packages for eframe, and pdftotext for the PDF tests
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libgl1-mesa-dev libwayland-dev
+        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libgl1-mesa-dev libwayland-dev poppler-utils
       - run: cargo xtask ci
       # This is where every system's cache is saved; it saves on main only, and only when the
       # key missed.
