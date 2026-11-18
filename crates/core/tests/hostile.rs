@@ -128,3 +128,60 @@ fn learning_a_script_of_repeated_cues_and_brackets_is_quick() {
     assert_eq!(lists.extensions.len(), autocomplete::MAX_LIST - 1);
     assert!(took < std::time::Duration::from_secs(60), "took {took:?}");
 }
+
+/// A Final Draft document with `extra` after the script, where Final Draft keeps its own
+/// sections (`ElementSettings`, `Revisions`, and those of later versions we don't model).
+fn fdx_with(extra: &str) -> String {
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<FinalDraft DocumentType="Script" Template="No" Version="6">
+  <Content>
+    <Paragraph Type="Scene Heading"><Text>INT. STATION - NIGHT</Text></Paragraph>
+    <Paragraph Type="Action"><Text>The radio hums.</Text></Paragraph>
+  </Content>
+{extra}
+</FinalDraft>
+"#
+    )
+}
+
+#[test]
+fn an_unknown_section_nested_too_deeply_is_refused() {
+    let depth = 300;
+    let section = format!("  <Future>{}{}</Future>", "<Level>".repeat(depth), "</Level>".repeat(depth));
+    match fdx::parse(&fdx_with(&section)) {
+        Err(CoreError::Xml(message)) => assert!(message.contains("nested too deeply"), "{message}"),
+        other => panic!("expected the depth limit, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_large_unknown_section_comes_back_byte_for_byte() {
+    // About 3 MB of a section we don't model, with attributes, entities, text and nesting.
+    let mut section = String::from("  <FutureData Kind=\"beats\">\n");
+    let mut n = 0;
+    while section.len() < 3 * 1024 * 1024 {
+        section.push_str(&format!(
+            "    <Beat ID=\"{n}\" Colour=\"#FF{:04X}\"><Note Author=\"A&amp;B\">Beat {n} &lt;keep&gt; as it is</Note><Empty/></Beat>\n",
+            n % 0xFFFF
+        ));
+        n += 1;
+    }
+    section.push_str("  </FutureData>");
+    let doc = fdx_with(&section);
+    assert!(doc.len() < storyteller_core::MAX_INPUT_BYTES, "under the import limit");
+    let script = fdx::parse(&doc).unwrap();
+    assert_eq!(script.elements.len(), 2);
+    let written = fdx::write(&script);
+    assert!(written.contains(section.trim_start()), "the section is written back unchanged");
+    assert_eq!(fdx::write(&fdx::parse(&written).unwrap()), written, "and stays so");
+}
+
+#[test]
+fn an_unclosed_tag_inside_element_settings_is_refused() {
+    let section = r#"  <ElementSettings Type="Action"><FontSpec Style="Bold"><ParagraphSpec Alignment="Left"></ElementSettings>"#;
+    match fdx::parse(&fdx_with(section)) {
+        Err(CoreError::Xml(_)) => {}
+        other => panic!("expected damaged XML, got {other:?}"),
+    }
+}

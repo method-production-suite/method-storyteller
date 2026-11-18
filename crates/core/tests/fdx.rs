@@ -138,3 +138,15 @@ fn rejects_hostile_or_foreign_xml() {
     let script = fdx::parse(entity_bomb).unwrap();
     assert_eq!(script.elements[0].text, "", "custom entities are not expanded");
 }
+
+#[test]
+fn a_note_on_the_title_page_does_not_print_and_comes_back() {
+    let script = fountain::parse("Title: FIELD STATION\nNotes: Call the producer [[before Friday]]\n\nINT. HUT - DAY\n\nWind.\n").unwrap();
+    assert_eq!(script.title_page.get("Notes"), Some("Call the producer [[before Friday]]"));
+    let xml = fdx::write(&script);
+    assert!(!xml.contains("[["), "no Fountain note printed on the title page:\n{xml}");
+    assert!(xml.contains("<ScriptNote"), "the note is a script note:\n{xml}");
+    let back = fdx::parse(&xml).unwrap();
+    assert_eq!(back.title_page.get("Notes"), Some("Call the producer [[before Friday]]"));
+    assert_eq!(fountain::write(&back), fountain::write(&script), "Fountain to .fdx to Fountain keeps it");
+}
