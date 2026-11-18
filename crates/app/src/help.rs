@@ -192,7 +192,7 @@ impl HelpWindows {
     fn about_window(&self, ctx: &egui::Context, automation: &mut Automation, action: &mut Option<HelpAction>) -> bool {
         let mut open = true;
         crate::theme::centered(
-            egui::Window::new(format!("About {APP_NAME}")).id(egui::Id::new("storyteller.about")).collapsible(false).resizable(false),
+            egui::Window::new(format!("About {APP_NAME}")).id(egui::Id::unique("storyteller.about")).collapsible(false).resizable(false),
             ctx,
         )
         .show(ctx, |ui| {
@@ -243,7 +243,7 @@ fn close_button(ui: &mut egui::Ui, automation: &mut Automation, window: &str) ->
 fn shortcuts_window(ctx: &egui::Context, automation: &mut Automation, rows: &[ShortcutRow]) -> bool {
     let mut open = true;
     crate::theme::centered(
-        egui::Window::new("Keyboard Shortcuts").id(egui::Id::new("storyteller.shortcuts")).collapsible(false).default_height(640.0),
+        egui::Window::new("Keyboard Shortcuts").id(egui::Id::unique("storyteller.shortcuts")).collapsible(false).default_height(640.0),
         ctx,
     )
     .show(ctx, |ui| {
@@ -309,20 +309,23 @@ fn markdown(ui: &mut egui::Ui, text: &str) {
 
 fn whats_new_window(ctx: &egui::Context, automation: &mut Automation) -> bool {
     let mut open = true;
-    crate::theme::centered(egui::Window::new("What's New").id(egui::Id::new("storyteller.whats_new")).collapsible(false).default_width(460.0), ctx)
-        .show(ctx, |ui| {
-            ui.heading(format!("{APP_NAME} {VERSION}"));
-            egui::ScrollArea::vertical().max_height(420.0).show(ui, |ui| match release_notes(CHANGELOG, VERSION) {
-                Some(notes) => markdown(ui, notes),
-                None => {
-                    ui.label("No notes for this version.");
-                }
-            });
-            ui.add_space(crate::theme::SPACE_2);
-            if close_button(ui, automation, "whats_new") {
-                open = false;
+    crate::theme::centered(
+        egui::Window::new("What's New").id(egui::Id::unique("storyteller.whats_new")).collapsible(false).default_width(460.0),
+        ctx,
+    )
+    .show(ctx, |ui| {
+        ui.heading(format!("{APP_NAME} {VERSION}"));
+        egui::ScrollArea::vertical().max_height(420.0).show(ui, |ui| match release_notes(CHANGELOG, VERSION) {
+            Some(notes) => markdown(ui, notes),
+            None => {
+                ui.label("No notes for this version.");
             }
         });
+        ui.add_space(crate::theme::SPACE_2);
+        if close_button(ui, automation, "whats_new") {
+            open = false;
+        }
+    });
     open
 }
 
@@ -330,7 +333,7 @@ fn licenses_window(ctx: &egui::Context, automation: &mut Automation, tab: usize)
     let mut chosen = tab;
     let mut open = true;
     crate::theme::centered(
-        egui::Window::new("Licenses and Notices").id(egui::Id::new("storyteller.licenses")).collapsible(false).default_size([760.0, 520.0]),
+        egui::Window::new("Licenses and Notices").id(egui::Id::unique("storyteller.licenses")).collapsible(false).default_size([760.0, 520.0]),
         ctx,
     )
     .show(ctx, |ui| {

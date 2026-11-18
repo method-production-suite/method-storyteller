@@ -282,6 +282,8 @@ pub struct StorytellerApp {
     automation: Automation,
     control: Option<Receiver<ControlRequest>>,
     pending_screenshot: Option<(Value, Sender<String>, PathBuf)>,
+    /// Where the window's screenshot lands when it is ready (egui hands it to a callback).
+    screenshot: std::sync::Arc<std::sync::Mutex<Option<std::sync::Arc<egui::ColorImage>>>>,
     queued: Vec<String>,
     prompt: Option<Pending>,
     discard_confirmed: bool,
@@ -423,6 +425,7 @@ impl StorytellerApp {
             automation: Automation::default(),
             control: None,
             pending_screenshot: None,
+            screenshot: std::sync::Arc::default(),
             queued: Vec::new(),
             prompt: None,
             discard_confirmed: false,
@@ -802,7 +805,7 @@ impl StorytellerApp {
     fn focus_caret_field(&mut self, ctx: &egui::Context) -> egui::Id {
         self.session.clamp_caret();
         let index = self.session.caret.element;
-        let id = egui::Id::new(("storyteller.element", index));
+        let id = egui::Id::unique(("storyteller.element", index));
         if let Some((_, range)) = self.editor.selection.filter(|(i, _)| *i == index) {
             let mut state = egui::text_edit::TextEditState::load(ctx, id).unwrap_or_default();
             state.cursor.set_char_range(Some(range));
@@ -1235,7 +1238,14 @@ impl StorytellerApp {
                     .and_then(Value::as_str)
                     .map(PathBuf::from)
                     .unwrap_or_else(|| std::env::temp_dir().join("method-storyteller-screenshot.png"));
-                ctx.send_viewport_cmd(ViewportCommand::Screenshot(egui::UserData::default()));
+                let slot = std::sync::Arc::clone(&self.screenshot);
+                let repaint = ctx.clone();
+                ctx.request_screenshot(move |image| {
+                    if let Ok(mut slot) = slot.lock() {
+                        *slot = Some(image);
+                    }
+                    repaint.request_repaint();
+                });
                 self.pending_screenshot = Some((id, request.reply, path));
                 break;
             }
@@ -1264,13 +1274,11 @@ impl StorytellerApp {
         if self.pending_screenshot.is_none() {
             return;
         }
-        let image = ctx.input(|i| {
-            i.raw.events.iter().find_map(|e| match e {
-                Event::Screenshot { image, .. } => Some(image.clone()),
-                _ => None,
-            })
-        });
-        let Some(image) = image else { return };
+        let image = self.screenshot.lock().ok().and_then(|mut slot| slot.take());
+        let Some(image) = image else {
+            ctx.request_repaint_after(Duration::from_millis(50));
+            return;
+        };
         let Some((id, reply, path)) = self.pending_screenshot.take() else { return };
         let message = match encode_png(&image) {
             Ok(bytes) => match craft_atomic::atomic_write(&path, &bytes) {
@@ -1326,7 +1334,7 @@ impl StorytellerApp {
         }
         let name = crate::recovery::name_of(&copy);
         let mut answer = None;
-        egui::Modal::new(egui::Id::new("storyteller.recovery")).frame(theme::modal_frame(&ctx.global_style())).show(ctx, |ui| {
+        egui::Modal::new(egui::Id::unique("storyteller.recovery")).frame(theme::modal_frame(&ctx.global_style())).show(ctx, |ui| {
             ui.heading("Recover unsaved changes?");
             ui.label(format!("Method Storyteller closed without saving the changes to “{name}”. A copy of them was kept."));
             ui.add_space(theme::SPACE_2);
@@ -1570,7 +1578,7 @@ impl StorytellerApp {
         let rect = ui.max_rect();
         let title_bar = cfg!(target_os = "macos");
         if title_bar {
-            let background = ui.interact(rect, egui::Id::new("storyteller.title_bar"), egui::Sense::click_and_drag());
+            let background = ui.interact(rect, egui::Id::unique("storyteller.title_bar"), egui::Sense::click_and_drag());
             if background.drag_started() {
                 ctx.send_viewport_cmd(ViewportCommand::StartDrag);
             }
@@ -1916,6 +1924,8 @@ impl StorytellerApp {
                     let _ = n;
                 }
             });
+            // Nothing visible names the picker, so a screen reader is told what it chooses.
+            let _ = response.response.clone().accessible_name("Element type");
             self.automation.add("status.element_kind", "combobox", kind.label(), &response.response);
             if chosen != kind {
                 self.run("element.set_kind", params(&[("index", json!(caret.element)), ("kind", json!(chosen.id()))]));
@@ -2639,17 +2649,18 @@ impl StorytellerApp {
         let mut close = ctx.input(|i| i.key_pressed(egui::Key::Escape));
         egui::Window::new("Rename Character").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_TOP, [0.0, 120.0]).show(ctx, |ui| {
             egui::Grid::new("storyteller.rename_grid").num_columns(2).spacing([12.0, 8.0]).show(ui, |ui| {
-                ui.label("Character");
+                let label = ui.label("Character");
                 let combo =
                     egui::ComboBox::from_id_salt("storyteller.rename_from").selected_text(draft.from.as_str()).width(240.0).show_ui(ui, |ui| {
                         for name in &draft.names {
                             ui.selectable_value(&mut draft.from, name.clone(), name.as_str());
                         }
                     });
+                let _ = combo.response.clone().labelled_by(label.id);
                 self.automation.add("dialog.rename.from", "combobox", "Character", &combo.response);
                 ui.end_row();
-                ui.label("New name");
-                let to = theme::field(ui, egui::TextEdit::singleline(&mut draft.to).desired_width(240.0));
+                let label = ui.label("New name");
+                let to = theme::field(ui, egui::TextEdit::singleline(&mut draft.to).desired_width(240.0)).labelled_by(label.id);
                 self.automation.add("dialog.rename.to", "textbox", "New name", &to);
                 if !draft.focused {
                     to.request_focus();
@@ -2990,7 +3001,7 @@ impl StorytellerApp {
             return;
         }
         let mut answer = None;
-        egui::Modal::new(egui::Id::new("storyteller.unsaved")).frame(theme::modal_frame(&ctx.global_style())).show(ctx, |ui| {
+        egui::Modal::new(egui::Id::unique("storyteller.unsaved")).frame(theme::modal_frame(&ctx.global_style())).show(ctx, |ui| {
             ui.heading("Save changes?");
             ui.label(format!("“{}” has changes that are not saved.", self.display_title().trim_end_matches(" — edited")));
             ui.add_space(theme::SPACE_2);

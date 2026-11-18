@@ -288,7 +288,7 @@ fn span_keys(ui: &mut Ui, session: &Session, editor: &mut EditorState, actions: 
     let Some(mut span) = editor.span else { return };
     // The find bar or a dialog has the keyboard: what is typed there is its own.
     let count = session.script.elements.len();
-    let elsewhere = ui.memory(|m| m.focused()).is_some_and(|id| !(0..count).any(|n| id == Id::new(("storyteller.element", n))));
+    let elsewhere = ui.memory(|m| m.focused()).is_some_and(|id| !(0..count).any(|n| id == Id::unique(("storyteller.element", n))));
     if elsewhere {
         return;
     }
@@ -360,7 +360,7 @@ fn settle(ui: &Ui, editor: &mut EditorState, span: Span) {
         return;
     }
     editor.span = None;
-    let id = Id::new(("storyteller.element", span.head.element));
+    let id = Id::unique(("storyteller.element", span.head.element));
     let Some(field) = editor.fields.iter().find(|f| f.index == span.head.element) else { return };
     let text = field.galley.job.text.as_str();
     let range = CCursorRange::two(CCursor::new(byte_to_char(text, span.anchor.offset)), CCursor::new(byte_to_char(text, span.head.offset)));
@@ -580,7 +580,7 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                             }
                             continue;
                         }
-                        let id = Id::new(("storyteller.element", index));
+                        let id = Id::unique(("storyteller.element", index));
                         let focused = ui.memory(|m| m.has_focus(id));
                         let (box_left, box_width) = match kind {
                             ElementKind::Section | ElementKind::Synopsis => (layout.action.left, layout.action.width),
@@ -666,7 +666,7 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                                     .desired_rows(1)
                                     .lock_focus(true)
                                     .font(box_font.clone())
-                                    .horizontal_align(text_align)
+                                    .align(egui::Align2([text_align, egui::Align::TOP]))
                                     .hint_text(
                                         egui::RichText::new(if empty_script { crate::messages::EMPTY_SCRIPT_HINT } else { kind.label() })
                                             .color(crate::theme::PAGE_MUTED)
@@ -1056,7 +1056,7 @@ fn completion_popup(
     }
     let items = completion.items.clone();
     let selected = completion.selected;
-    egui::Area::new(Id::new("storyteller.autocomplete")).order(Order::Foreground).fixed_pos(rect.left_bottom() + vec2(0.0, 2.0)).show(
+    egui::Area::new(Id::unique("storyteller.autocomplete")).order(Order::Foreground).fixed_pos(rect.left_bottom() + vec2(0.0, 2.0)).show(
         ui.ctx(),
         |ui| {
             Frame::popup(ui.style()).show(ui, |ui| {
@@ -1112,7 +1112,7 @@ fn picker_keys(ui: &mut Ui, index: usize, editor: &mut EditorState, actions: &mu
 /// The element picker under an empty paragraph.
 fn picker_popup(ui: &Ui, editor: &EditorState, automation: &mut Automation, index: usize, rect: Rect, actions: &mut Vec<EditAction>) {
     let Some(picker) = editor.picker.as_ref() else { return };
-    egui::Area::new(Id::new("storyteller.picker")).order(Order::Foreground).fixed_pos(rect.left_bottom() + vec2(0.0, 2.0)).show(ui.ctx(), |ui| {
+    egui::Area::new(Id::unique("storyteller.picker")).order(Order::Foreground).fixed_pos(rect.left_bottom() + vec2(0.0, 2.0)).show(ui.ctx(), |ui| {
         Frame::popup(ui.style()).show(ui, |ui| {
             ui.label(egui::RichText::new("Element").small().weak());
             for (n, (letter, kind)) in flow::PICKER.iter().enumerate() {
