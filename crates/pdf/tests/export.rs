@@ -11,6 +11,18 @@ fn fixture() -> Script {
     fountain::parse(&text).unwrap()
 }
 
+/// Whether poppler's `pdftotext` is installed. The tests that read text back skip without it,
+/// except where `STORYTELLER_REQUIRE_PDFTOTEXT` is set (the full build's Linux job), so they
+/// cannot pass there by skipping.
+fn pdftotext() -> bool {
+    let found = std::process::Command::new("pdftotext").arg("-v").output().is_ok_and(|o| o.status.success() || !o.stderr.is_empty());
+    assert!(
+        found || std::env::var_os("STORYTELLER_REQUIRE_PDFTOTEXT").is_none_or(|v| v.is_empty()),
+        "pdftotext is required here but is not installed"
+    );
+    found
+}
+
 fn count(haystack: &[u8], needle: &[u8]) -> usize {
     haystack.windows(needle.len()).filter(|window| *window == needle).count()
 }
@@ -38,8 +50,7 @@ fn empty_and_odd_scripts_export() {
 /// Optional check with poppler's `pdftotext` when it is installed.
 #[test]
 fn text_is_extractable_when_pdftotext_is_available() {
-    let Ok(output) = std::process::Command::new("pdftotext").arg("-v").output() else { return };
-    if !output.status.success() && output.stderr.is_empty() {
+    if !pdftotext() {
         return;
     }
     let dir = std::env::temp_dir().join(format!("storyteller-pdf-{}", std::process::id()));
@@ -79,8 +90,7 @@ fn revised_pages_export_in_every_choice() {
 /// when it is installed.
 #[test]
 fn revision_marks_and_label_print_when_pdftotext_is_available() {
-    let Ok(output) = std::process::Command::new("pdftotext").arg("-v").output() else { return };
-    if !output.status.success() && output.stderr.is_empty() {
+    if !pdftotext() {
         return;
     }
     let dir = std::env::temp_dir().join(format!("storyteller-pdf-rev-{}", std::process::id()));
@@ -105,8 +115,7 @@ fn revision_marks_and_label_print_when_pdftotext_is_available() {
 /// they are installed.
 #[test]
 fn issued_pages_and_clean_copies_when_pdftotext_is_available() {
-    let Ok(output) = std::process::Command::new("pdftotext").arg("-v").output() else { return };
-    if !output.status.success() && output.stderr.is_empty() {
+    if !pdftotext() {
         return;
     }
     let mut script = revised_script();
@@ -137,4 +146,50 @@ fn issued_pages_and_clean_copies_when_pdftotext_is_available() {
         PdfOptions { selection: PageSelection { pages: Some("1".into()), revised_only: true, ..PageSelection::default() }, ..PdfOptions::default() };
     assert!(export(&script, &Layout::default(), &none).is_err());
     let _ = std::fs::remove_dir_all(dir);
+}
+
+/// An invented script with numbered scenes, a speech long enough to break across a page, and a
+/// revised line: the pages as `pdftotext` reads them, compared with a committed copy. Spacing
+/// within a line is collapsed, so the check is the words on each line, the lines on each page
+/// and where pages break, not the exact column. `UPDATE_GOLDEN=1` rewrites the copy.
+#[test]
+fn printed_pages_match_the_golden_copy_when_pdftotext_is_available() {
+    if !pdftotext() {
+        return;
+    }
+    let mut text = String::from("Title: Field Station\nCredit: Written by\nAuthor: A. Writer\n\n");
+    for n in 1..=6 {
+        text.push_str(&format!(
+            "INT. FIELD STATION - RADIO ROOM - NIGHT #{n}#\n\nThe radio hums. Rain on the tin roof, scene {n}.\n\nMARA\n(into the handset)\n"
+        ));
+        let words = if n == 3 { 480 } else { 18 };
+        let speech: Vec<String> = (0..words).map(|w| ["Station", "four", "calling", "base", "over", "the", "ridge"][w % 7].to_string()).collect();
+        text.push_str(&speech.join(" "));
+        text.push_str(".\n\nTOMAS\nCopy that.\n\nCUT TO:\n\n");
+    }
+    let mut script = fountain::parse(&text).unwrap();
+    script.add_revision_set("");
+    script.add_revision_set("11/18/26");
+    let line = script.elements.iter().position(|e| e.text.starts_with("The radio hums. Rain on the tin roof, scene 5")).unwrap();
+    script.elements[line].revised.push(Revised { from: 0, to: 15, set: 2 });
+
+    let dir = std::env::temp_dir().join(format!("storyteller-pdf-golden-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("field-station.pdf");
+    std::fs::write(&path, export(&script, &Layout::default(), &PdfOptions::default()).unwrap()).unwrap();
+    let out = std::process::Command::new("pdftotext").arg("-layout").arg(&path).arg("-").output().unwrap();
+    let _ = std::fs::remove_dir_all(dir);
+    let pages: Vec<String> = String::from_utf8_lossy(&out.stdout)
+        .split('\u{c}')
+        .map(|page| page.lines().map(|l| l.split_whitespace().collect::<Vec<_>>().join(" ")).filter(|l| !l.is_empty()).collect::<Vec<_>>().join("\n"))
+        .filter(|page| !page.is_empty())
+        .collect();
+    let printed = pages.iter().enumerate().map(|(n, page)| format!("--- sheet {}\n{page}\n", n + 1)).collect::<String>();
+    let golden = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/field-station.txt");
+    if std::env::var_os("UPDATE_GOLDEN").is_some() {
+        std::fs::create_dir_all(std::path::Path::new(golden).parent().unwrap()).unwrap();
+        std::fs::write(golden, &printed).unwrap();
+    }
+    let expected = std::fs::read_to_string(golden).expect("the golden copy (UPDATE_GOLDEN=1 writes it)");
+    assert_eq!(printed, expected, "the printed pages changed; if that is intended, rerun with UPDATE_GOLDEN=1 and check the diff");
 }

@@ -1123,22 +1123,30 @@ macro_rules! convert_command {
     };
 }
 
+/// Every command, in menu order: each area's list in turn.
 fn all_commands() -> Vec<Command> {
+    [file_commands(), editing_commands(), element_commands(), list_commands(), production_commands(), view_commands()].concat()
+}
+
+/// The parameters several commands share.
+const INDEX: ParamSpec = param("index", ParamType::Integer, false, "Element index (default: the caret's element)");
+const OFFSET: ParamSpec = param("offset", ParamType::Integer, false, "Byte offset in the element text (default: the caret)");
+const RANGE: [ParamSpec; 4] = [
+    param("from_index", ParamType::Integer, true, "Element the range starts in"),
+    param("from_offset", ParamType::Integer, true, "Byte offset where it starts"),
+    param("to_index", ParamType::Integer, true, "Element the range ends in"),
+    param("to_offset", ParamType::Integer, true, "Byte offset where it ends"),
+];
+const LIST_NAME: ParamSpec = param("list", ParamType::String, true, "characters, extensions, intros, locations, times or transitions");
+const FIND_TEXT: ParamSpec = param("text", ParamType::String, true, "Text to find");
+const FIND_CASE: ParamSpec = param("case", ParamType::Bool, false, "Match case exactly");
+const FIND_WORD: ParamSpec = param("whole_word", ParamType::Bool, false, "Whole words only");
+const FIND_KIND: ParamSpec = param("kind", ParamType::Kind, false, "Only in elements of this type");
+const FIND_REPLACEMENT: ParamSpec = param("replacement", ParamType::String, true, "Replacement text");
+
+/// File: new, open, save and the exports.
+fn file_commands() -> Vec<Command> {
     use ParamType::*;
-    const INDEX: ParamSpec = param("index", Integer, false, "Element index (default: the caret's element)");
-    const OFFSET: ParamSpec = param("offset", Integer, false, "Byte offset in the element text (default: the caret)");
-    const RANGE: [ParamSpec; 4] = [
-        param("from_index", Integer, true, "Element the range starts in"),
-        param("from_offset", Integer, true, "Byte offset where it starts"),
-        param("to_index", Integer, true, "Element the range ends in"),
-        param("to_offset", Integer, true, "Byte offset where it ends"),
-    ];
-    const LIST_NAME: ParamSpec = param("list", String, true, "characters, extensions, intros, locations, times or transitions");
-    const FIND_TEXT: ParamSpec = param("text", String, true, "Text to find");
-    const FIND_CASE: ParamSpec = param("case", Bool, false, "Match case exactly");
-    const FIND_WORD: ParamSpec = param("whole_word", Bool, false, "Whole words only");
-    const FIND_KIND: ParamSpec = param("kind", Kind, false, "Only in elements of this type");
-    const FIND_REPLACEMENT: ParamSpec = param("replacement", String, true, "Replacement text");
     vec![
         Command {
             id: "file.new",
@@ -1337,6 +1345,13 @@ fn all_commands() -> Vec<Command> {
                 Ok(Outcome::message(format!("Exported {}", path.display())))
             },
         },
+    ]
+}
+
+/// Undo, the caret, Go To, find and replace, characters, reports and spelling.
+fn editing_commands() -> Vec<Command> {
+    use ParamType::*;
+    vec![
         Command {
             id: "edit.undo",
             label: "Undo",
@@ -1749,6 +1764,13 @@ fn all_commands() -> Vec<Command> {
                 Ok(Outcome::value(json!({ "changed": true })))
             },
         },
+    ]
+}
+
+/// Elements: their text, scene properties, styles, types, and Enter and Tab.
+fn element_commands() -> Vec<Command> {
+    use ParamType::*;
+    vec![
         Command {
             id: "element.set_text",
             label: "Set Text",
@@ -2106,6 +2128,13 @@ fn all_commands() -> Vec<Command> {
                 Ok(Outcome::value(json!({ "merged": merged })))
             },
         },
+    ]
+}
+
+/// Bookmarks and the stored autocomplete lists.
+fn list_commands() -> Vec<Command> {
+    use ParamType::*;
+    vec![
         Command {
             id: "bookmark.add",
             label: "Add Bookmark",
@@ -2234,6 +2263,13 @@ fn all_commands() -> Vec<Command> {
                 Ok(Outcome::done())
             },
         },
+    ]
+}
+
+/// Production: scene moves and numbers, revisions, locked pages and omitted scenes.
+fn production_commands() -> Vec<Command> {
+    use ParamType::*;
+    vec![
         Command {
             id: "scene.move",
             label: "Move Scene",
@@ -2653,6 +2689,13 @@ fn all_commands() -> Vec<Command> {
                 Ok(Outcome::done())
             },
         },
+    ]
+}
+
+/// View settings, the title page and autocomplete suggestions.
+fn view_commands() -> Vec<Command> {
+    use ParamType::*;
+    vec![
         Command {
             id: "view.scene_numbers",
             label: "Show Scene Numbers",
