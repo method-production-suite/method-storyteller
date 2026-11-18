@@ -261,7 +261,7 @@ fn select_all_selects_the_script_and_the_edit_menu_lists_the_clipboard() {
     let (from, to) = harness.state().editor.span.expect("a selection").ordered();
     assert_eq!((from.element, from.offset), (0, 0), "from the start of the script");
     assert_eq!((to.element, to.offset), (last, "Three.".len()), "to its end");
-    let id = egui::Id::new(("storyteller.element", 1));
+    let id = egui::Id::unique(("storyteller.element", 1));
     assert!(harness.ctx.memory(|m| m.has_focus(id)), "and the paragraph keeps the keyboard");
     let labels: Vec<String> = harness.state().menu_entries("Edit").into_iter().map(|e| e.label).collect();
     for wanted in ["Cut", "Copy", "Paste", "Select All"] {
@@ -294,7 +294,7 @@ fn edit_cut_from_the_window_menu_cuts_the_selection() {
     let elements = &harness.state().session.script.elements;
     assert_eq!(elements.len(), 1, "the selected script is cut, leaving one empty paragraph");
     assert_eq!(elements[0].text, "");
-    let id = egui::Id::new(("storyteller.element", 0));
+    let id = egui::Id::unique(("storyteller.element", 0));
     assert!(harness.ctx.memory(|m| m.has_focus(id)), "and it has the keyboard");
 }
 
@@ -760,7 +760,7 @@ fn paragraphs_far_off_screen_are_not_laid_out_but_keep_their_place() {
     harness.state_mut().editor.pending_focus = Some((last, 0));
     harness.run_steps(4);
     assert!(harness.state().editor.field_rect(last).is_some());
-    let id = egui::Id::new(("storyteller.element", last));
+    let id = egui::Id::unique(("storyteller.element", last));
     assert!(harness.ctx.memory(|m| m.has_focus(id)));
     assert!(harness.state().editor.field_rect(0).is_none(), "and the start is off screen now");
 
@@ -929,7 +929,7 @@ fn format_bold_styles_the_selection_and_keeps_it_selected() {
     harness.state_mut().editor.pending_focus = Some((1, 0));
     harness.run_steps(3);
     // Select "runs" in the text field, as a drag would.
-    let id = egui::Id::new(("storyteller.element", 1));
+    let id = egui::Id::unique(("storyteller.element", 1));
     let mut state = egui::text_edit::TextEditState::load(&harness.ctx, id).unwrap_or_default();
     state.cursor.set_char_range(Some(egui::text::CCursorRange::two(egui::text::CCursor::new(4), egui::text::CCursor::new(8))));
     state.store(&harness.ctx, id);
