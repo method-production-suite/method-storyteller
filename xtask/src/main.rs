@@ -3,12 +3,14 @@
 //! (retakes the README pictures, see `screens.rs`), and the packaging tasks `version`,
 //! `bundle-macos`, `dmg-macos`, `package-linux`, `package-windows` (see `package.rs` and
 //! docs/RELEASING.md), and `updater-archive` and `update-manifest`, the updater's files for a
-//! release (see `updater.rs`).
+//! release (see `updater.rs`), and `release-check` and `release-files`, the release workflow's
+//! checks (see `release.rs`).
 
 mod corpus;
 #[cfg(test)]
 mod crate_ages;
 mod package;
+mod release;
 #[cfg(test)]
 mod release_workflow;
 mod screens;
@@ -43,18 +45,25 @@ fn main() -> ExitCode {
         "updater-archive" => updater::archive_command(root(), rest),
         "update-manifest" => updater::manifest_command(root(), rest),
         "sign-file" => updater::sign_file_command(root(), rest),
+        "release-check" => release::check_command(root(), rest),
+        "release-files" => release::files_command(root(), rest),
             "version" => package::workspace_version().map(|v| println!("{v}")),
             "bundle-macos" => package::parse_options(rest).and_then(|o| package::bundle_macos(&o)),
             "dmg-macos" => package::parse_options(rest).and_then(|o| package::dmg_macos(&o)),
             "package-linux" => package::parse_options(rest).and_then(|o| package::package_linux(&o)),
             "package-windows" => package::parse_options(rest).and_then(|o| package::package_windows(&o)),
-            _ => Err("usage: cargo xtask <layers|assets|privacy|ci|corpus|screens|updater-archive|update-manifest|sign-file|version|bundle-macos|dmg-macos|package-linux|package-windows>"
+            _ => Err("usage: cargo xtask <layers|assets|privacy|ci|corpus|screens|updater-archive|update-manifest|sign-file|release-check|release-files|version|bundle-macos|dmg-macos|package-linux|package-windows>"
                 .to_string()),
         };
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(message) => {
-            eprintln!("xtask: {message}");
+            // In GitHub Actions, as an error annotation on the run.
+            if std::env::var_os("GITHUB_ACTIONS").is_some() {
+                eprintln!("::error::xtask: {message}");
+            } else {
+                eprintln!("xtask: {message}");
+            }
             ExitCode::FAILURE
         }
     }
