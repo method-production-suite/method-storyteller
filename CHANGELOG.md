@@ -5,6 +5,11 @@ for its own version in Help > What's New, once after an update.
 
 ## Unreleased
 
+### Fixed
+
+- A note on the title page (`[[like this]]`) is saved to `.fdx` as a note, so it no longer
+  prints in other apps, and it comes back when the file is opened again.
+
 ## 0.7.0
 
 ### Changed

@@ -132,15 +132,19 @@ fn write_text_runs(markup: &str, indent: &str, out: &mut String) {
     }
     for run in runs {
         out.push_str(indent);
+        // A plain `[[note]]` is a script note, as in the script, so it doesn't print.
+        if run.note {
+            out.push_str(&plain_note_xml(&run.text));
+            out.push('\n');
+            continue;
+        }
         let style = style_attr(run.style);
         if style.is_empty() {
             out.push_str("<Text>");
         } else {
             out.push_str(&format!("<Text Style=\"{style}\">"));
         }
-        // Notes have no inline equivalent in FDX; keep them visible as Fountain notes.
-        let text = if run.note { format!("[[{}]]", run.text) } else { run.text };
-        escape(&text, out);
+        escape(&run.text, out);
         out.push_str("</Text>\n");
     }
 }
@@ -1021,7 +1025,9 @@ impl Importer {
                 }
                 None
             }
-            ("ScriptNote", Some(Region::Script)) => Some(CaptureInto::Note),
+            // A title page keeps the plain `[[notes]]` this app writes there; other notes on it
+            // stay in the title page's own copy, which is written back while it is unchanged.
+            ("ScriptNote", Some(Region::Script | Region::Title)) => Some(CaptureInto::Note),
             (_, Some(Region::Script)) => Some(CaptureInto::Paragraph),
             _ => None,
         }

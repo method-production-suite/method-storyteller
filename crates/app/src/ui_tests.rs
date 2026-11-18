@@ -1199,3 +1199,33 @@ fn typing_keeps_the_pages_until_a_pause_and_headings_follow_at_once() {
     let row = harness.state().automation.find("navigator.scene.0").map(|w| w.label.clone());
     assert_eq!(row.as_deref(), Some("INT. HUT - DAY 2"));
 }
+
+/// Every command in the menus has something to run it: an arm of `run_command`, or a command
+/// in the engine's registry, where anything without an arm goes. Ids are plain strings, so a
+/// typo in either list would otherwise fail only when someone chose the menu item.
+#[test]
+fn every_menu_command_has_something_to_run_it() {
+    let source = include_str!("app.rs");
+    let start = source.find("fn run_command(").expect("run_command");
+    let body = &source[start..];
+    let body = &body[..body.find("\n    }\n").expect("the end of run_command")];
+    let mut arms = std::collections::BTreeSet::new();
+    for line in body.lines().map(str::trim_start).filter(|l| l.starts_with('"') && l.contains(" =>")) {
+        let head = line.split(" =>").next().unwrap_or_default();
+        arms.extend(head.split('|').map(|id| id.trim().trim_matches('"').to_string()));
+    }
+    assert!(arms.len() > 40, "read the arms of run_command: {}", arms.len());
+    let registry = storyteller_engine::Registry::new();
+    for command in &super::APP_COMMANDS {
+        assert!(arms.contains(command.id) || registry.get(command.id).is_some(), "{} ({}) has nothing to run it", command.id, command.menu);
+    }
+    // Run from outside the fixed menus: File > Open Recent's Clear Menu (that menu is built
+    // while the app runs) and the update notice's Restart to Update button.
+    let built_at_run_time = ["app.clear_recent", "help.restart_to_update"];
+    for id in &arms {
+        assert!(
+            super::APP_COMMANDS.iter().any(|c| c.id == id) || registry.get(id).is_some() || built_at_run_time.contains(&id.as_str()),
+            "run_command has an arm for {id}, which no menu item or engine command names"
+        );
+    }
+}
