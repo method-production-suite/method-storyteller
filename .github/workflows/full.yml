@@ -91,3 +91,20 @@ jobs:
             ~/.cargo/git
             target
           key: gates-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+
+  # A scheduled run that fails opens one "Weekly build failed" issue, or comments on the open one
+  # (the owner, 2026-11-17: the same job in every repo of the suite).
+  alert:
+    needs: [decide, gates]
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          n=$(gh issue list --state open --search 'in:title "Weekly build failed"' --json number --jq '.[0].number // empty')
+          if [ -n "$n" ]; then gh issue comment "$n" --body "Failed again: $RUN"; else gh issue create --title "Weekly build failed" --body "Run: $RUN"; fi
