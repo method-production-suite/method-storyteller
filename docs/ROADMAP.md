@@ -185,16 +185,12 @@ says otherwise.
   only. Published 2026-10-28 (tag `v0.6.0` on `4f7198f`, the owner's yes through MOrg; draft
   checked: checksums, both signatures, notarisation and Gatekeeper). Nothing waiting; the
   override line came out on 2026-11-06, when clipboard-win 5.4.3 turned 14 days old.
-- **The next release, 0.7.0: started** (the owner's yes through MOrg, 2026-11-17, covering the
-  version bump and the rehearsal; the tag is asked separately). It carries locked pages and
+- **v0.7.0:** published 2026-11-18 (tag `v0.7.0` on `251bbb4`, the owner's yes through MOrg;
+  draft checked: checksums, both signatures, notarisation and Gatekeeper). Locked pages and
   A-pages, the reports, the Method Schedule export, selection across paragraphs, scene drag,
-  bookmarks, View > Show Outline, autocomplete lists, `.highland` import, the faster editor for
-  long scripts and the design pass. Done: the release notes, the rustix fix (#162) and the
-  Windows recent-list tests (#163). Next: the version bump PR (it changes `Cargo.lock`, so
-  MReview merges it), then the rehearsal on that commit, which must show the Windows tests
-  passing (the local-date test among them, the first Windows run of `GetLocalTime`) and the
-  sign job running with the key (#148's first run on GitHub). Then the tag question goes to
-  the owner through MOrg.
+  bookmarks, Show Outline, autocomplete lists, `.highland` import and the faster editor. The
+  release workflow runs no tests, so its Windows tests came from the full build on the same
+  commit (all three systems green). Nothing waiting.
 
 ### Deferred (the owner, 2026-10-20)
 
