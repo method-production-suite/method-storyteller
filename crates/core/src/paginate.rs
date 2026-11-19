@@ -15,7 +15,7 @@ use crate::wrap::{self, StyledChar};
 pub const MAX_PAGES: usize = 50_000;
 
 /// What a printed line is.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "role", content = "kind")]
 pub enum LineRole {
     Element(ElementKind),

@@ -10,6 +10,7 @@ use egui::text::TextFormat;
 use egui::{Align, Color32, FontData, FontDefinitions, FontFamily, FontId, Frame, Id, Key, Modifiers, Order, Rect, Sense, Stroke, Ui, pos2, vec2};
 use storyteller_core::layout::{Align as PageAlign, POINTS_PER_COLUMN, REVISION_MARK_INCHES, WRAP_ADVANCE_POINTS};
 use storyteller_core::model::{Revisions, ShowRevisions};
+use storyteller_core::paginate::LineRole;
 use storyteller_core::{Element, ElementKind, autocomplete, inline, paginate};
 use storyteller_engine::flow;
 use storyteller_engine::{Caret, Session};
@@ -456,6 +457,20 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
     // While the writer types in a paragraph, the page breaks are the ones from before the typing
     // began; they catch up after a pause (see `Session::hold_pages`).
     let element_pages = session.shown_pages().element_pages.clone();
+    // Paragraphs a page starts inside: by element, the page and its printed characters before it.
+    let mut splits: std::collections::HashMap<usize, Vec<(u32, usize)>> = std::collections::HashMap::new();
+    for page in &session.shown_pages().pages {
+        if let Some((element, before)) = page.start.filter(|(_, before)| *before > 0) {
+            splits.entry(element).or_default().push((page.number, usize::try_from(before).unwrap_or(usize::MAX)));
+        }
+    }
+    // Each page's (MORE) and continued cue: the column and text.
+    let mut added: std::collections::HashMap<(u32, LineRole), (u16, String)> = std::collections::HashMap::new();
+    for page in &session.shown_pages().pages {
+        for line in page.lines.iter().filter(|l| matches!(l.role, LineRole::More | LineRole::Contd)) {
+            added.entry((page.number, line.role)).or_insert_with(|| (line.col, line.text()));
+        }
+    }
     let show = session.show_revisions;
     // Each page's revision label and paper (§3.5): the set it is issued in, and that set's page
     // colour when View > Revised Page Colours is on.
@@ -558,6 +573,8 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                     ui.spacing_mut().interact_size.y = row;
                     let mut in_speech = false;
                     let mut last_page = 0u32;
+                    // Where (MORE) and a continued cue go: the page, which of the two, and the row.
+                    let mut automatic_lines: Vec<(u32, LineRole, f32)> = Vec::new();
                     for (index, element) in session.script.elements.iter().enumerate() {
                         if !session.is_shown(index) {
                             continue;
@@ -577,8 +594,10 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                             let y = ui.cursor().top();
                             let bottom = (sheet_top + page_height).max(y + row * 2.0);
                             sheets.push((sheet_top, bottom, sheet_page));
+                            automatic_lines.push((sheet_page, LineRole::More, y));
                             sheet_top = bottom + SHEET_GAP_ROWS * row;
                             sheet_page = page;
+                            automatic_lines.push((page, LineRole::Contd, sheet_top + top_margin - row));
                             ui.add_space(sheet_top + top_margin - y);
                         } else if index > 0 && new_page {
                             page_break_marker(ui, page, row, &font, faint);
@@ -610,7 +629,8 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                             || lay_out_all
                             || editor.pending_focus.is_some_and(|(target, _)| target == index)
                             || editor.scroll_to == Some(index)
-                            || editor.highlight.is_some_and(|h| h.0 == index);
+                            || editor.highlight.is_some_and(|h| h.0 == index)
+                            || splits.contains_key(&index);
                         if !wanted
                             && let Some(Some((known, height))) = editor.heights.get(index).copied()
                             && known == key
@@ -673,15 +693,50 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                         let composing_text = editor.composing.as_ref().filter(|(i, _)| *i == index).map(|(_, t)| t.clone());
                         let composing = composing_text.as_deref().zip(cursor).map(|(t, c)| (c.head, t));
                         let shown = Shown::new(&text, show_as, composing);
+                        let step = row * f32::from(style.spacing.max(1));
+                        // A paragraph the page breaks inside runs on to the next sheet (or past a
+                        // page-break mark in draft view) at the line the page starts with.
+                        let mut gaps = Vec::new();
+                        let mut marks_here: Vec<(f32, u32)> = Vec::new();
+                        if let Some(list) = splits.get(&index) {
+                            let ranges = shown.lines(box_width);
+                            let printed = inline::printed_bytes(&text);
+                            let mut extra = 0.0;
+                            for &(page, before) in list {
+                                let Some(&(byte, _)) = printed.get(before) else { continue };
+                                let at = shown.place_of(byte);
+                                let line = ranges.iter().rposition(|r| r.0 <= at).unwrap_or(0);
+                                if line == 0 {
+                                    continue;
+                                }
+                                let y = box_top + line as f32 * step + extra;
+                                let above = y - step + row;
+                                let gap = if pages {
+                                    let bottom = (sheet_top + page_height).max(above + row);
+                                    sheets.push((sheet_top, bottom, sheet_page));
+                                    automatic_lines.push((sheet_page, LineRole::More, above));
+                                    sheet_top = bottom + SHEET_GAP_ROWS * row;
+                                    sheet_page = page;
+                                    automatic_lines.push((page, LineRole::Contd, sheet_top + top_margin - row));
+                                    sheet_top + top_margin - y
+                                } else {
+                                    marks_here.push((above + row, page));
+                                    row * 2.0
+                                };
+                                gaps.push((line, gap));
+                                extra += gap;
+                                last_page = last_page.max(page);
+                            }
+                        }
                         let geometry = Geometry {
                             origin: pos2(column_left + f32::from(box_left) * col, box_top),
                             columns: box_width,
                             width: f32::from(box_width) * advance + 1.0,
                             align: style.align,
                             row,
-                            step: row * f32::from(style.spacing.max(1)),
+                            step,
                             advance,
-                            gaps: Vec::new(),
+                            gaps,
                         };
                         let format =
                             |_: usize, c: &ShownChar| char_format(c, (&marked, &spanned, wash), &misspelled, &revised, &font, (color, faint));
@@ -712,6 +767,15 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                         }
                         for line in &laid.lines {
                             ui.painter().galley(line.pos, line.galley.clone(), color);
+                        }
+                        for (top, page) in marks_here {
+                            paint_page_break(
+                                ui.painter(),
+                                Rect::from_min_size(pos2(column_left, top), vec2(page_width, row * 2.0)),
+                                page,
+                                &font,
+                                faint,
+                            );
                         }
                         if text.is_empty() && composing.is_none() {
                             let hint = if empty_script { crate::messages::EMPTY_SCRIPT_HINT } else { kind.label() };
@@ -814,6 +878,16 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                     let bottom = if pages { (sheet_top + page_height).max(y) } else { y };
                     sheets.push((sheet_top, bottom, sheet_page));
                     ui.add_space(bottom - ui.cursor().top());
+                    if pages {
+                        // (MORE) under the last line of a sheet and the continued cue above the
+                        // first, faint: the page adds them, nobody types them.
+                        for (page, role, y) in automatic_lines {
+                            if let Some((column, text)) = added.get(&(page, role)) {
+                                let at = pos2(column_left + f32::from(*column) * col, y);
+                                ui.painter().text(at, egui::Align2::LEFT_TOP, text, font.clone(), faint);
+                            }
+                        }
+                    }
                     let papers: Vec<Color32> = sheets.iter().map(|s| paper_of(s.2)).collect();
                     ui.painter().set(paper, egui::Shape::Vec(paper_shapes(&sheets, &papers, column_left, page_width, pages)));
                     if pages {
@@ -1219,8 +1293,12 @@ fn paint_selection(ui: &Ui, laid: &Laid, from: usize, to: usize, wash: Color32, 
 
 fn page_break_marker(ui: &mut Ui, page: u32, row: f32, font: &FontId, color: Color32) {
     let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), row * 2.0), egui::Sense::hover());
+    paint_page_break(ui.painter(), rect, page, font, color);
+}
+
+/// Draft view's mark where a page starts: a dashed rule across `rect`, and the page's number.
+fn paint_page_break(painter: &egui::Painter, rect: Rect, page: u32, font: &FontId, color: Color32) {
     let y = rect.center().y;
-    let painter = ui.painter();
     let mut x = rect.left();
     while x < rect.right() {
         painter.line_segment([pos2(x, y), pos2((x + 6.0).min(rect.right()), y)], Stroke::new(1.0, crate::theme::PAGE_RULE));
