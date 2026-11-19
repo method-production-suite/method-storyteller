@@ -865,7 +865,7 @@ impl StorytellerApp {
             }
             Err(error) => {
                 self.status = match error {
-                    storyteller_engine::CommandError::Invalid { reason, .. } => capitalise(&reason),
+                    storyteller_engine::CommandError::Invalid { reason, .. } => sentence(&reason),
                     other => other.to_string(),
                 };
                 self.refocus();
@@ -891,7 +891,7 @@ impl StorytellerApp {
         }
         if let Err(error) = self.registry.run(command, &mut self.session, &params(&target)) {
             self.status = match error {
-                storyteller_engine::CommandError::Invalid { reason, .. } => capitalise(&reason),
+                storyteller_engine::CommandError::Invalid { reason, .. } => sentence(&reason),
                 other => other.to_string(),
             };
         }
@@ -1405,13 +1405,6 @@ impl eframe::App for StorytellerApp {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         let _ = self.prefs.flush();
     }
-}
-
-/// `there is no page 9` → `There is no page 9.`
-fn capitalise(text: &str) -> String {
-    let mut chars = text.chars();
-    let first = chars.next().map(|c| c.to_uppercase().collect::<String>()).unwrap_or_default();
-    format!("{first}{}.", chars.as_str())
 }
 
 #[path = "control_host.rs"]
