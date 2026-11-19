@@ -102,6 +102,9 @@ pub struct View {
     pub page_colours: bool,
     /// View > Show Outline: sections and synopses on screen.
     pub outline: bool,
+    /// View > Show Formatting Marks: the markup of bold, italic and underline (and escaping
+    /// backslashes) on screen, faint. Off, the editor shows the text as it prints.
+    pub formatting_marks: bool,
 }
 
 impl Default for View {
@@ -115,6 +118,7 @@ impl Default for View {
             revisions: storyteller_core::model::ShowRevisions::All,
             page_colours: false,
             outline: true,
+            formatting_marks: false,
         }
     }
 }

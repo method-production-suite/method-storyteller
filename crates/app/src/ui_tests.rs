@@ -928,22 +928,16 @@ fn format_bold_styles_the_selection_and_keeps_it_selected() {
     let (mut harness, _file) = harness("INT. HUT - DAY\n\nShe runs home.\n");
     harness.state_mut().editor.pending_focus = Some((1, 0));
     harness.run_steps(3);
-    // Select "runs" in the text field, as a drag would.
-    let id = egui::Id::unique(("storyteller.element", 1));
-    let mut state = egui::text_edit::TextEditState::load(&harness.ctx, id).unwrap_or_default();
-    state.cursor.set_char_range(Some(egui::text::CCursorRange::two(egui::text::CCursor::new(4), egui::text::CCursor::new(8))));
-    state.store(&harness.ctx, id);
+    // Select "runs" in the paragraph, as a drag would.
+    harness.state_mut().editor.cursor = Some(super::editor::Cursor { index: 1, anchor: 4, head: 8 });
     harness.run_steps(2);
     harness.state_mut().queued.push("app.bold".into());
     harness.run_steps(4);
     assert_eq!(harness.state().session.script.elements[1].text, "She **runs** home.");
-    let selected = harness.state().editor.selection.map(|(i, r)| (i, usize::from(r.primary.index).min(r.secondary.index.into())));
+    let selected = harness.state().editor.cursor.map(|c| (c.index, c.ordered().0));
     assert_eq!(selected, Some((1, 6)), "the word stays selected, inside the markers");
     // With no selection, the word the caret is in.
-    let mut state = egui::text_edit::TextEditState::load(&harness.ctx, id).unwrap_or_default();
-    let at = egui::text::CCursor::new("She **runs** ho".chars().count());
-    state.cursor.set_char_range(Some(egui::text::CCursorRange::one(at)));
-    state.store(&harness.ctx, id);
+    harness.state_mut().editor.cursor = Some(super::editor::Cursor::at(1, "She **runs** ho".len()));
     harness.run_steps(2);
     harness.state_mut().queued.push("app.underline".into());
     harness.run_steps(4);
@@ -1228,4 +1222,24 @@ fn every_menu_command_has_something_to_run_it() {
             "run_command has an arm for {id}, which no menu item or engine command names"
         );
     }
+}
+
+#[test]
+fn typing_with_the_markup_hidden_keeps_it_right() {
+    let (mut harness, _file) = harness("INT. HUT - DAY\n\nShe **runs** home.\n");
+    // After "runs": inside its markers, so what is typed is bold too.
+    harness.state_mut().editor.pending_focus = Some((1, "She **runs".len()));
+    harness.run_steps(3);
+    harness.input_mut().events.push(egui::Event::Text("s*".into()));
+    harness.run_steps(3);
+    assert_eq!(harness.state().session.script.elements[1].text, "She **runss\\*** home.", "a typed star is a star");
+    for _ in 0.."runss*".len() {
+        harness.key_press(egui::Key::Backspace);
+        harness.run_steps(1);
+    }
+    harness.run_steps(2);
+    assert_eq!(harness.state().session.script.elements[1].text, "She  home.", "the emptied markers go too");
+    harness.key_press(egui::Key::ArrowLeft);
+    harness.run_steps(2);
+    assert_eq!(harness.state().session.caret.offset, "She".len());
 }

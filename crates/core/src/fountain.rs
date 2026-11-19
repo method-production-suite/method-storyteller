@@ -391,6 +391,17 @@ fn push_body_lines(out: &mut String, text: &str) {
 }
 
 /// Write a script as Fountain.
+/// `text` with its printed characters in capitals; notes and markup as they are.
+fn printed_in_capitals(text: &str) -> String {
+    crate::inline::spans(text)
+        .into_iter()
+        .filter_map(|span| {
+            let part = text.get(span.start..span.end)?;
+            Some(if matches!(span.kind, crate::inline::SpanKind::Text(_)) { part.to_uppercase() } else { part.to_string() })
+        })
+        .collect()
+}
+
 pub fn write(script: &Script) -> String {
     let mut out = String::new();
     for field in &script.title_page.fields {
@@ -413,6 +424,9 @@ pub fn write(script: &Script) -> String {
     }
 
     let elements = &script.elements;
+    // Fountain cannot say that a type prints in capitals (a multi-camera script's action), so
+    // that text is written in capitals, as it prints.
+    let layout = crate::layout::Layout::for_script(script);
     let mut in_block = false;
     for (index, element) in elements.iter().enumerate() {
         let previous = index.checked_sub(1).and_then(|at| elements.get(at));
@@ -435,7 +449,8 @@ pub fn write(script: &Script) -> String {
             out.push_str(&format!("{OMITTED_BLOCK}\n{}\n*/\n", kept.trim_end().replace("*/", "* /")));
         }
         // A literal `/*` is written escaped, or it would pair with a later block's `*/`.
-        let escaped = element.text.replace("/*", "/\\*");
+        let caps = !element.kind.is_caps() && layout.style(element.kind).caps;
+        let escaped = if caps { printed_in_capitals(&element.text) } else { element.text.clone() }.replace("/*", "/\\*");
         let text = escaped.as_str();
         match element.kind {
             ElementKind::SceneHeading => {

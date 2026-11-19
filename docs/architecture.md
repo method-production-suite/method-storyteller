@@ -121,12 +121,15 @@ Fonts live in `assets/fonts/` with `OFL.txt`, `<file>.attribution` sidecars and 
 
 ## 7. Desktop app (`method-storyteller`)
 
-- eframe 0.36. The script view is a scrolling column of page-width frames; each element is a
-  frameless `TextEdit::multiline` positioned at its margin with the element's width. Page breaks
-  and page numbers come from the paginator, re-run when the text changes (debounced).
-- Key handling: before the focused `TextEdit` sees input, Enter/Tab/Shift-Tab/Backspace-at-start/
-  ⌘1–7/Up/Down-at-edge are consumed and turned into engine commands. Typed text is committed with
-  `element.set_text` (merged undo).
+- eframe 0.37. The script view is a scrolling column of page-width frames. The editor lays out,
+  draws and edits each element itself (`text_field.rs`): its text as shown (the markup hidden,
+  capitals by display, notes faint) is wrapped with the paginator's own `wrap::line_ranges`, one
+  galley per line at the element's margin, with a map between places on screen and bytes of the
+  stored text. Page breaks and page numbers come from the paginator, re-run when typing pauses.
+- Key handling: before the paragraph's own keys, Enter/Tab/Shift-Tab/Backspace-at-start/
+  ⌘1–7/Up/Down-at-edge are consumed and turned into engine commands. Typing and deleting edit the
+  stored text through `text_field::replace` (markers kept right, typed markers escaped) and are
+  committed with `element.set_text` (merged undo).
 - **Automation:** every widget is created through `ui_id("editor.element.12")`-style helpers
   that record `(id, rect, role, label)` each frame. The control server thread forwards requests
   over a channel; the UI thread answers them on the next frame and requests a repaint.
