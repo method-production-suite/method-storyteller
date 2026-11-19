@@ -459,9 +459,10 @@ pub fn set_text(session: &mut Session, index: usize, text: &str, typing: bool) -
         return Err(CommandError::Invalid { name: "index", reason: "no such element".into() });
     };
     let mut text = if element.kind.is_single_line() { text.replace(['\n', '\r'], " ") } else { text.replace('\r', "") };
-    // Capitals for the kinds that always take them, and for a type the script's settings print
-    // in capitals (a multi-camera script's action).
-    if element.kind.is_caps() || session.layout.style(element.kind).caps {
+    // Capitals for the kinds that always take them. A type the script's settings print in
+    // capitals (a multi-camera script's action) keeps the writer's casing: the editor and the
+    // page show it in capitals.
+    if element.kind.is_caps() {
         text = text.to_uppercase();
     }
     if element.text == text {
@@ -846,7 +847,7 @@ fn replace_range(s: &mut Session, from: Caret, to: Caret, text: &str) -> Result<
     let before = first.text.get(..from.offset).unwrap_or_default().to_string();
     let after = last.text.get(to.offset..).unwrap_or_default().to_string();
     // What comes up from the last paragraph takes the first one's capitals.
-    let caps = kind.is_caps() || s.layout.style(kind).caps;
+    let caps = kind.is_caps();
     let after = if caps { after.to_uppercase() } else { after };
     s.checkpoint(EditKind::Other);
     let mark = s.marking_set().filter(|set| *set != 0);
@@ -1903,9 +1904,6 @@ fn element_commands() -> Vec<Command> {
                 let kind = kind(p, "kind")?;
                 let mut element = Element::new(kind, opt_string(p, "text")?.unwrap_or_default());
                 element.normalize();
-                if s.layout.style(kind).caps {
-                    element.text = element.text.to_uppercase();
-                }
                 element.mark_whole(s.marking_set());
                 s.checkpoint(EditKind::Other);
                 let len = element.text.len();

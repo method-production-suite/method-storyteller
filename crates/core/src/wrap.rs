@@ -81,21 +81,11 @@ pub fn unstyled(text: &str) -> Vec<StyledChar> {
     plain(text)
 }
 
-fn trim_end(mut line: &[StyledChar]) -> &[StyledChar] {
-    while let Some((last, rest)) = line.split_last() {
-        if last.c != ' ' {
-            break;
-        }
-        line = rest;
-    }
-    line
-}
-
 /// Where a line may end inside `window` (the next `width + 1` characters): the length of the
 /// line that ends there. A line ends before a space, or after a hyphen inside a word; a
 /// hyphen may hang one column past the margin, as Final Draft allows.
-fn last_break(window: &[StyledChar], width: usize) -> Option<usize> {
-    let c = |i: usize| window.get(i).map(|sc| sc.c);
+fn last_break(window: &[char], width: usize) -> Option<usize> {
+    let c = |i: usize| window.get(i).copied();
     (1..window.len()).rev().find_map(|i| {
         if c(i) == Some(' ') && i <= width {
             return Some(i);
@@ -116,34 +106,47 @@ pub fn wrap(chars: &[StyledChar], width: u16) -> Vec<Vec<StyledChar>> {
 
 /// [`wrap`] with a different width for the very first line (a hanging first indent).
 pub fn wrap_first(chars: &[StyledChar], first_width: u16, width: u16) -> Vec<Vec<StyledChar>> {
+    let plain: Vec<char> = chars.iter().map(|sc| sc.c).collect();
+    line_ranges(&plain, first_width, width).into_iter().map(|(start, end)| chars.get(start..end).unwrap_or(&[]).to_vec()).collect()
+}
+
+/// The lines [`wrap_first`] makes of `chars`, as `start..end` indices into it. A line's end
+/// leaves out the spaces it ends with; the spaces a wrap swallows and each `\n` belong to no
+/// line. The editor lays its text out with this, so a paragraph wraps on screen where it prints.
+pub fn line_ranges(chars: &[char], first_width: u16, width: u16) -> Vec<(usize, usize)> {
     let rest_width = usize::from(width.max(1));
-    let mut lines: Vec<Vec<StyledChar>> = Vec::new();
-    for hard in chars.split(|sc| sc.c == '\n') {
+    let mut lines: Vec<(usize, usize)> = Vec::new();
+    // The whole line from `from` to `to`, its spaces at the end left out.
+    let trimmed = |from: usize, mut to: usize| {
+        while to > from && chars.get(to - 1) == Some(&' ') {
+            to -= 1;
+        }
+        (from, to)
+    };
+    let mut hard_start = 0;
+    for hard in chars.split(|&c| c == '\n') {
         let mut start = 0;
         loop {
             let width = if lines.is_empty() { usize::from(first_width.max(1)) } else { rest_width };
             let rest = hard.get(start..).unwrap_or(&[]);
-            let fits = rest.len() <= width || (rest.len() == width + 1 && rest.last().is_some_and(|sc| sc.c == '-'));
+            let fits = rest.len() <= width || (rest.len() == width + 1 && rest.last() == Some(&'-'));
             if fits {
-                lines.push(trim_end(rest).to_vec());
+                lines.push(trimmed(hard_start + start, hard_start + hard.len()));
                 break;
             }
             let window = rest.get(..=width.saturating_add(1)).unwrap_or(rest);
-            let break_at = last_break(window, width);
-            let (line, next) = match break_at {
-                Some(at) => (rest.get(..at).unwrap_or(&[]), at),
-                None => (rest.get(..width).unwrap_or(&[]), width),
-            };
-            lines.push(trim_end(line).to_vec());
+            let next = last_break(window, width).unwrap_or(width);
+            lines.push(trimmed(hard_start + start, hard_start + start + next));
             let mut next = start + next;
-            while hard.get(next).is_some_and(|sc| sc.c == ' ') {
+            while hard.get(next) == Some(&' ') {
                 next += 1;
             }
             start = next;
         }
+        hard_start += hard.len() + 1;
     }
     if lines.is_empty() {
-        lines.push(Vec::new());
+        lines.push((0, 0));
     }
     lines
 }
@@ -228,6 +231,15 @@ mod tests {
         assert_eq!(text(&wrap(&chars, 5)), ["abcde", "fghij", "kl", "xy"]);
         assert_eq!(text(&wrap(&[], 5)), [""]);
         assert_eq!(text(&wrap(&unstyled("a b"), 0)), ["a", "b"]);
+    }
+
+    #[test]
+    fn line_ranges_index_the_text() {
+        let chars: Vec<char> = "the quick  brown\nfox".chars().collect();
+        assert_eq!(line_ranges(&chars, 10, 10), vec![(0, 9), (11, 16), (17, 20)], "spaces between lines and the break belong to none");
+        assert_eq!(line_ranges(&[], 5, 5), vec![(0, 0)]);
+        let chars: Vec<char> = "abcdefg".chars().collect();
+        assert_eq!(line_ranges(&chars, 3, 3), vec![(0, 3), (3, 6), (6, 7)], "a long word splits where it must");
     }
 
     #[test]

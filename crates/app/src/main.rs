@@ -13,6 +13,7 @@ mod native_menu;
 mod prefs;
 mod recent;
 mod recovery;
+mod text_field;
 mod theme;
 mod updates;
 

@@ -396,6 +396,108 @@ pub fn printed_before(source: &str, byte: usize) -> usize {
     printed(source).iter().filter(|&&(start, _, _)| start < byte).count()
 }
 
+impl PosToken {
+    fn bytes(&self) -> (usize, usize) {
+        match *self {
+            PosToken::Char(start, end) | PosToken::Note(start, end) | PosToken::Marker(_, start, end) => (start, end),
+            PosToken::Escape(at) => (at, at + 1),
+        }
+    }
+}
+
+/// Each printed character and its style, notes in place as runs of their own.
+fn styled_parts(source: &str, keep: impl Fn(usize, usize) -> bool) -> Vec<Run> {
+    let mut runs: Vec<Run> = Vec::new();
+    for span in spans(source) {
+        let Some(text) = source.get(span.start..span.end) else { continue };
+        match span.kind {
+            SpanKind::Markup => {}
+            SpanKind::Note => {
+                if keep(span.start, span.end) {
+                    let inner = text.strip_prefix("[[").and_then(|t| t.strip_suffix("]]")).unwrap_or(text);
+                    runs.push(Run { text: inner.to_string(), style: Style::default(), note: true, revised: None });
+                }
+            }
+            SpanKind::Text(style) => {
+                for (i, c) in text.char_indices() {
+                    if !keep(span.start + i, span.start + i + c.len_utf8()) {
+                        continue;
+                    }
+                    match runs.last_mut() {
+                        Some(last) if !last.note && last.style == style => last.text.push(c),
+                        _ => runs.push(Run { text: c.to_string(), style, note: false, revised: None }),
+                    }
+                }
+            }
+        }
+    }
+    runs
+}
+
+/// `source` with the bytes `start..end` taken out, as Backspace and Delete take out text in
+/// the editor while the markup is hidden: the text goes, a pair of markers left with nothing
+/// between goes with it, and every character left keeps its style. Tokens only partly inside
+/// the range stay.
+pub fn remove(source: &str, start: usize, end: usize) -> String {
+    let tokens = tokenize_at(source);
+    let mut open: Vec<(usize, Marker)> = Vec::new();
+    let mut pairs: Vec<(usize, usize)> = Vec::new();
+    for (index, token) in tokens.iter().enumerate() {
+        if let PosToken::Marker(marker, _, _) = token {
+            match open.iter().rposition(|(_, kind)| kind == marker) {
+                Some(position) => pairs.push((open.remove(position).0, index)),
+                None => open.push((index, *marker)),
+            }
+        }
+    }
+    let mut gone: Vec<bool> = tokens
+        .iter()
+        .map(|t| {
+            let (a, b) = t.bytes();
+            start <= a && b <= end
+        })
+        .collect();
+    // An escape goes with the character it escapes.
+    for i in 1..tokens.len() {
+        if matches!(tokens.get(i - 1), Some(PosToken::Escape(_)))
+            && gone.get(i).copied().unwrap_or(false)
+            && let Some(slot) = gone.get_mut(i - 1)
+        {
+            *slot = true;
+        }
+    }
+    loop {
+        let mut changed = false;
+        for &(o, c) in &pairs {
+            let both = gone.get(o).copied().unwrap_or(false) && gone.get(c).copied().unwrap_or(false);
+            let empty = (o + 1..c).all(|i| gone.get(i).copied().unwrap_or(true));
+            if !both && empty {
+                for i in [o, c] {
+                    if let Some(slot) = gone.get_mut(i) {
+                        *slot = true;
+                    }
+                }
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    let candidate: String = tokens
+        .iter()
+        .zip(&gone)
+        .filter(|(_, gone)| !**gone)
+        .filter_map(|(t, _)| {
+            let (a, b) = t.bytes();
+            source.get(a..b)
+        })
+        .collect();
+    let keep = |a: usize, b: usize| !(start <= a && b <= end);
+    let want = styled_parts(source, keep);
+    if styled_parts(&candidate, |_, _| true) == want { candidate } else { write(&want) }
+}
+
 /// A style the Format menu turns on and off.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StyleKind {
@@ -504,6 +606,17 @@ mod tests {
 
     fn styled(text: &str, bold: bool, italic: bool, underline: bool) -> Run {
         Run { text: text.into(), style: Style { bold, italic, underline }, note: false, revised: None }
+    }
+
+    #[test]
+    fn remove_takes_text_and_emptied_markers() {
+        assert_eq!(remove("a **bold** b", 4, 8), "a  b", "the markers go with the word");
+        assert_eq!(remove("a **bold** b", 4, 6), "a **ld** b", "part of the word: the markers stay");
+        assert_eq!(remove("x \\*y", 3, 4), "x y", "an escape goes with its character");
+        assert_eq!(remove("*a* *b*", 1, 2), " *b*", "two stars left side by side would read as bold");
+        let cut = remove("x **bold** y", 2, 6);
+        assert_eq!(parse(&cut), parse("x **ld** y"), "a range across a marker keeps the styles of what is left: {cut}");
+        assert_eq!(remove("a [[note]] b", 2, 10), "a  b");
     }
 
     #[test]

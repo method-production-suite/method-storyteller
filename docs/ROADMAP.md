@@ -117,6 +117,16 @@ says otherwise.
     on the recommendation.** Reversible: one call, `learn_before_saving`.
 27. **Select All takes the whole script** (it took the paragraph until selections could cross
     paragraphs). **Built on the recommendation**, as writers expect. Reversible.
+28. **The markup of bold, italic and underline in the editor** (new, 2026-11-19). Now that the
+    editor draws its own text, the markers can go. **Built on the recommendation: hidden**, the
+    text shown as it prints; a typed `*` or `_` is taken literally (stored escaped); View > Show
+    Formatting Marks shows the markers faint, for writers who type Fountain markup by hand.
+    Reversible: one setting.
+29. **Capitals by display** (new, 2026-11-19). A type the script's settings print in capitals (a
+    multi-camera script's action) now keeps the writer's casing and is shown and printed in
+    capitals; turning the setting off brings the casing back. Scene headings, cues and
+    transitions are still stored in capitals. Saving to Fountain, which cannot record the
+    setting, writes that text in capitals. **Built on the recommendation.** Reversible.
 12. **Rank for `.osf` in the Finder.** **Decided by the owner, 2026-10-18: Default**, like
    `.fountain` and `.fdx`: open formats, so the app claims none of them as their owner.
 
@@ -292,8 +302,7 @@ wait for a decision above.
      double-spaced dialogue, action in capitals (decision 17) [have].
 8b. **Bold, italic and underline in the editor** [have] S (owner, 2026-10-19). Format > Bold,
    Italic and Underline (⌘B, ⌘I, ⌘U) on a selection or the caret's word, and the editor drawing
-   the styles with the markup faint. Hiding the markers altogether waits for the editor's own
-   text drawing (with capitals by display, below).
+   the styles with the markers hidden (decision 28; View > Show Formatting Marks shows them).
 8c. **The `.mstory` package** [have] M (decision 1). One ZIP file: the script as Open
    Screenplay Format, and a production data file. Open and save, File > Save As, the Finder's
    document type and icon. Comes first in M5.
@@ -347,12 +356,14 @@ signed `.app.tar.gz`), the OSF and Fountain study, and the design pass. Each is 
   but never offers it after a crash. Offer it at launch, ahead of the first-launch sample.
 - **The editor lays out only the rows on screen** [have] M. A paragraph well off screen takes
   up its measured space and is not laid out. Typing waits for a pause to repaginate (below).
-- **Capitals by display** [missing] S. Typing into a capitals type (a multi-camera script's
+- **Capitals by display** [have] S (decision 29). Typing into a capitals type (a multi-camera script's
   action) stores capitals today; keep the writer's casing and show capitals on screen and page
   instead. Waits on the editor drawing its own text, as Page view does (MReview's note on #82).
-- **The editor draws its own text** [missing] L. What Page view and Capitals by display need, and
-  what hiding the markup of bold and italic needs (8b). A large change to how typing works, so it
-  is its own piece of work, best after the next release.
+- **The editor draws its own text** [have] L. Each paragraph is laid out, drawn and edited by the
+  editor (`text_field.rs`): lines wrap where they print (the paginator's own wrapping), the markup
+  is hidden (decision 28), capitals show by display (decision 29), and double-spaced dialogue is
+  double-spaced on screen. Typing, deleting, the arrows with Option and Command, selecting with
+  the pointer and input methods are its own.
 - **Typing on long scripts** [have] S. While the writer types in one paragraph, the screen keeps
   the pages it had and lays the script out again half a second after typing stops; saving,
   exporting, reports and Lock Pages always paginate the script as it is. On a 260-page script in

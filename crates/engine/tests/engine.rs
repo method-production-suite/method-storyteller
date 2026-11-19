@@ -1193,13 +1193,17 @@ fn an_opened_script_keeps_its_end_lines_as_written() {
 }
 
 #[test]
-fn a_type_the_script_prints_in_capitals_is_typed_in_capitals() {
+fn a_type_the_script_prints_in_capitals_keeps_the_casing_typed_and_prints_in_capitals() {
     let registry = Registry::new();
     let mut script = storyteller_core::fountain::parse("INT. HUT - DAY\n\nRain.\n").unwrap();
     script.format.elements.push(storyteller_core::format::ElementFormat { name: "Action".into(), all_caps: true, ..Default::default() });
     let mut s = Session::new(script);
     run(&registry, &mut s, "element.set_text", json!({ "index": 1, "text": "Nora runs.", "typing": true }));
-    assert_eq!(s.script.elements[1].text, "NORA RUNS.");
+    assert_eq!(s.script.elements[1].text, "Nora runs.", "kept as typed");
+    let printed = storyteller_core::paginate::render_text(&storyteller_core::paginate::paginate(&s.script, &s.layout));
+    assert!(printed.contains("NORA RUNS."), "printed in capitals: {printed}");
+    let fountain = storyteller_core::fountain::write(&s.script);
+    assert!(fountain.contains("NORA RUNS."), "and written to Fountain in capitals, which cannot say so otherwise");
 }
 
 #[test]
@@ -1217,7 +1221,7 @@ fn a_new_scene_in_a_multi_camera_script_gets_its_letter() {
     assert_eq!(letters(&s), ["A", "B", "C", "D", "E"]);
     assert_eq!(s.script.elements[2].scene_number.as_deref(), Some("B"));
     run(&registry, &mut s, "element.insert", json!({ "index": 2, "kind": "action", "text": "Nora waits." }));
-    assert_eq!(s.script.elements[3].text, "NORA WAITS.", "action in capitals");
+    assert_eq!(s.script.elements[3].text, "Nora waits.", "action kept as typed, shown and printed in capitals");
 }
 
 #[test]

@@ -38,6 +38,7 @@ impl StorytellerApp {
         match id {
             "view.navigator" => Some(self.prefs.get().view.navigator),
             "view.page_view" => Some(self.prefs.get().view.page_view),
+            "view.formatting_marks" => Some(self.prefs.get().view.formatting_marks),
             "view.scene_numbers" => Some(self.session.layout.show_scene_numbers),
             "view.page_colours" => Some(self.session.page_colours),
             "view.outline" => Some(self.session.show_outline),

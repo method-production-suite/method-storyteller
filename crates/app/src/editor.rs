@@ -1,15 +1,13 @@
-//! The script view: each element is a frameless text box at its industry margin, on white
-//! paper. Page view shows separate sheets with their page numbers; draft view one continuous
-//! column with page-break marks. Enter, Tab, Backspace-at-start and arrows at the edges become
-//! engine commands; typing is committed with `element.set_text`.
+//! The script view: each element at its industry margin on white paper, drawn and edited by
+//! the editor itself (see `text_field`): wrapped where it prints, the markup hidden, capitals
+//! where its type prints them. Page view shows separate sheets with their page numbers; draft
+//! view one continuous column with page-break marks. Enter, Tab, Backspace-at-start and arrows
+//! at the edges become engine commands; typing is committed with `element.set_text`.
 
 use std::sync::Arc;
 
-use egui::text::{CCursor, CCursorRange, LayoutJob};
-use egui::text_edit::TextEditState;
-use egui::{
-    Align, Color32, FontData, FontDefinitions, FontFamily, FontId, Frame, Id, Key, Margin, Modifiers, Order, Rect, Stroke, TextEdit, Ui, pos2, vec2,
-};
+use egui::text::TextFormat;
+use egui::{Align, Color32, FontData, FontDefinitions, FontFamily, FontId, Frame, Id, Key, Modifiers, Order, Rect, Sense, Stroke, Ui, pos2, vec2};
 use storyteller_core::layout::{Align as PageAlign, POINTS_PER_COLUMN, REVISION_MARK_INCHES, WRAP_ADVANCE_POINTS};
 use storyteller_core::model::{Revisions, ShowRevisions};
 use storyteller_core::{Element, ElementKind, autocomplete, inline, paginate};
@@ -17,6 +15,7 @@ use storyteller_engine::flow;
 use storyteller_engine::{Caret, Session};
 
 use crate::automation::Automation;
+use crate::text_field::{Geometry, Laid, Look, ShowAs, Shown, ShownChar, replace};
 
 /// Font family name for Courier Prime.
 pub const COURIER: &str = "courier_prime";
@@ -105,33 +104,35 @@ impl Span {
     }
 }
 
-/// A paragraph's text as drawn last, to find places in by position.
+/// A paragraph as drawn last, to find places in by position.
 #[derive(Clone)]
 struct Field {
     index: usize,
-    rect: Rect,
-    galley: Arc<egui::Galley>,
-    origin: egui::Pos2,
+    laid: Arc<Laid>,
+}
+
+impl Field {
+    fn rect(&self) -> Rect {
+        self.laid.rect
+    }
 }
 
 /// The place in the script nearest `pos`, reading rows top to bottom. Going up, a position
 /// between two paragraphs counts as in the one above.
-fn place_at(fields: &[Field], session: &Session, pos: egui::Pos2, up: bool) -> Option<Caret> {
-    let found = if up { fields.iter().rfind(|f| f.rect.top() <= pos.y) } else { fields.iter().find(|f| f.rect.bottom() >= pos.y) };
+fn place_at(fields: &[Field], pos: egui::Pos2, up: bool) -> Option<Caret> {
+    let found = if up { fields.iter().rfind(|f| f.rect().top() <= pos.y) } else { fields.iter().find(|f| f.rect().bottom() >= pos.y) };
     let field = found.or(if up { fields.first() } else { fields.last() })?;
-    let text = session.element(field.index).map_or("", |e| e.text.as_str());
-    let cursor = field.galley.cursor_from_pos(pos - field.origin);
-    Some(Caret { element: field.index, offset: char_to_byte(text, cursor.index.into()) })
+    let shown = &field.laid.shown;
+    Some(Caret { element: field.index, offset: shown.to_stored(field.laid.place_at(pos)) })
 }
 
 /// One row up or down from `head`, in the column `x`, into the next paragraph at its edge.
-fn row_from(fields: &[Field], session: &Session, head: Caret, x: Option<f32>, up: bool) -> Option<(Caret, f32)> {
+fn row_from(fields: &[Field], head: Caret, x: Option<f32>, up: bool) -> Option<(Caret, f32)> {
     let field = fields.iter().find(|f| f.index == head.element)?;
-    let text = session.element(head.element).map_or("", |e| e.text.as_str());
-    let here = field.galley.pos_from_cursor(CCursor::new(byte_to_char(text, head.offset))).translate(field.origin.to_vec2());
+    let here = field.laid.caret_rect(field.laid.shown.place_of(head.offset));
     let x = x.unwrap_or(here.center().x);
     let y = if up { here.min.y - here.height() * 0.5 } else { here.max.y + here.height() * 0.5 };
-    Some((place_at(fields, session, pos2(x, y), up)?, x))
+    Some((place_at(fields, pos2(x, y), up)?, x))
 }
 
 /// One character on from `head`, over the paragraph's edge into the next.
@@ -161,14 +162,37 @@ fn step_from(session: &Session, head: Caret, back: bool) -> Caret {
 const OVERSCAN_ROWS: f32 = 30.0;
 
 /// What a paragraph's height depends on, as a hash.
-fn height_key(element: &Element, zoom: f32, style_width: u16) -> u64 {
+fn height_key(element: &Element, zoom: f32, style_width: u16, show: ShowAs, spacing: u16) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     element.text.hash(&mut hasher);
     element.kind.hash(&mut hasher);
     zoom.to_bits().hash(&mut hasher);
     style_width.hash(&mut hasher);
+    show.hash(&mut hasher);
+    spacing.hash(&mut hasher);
     hasher.finish()
+}
+
+/// The caret and selection in one paragraph, as bytes of its stored text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Cursor {
+    pub index: usize,
+    /// Where the selection started: this end stays put.
+    pub anchor: usize,
+    /// Where the caret is.
+    pub head: usize,
+}
+
+impl Cursor {
+    pub fn at(index: usize, offset: usize) -> Self {
+        Cursor { index, anchor: offset, head: offset }
+    }
+
+    /// The selection's bytes in order.
+    pub fn ordered(&self) -> (usize, usize) {
+        (self.anchor.min(self.head), self.anchor.max(self.head))
+    }
 }
 
 #[derive(Default)]
@@ -189,8 +213,16 @@ pub struct EditorState {
     /// Focus this element at this byte offset on the next frame.
     pub pending_focus: Option<(usize, usize)>,
     pub focused: Option<usize>,
-    /// The focused element's selection when it last had the keyboard.
-    pub selection: Option<(usize, CCursorRange)>,
+    /// The caret and selection in the paragraph with the keyboard, kept when a menu takes it.
+    pub cursor: Option<Cursor>,
+    /// Text the input method is composing in a paragraph, not yet typed.
+    composing: Option<(usize, String)>,
+    /// When the caret last moved or the text changed, for its blink.
+    last_interaction: f64,
+    /// The column Up and Down keep to inside a paragraph, on screen.
+    column: Option<f32>,
+    /// View > Show Formatting Marks: the markup on screen, faint.
+    pub show_markup: bool,
     /// The current find match, `(element, start, end)` in bytes, drawn highlighted.
     pub highlight: Option<(usize, usize, usize)>,
     /// Misspelled words to underline, by element: byte ranges (filled by the app each frame).
@@ -206,7 +238,7 @@ pub struct EditorState {
 impl EditorState {
     #[cfg(test)]
     pub fn field_rect(&self, index: usize) -> Option<Rect> {
-        self.fields.iter().find(|f| f.index == index).map(|f| f.rect)
+        self.fields.iter().find(|f| f.index == index).map(Field::rect)
     }
 
     /// Selects the whole script when it has more than one paragraph.
@@ -324,7 +356,7 @@ fn span_keys(ui: &mut Ui, session: &Session, editor: &mut EditorState, actions: 
                     Key::ArrowLeft | Key::ArrowRight | Key::ArrowUp | Key::ArrowDown if modifiers.shift => {
                         let up = key == Key::ArrowUp;
                         if up || key == Key::ArrowDown {
-                            if let Some((head, x)) = row_from(&editor.fields, session, span.head, span.column, up) {
+                            if let Some((head, x)) = row_from(&editor.fields, span.head, span.column, up) {
                                 span.head = head;
                                 span.column = Some(x);
                             }
@@ -361,12 +393,7 @@ fn settle(ui: &Ui, editor: &mut EditorState, span: Span) {
     }
     editor.span = None;
     let id = Id::unique(("storyteller.element", span.head.element));
-    let Some(field) = editor.fields.iter().find(|f| f.index == span.head.element) else { return };
-    let text = field.galley.job.text.as_str();
-    let range = CCursorRange::two(CCursor::new(byte_to_char(text, span.anchor.offset)), CCursor::new(byte_to_char(text, span.head.offset)));
-    let mut state = TextEditState::load(ui.ctx(), id).unwrap_or_default();
-    state.cursor.set_char_range(Some(range));
-    state.store(ui.ctx(), id);
+    editor.cursor = Some(Cursor { index: span.head.element, anchor: span.anchor.offset, head: span.head.offset });
     ui.memory_mut(|m| m.request_focus(id));
 }
 
@@ -381,7 +408,7 @@ pub fn byte_to_char(text: &str, byte: usize) -> usize {
 /// A revision shown in an element: the bytes of its revised text, or of the character a
 /// deletion mark sits beside, with the set's id.
 #[derive(Clone, Copy)]
-struct Shown {
+struct ShownRevision {
     start: usize,
     end: usize,
     set: u32,
@@ -389,7 +416,7 @@ struct Shown {
 }
 
 /// An element's revisions that `show` shows, from its spans of printed characters.
-fn shown_revisions(element: &Element, revisions: &Revisions, show: ShowRevisions) -> Vec<Shown> {
+fn shown_revisions(element: &Element, revisions: &Revisions, show: ShowRevisions) -> Vec<ShownRevision> {
     let shows = |set: u32| revisions.set(set).is_some() && show.shows(set, revisions.active);
     if show == ShowRevisions::None || (element.revised.is_empty() && element.deletions.is_empty()) {
         return Vec::new();
@@ -402,24 +429,16 @@ fn shown_revisions(element: &Element, revisions: &Revisions, show: ShowRevisions
         if let (Some(first), Some(last)) = (printed.get(from), to.checked_sub(1).and_then(|i| printed.get(i)))
             && first.0 < last.1
         {
-            out.push(Shown { start: first.0, end: last.1, set: span.set, deletion: false });
+            out.push(ShownRevision { start: first.0, end: last.1, set: span.set, deletion: false });
         }
     }
     for deletion in element.deletions.iter().filter(|d| shows(d.set)) {
         // The character before the place, as on the printed page.
         let before = place(deletion.at).and_then(|at| at.checked_sub(1)).and_then(|i| printed.get(i)).or(printed.first());
         let (start, end) = before.copied().unwrap_or((0, 0));
-        out.push(Shown { start, end, set: deletion.set, deletion: true });
+        out.push(ShownRevision { start, end, set: deletion.set, deletion: true });
     }
     out
-}
-
-fn align(align: PageAlign) -> Align {
-    match align {
-        PageAlign::Left => Align::LEFT,
-        PageAlign::Right => Align::RIGHT,
-        PageAlign::Center => Align::Center,
-    }
 }
 
 fn preview(text: &str) -> String {
@@ -433,6 +452,7 @@ fn preview(text: &str) -> String {
 /// Draw the script and collect the edits to apply.
 pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automation: &mut Automation, zoom: f32, pages: bool) -> Vec<EditAction> {
     let mut actions = Vec::new();
+    let now = ui.input(|i| i.time);
     // While the writer types in a paragraph, the page breaks are the ones from before the typing
     // began; they catch up after a pause (see `Session::hold_pages`).
     let element_pages = session.shown_pages().element_pages.clone();
@@ -460,7 +480,7 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
         editor.pending_focus = Some((session.nearest_shown(target), 0));
     }
     // The caret and selection before this frame's clicks move them.
-    let before_click = (session.caret, editor.selection);
+    let before_click = (session.caret, editor.cursor);
     span_keys(ui, session, editor, &mut actions);
     if editor.span.is_some() {
         editor.completion.dismissed = true;
@@ -478,10 +498,6 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
     let squeeze = WRAP_ADVANCE_POINTS / POINTS_PER_COLUMN;
     let advance = col * squeeze;
     let font = FontId::new(row * squeeze, FontFamily::Name(COURIER.into()));
-    // A text box's minimum height and caret come from its own font's row height; size that font
-    // so one row is exactly one script line, or single-line elements would stand apart.
-    let font_row = ui.fonts_mut(|f| f.row_height(&font)).max(1.0);
-    let box_font = FontId::new(font.size * (row / font_row), font.family.clone());
     let page_width = f32::from(layout.page_columns) * col;
     let page_height = f32::from(layout.page_rows) * row;
     let top_margin = f32::from(layout.body_top) * row;
@@ -586,7 +602,10 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                             ElementKind::Section | ElementKind::Synopsis => (layout.action.left, layout.action.width),
                             _ => (style.left, style.width),
                         };
-                        let key = height_key(element, zoom, box_width);
+                        // Capitals for the kinds that always take them, and for a type the script's
+                        // settings print in capitals; the stored text keeps the writer's casing.
+                        let show_as = ShowAs { hide_markup: !editor.show_markup, caps: kind.is_caps() || style.caps };
+                        let key = height_key(element, zoom, box_width, show_as, style.spacing);
                         let wanted = focused
                             || lay_out_all
                             || editor.pending_focus.is_some_and(|(target, _)| target == index)
@@ -615,17 +634,25 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                         let mut text = element.text.clone();
                         let single_line = kind.is_single_line();
                         let picking = editor.picker.as_ref().is_some_and(|p| p.index == index);
+                        let mut edited = false;
                         if focused && picking {
                             picker_keys(ui, index, editor, &mut actions);
                         } else if focused {
-                            handle_keys(ui, id, index, count, &text, single_line, session, editor, &mut actions);
+                            let shown = Shown::new(&text, show_as, None);
+                            handle_keys(ui, id, index, count, &text, &shown, single_line, show_as, session, editor, &mut actions);
+                            edited = field_keys(ui, index, &mut text, show_as, editor, &mut actions);
                         }
                         if let Some((target, offset)) = editor.pending_focus
                             && target == index
                         {
-                            let mut state = TextEditState::load(ui.ctx(), id).unwrap_or_default();
-                            state.cursor.set_char_range(Some(CCursorRange::one(CCursor::new(byte_to_char(&text, offset)))));
-                            state.store(ui.ctx(), id);
+                            let mut offset = offset.min(text.len());
+                            while !text.is_char_boundary(offset) {
+                                offset -= 1;
+                            }
+                            editor.cursor = Some(Cursor::at(index, offset));
+                            editor.composing = None;
+                            editor.column = None;
+                            editor.last_interaction = now;
                             ui.memory_mut(|m| m.request_focus(id));
                             editor.pending_focus = None;
                             editor.scroll_to_focus = true;
@@ -633,65 +660,106 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                         let paper = paper_of(sheet_page);
                         let faint = crate::theme::muted_on(paper);
                         let color = if kind.is_printed() { ink } else { faint };
-                        let shown = shown_revisions(element, revisions, show);
-                        let revised: Vec<(usize, usize, Color32)> = shown
+                        let shown_revisions = shown_revisions(element, revisions, show);
+                        let revised: Vec<(usize, usize, Color32)> = shown_revisions
                             .iter()
                             .filter(|r| !r.deletion)
                             .map(|r| (r.start, r.end, crate::theme::revised_ink(revisions.set(r.set).and_then(|s| s.color.as_deref()), paper)))
                             .collect();
-                        let text_align = align(style.align);
-                        let row_height = row;
-                        let job_font = font.clone();
                         let marked = editor.highlight.filter(|h| h.0 == index).map(|h| (h.1, h.2));
                         let spanned = editor.span.and_then(|span| span.bytes_in(index, &element.text));
                         let misspelled = editor.misspelled.get(&index).cloned().unwrap_or_default();
-                        let mut layouter = move |ui: &Ui, buffer: &dyn egui::TextBuffer, wrap_width: f32| {
-                            let mut job =
-                                marked_job(buffer.as_str(), (marked, spanned, wash), &misspelled, &revised, &job_font, (color, faint), wrap_width);
-                            job.halign = text_align;
-                            for section in &mut job.sections {
-                                section.format.line_height = Some(row_height);
-                            }
-                            ui.fonts_mut(|f| f.layout_job(job))
+                        let cursor = editor.cursor.filter(|c| c.index == index);
+                        let composing_text = editor.composing.as_ref().filter(|(i, _)| *i == index).map(|(_, t)| t.clone());
+                        let composing = composing_text.as_deref().zip(cursor).map(|(t, c)| (c.head, t));
+                        let shown = Shown::new(&text, show_as, composing);
+                        let geometry = Geometry {
+                            origin: pos2(column_left + f32::from(box_left) * col, box_top),
+                            columns: box_width,
+                            width: f32::from(box_width) * advance + 1.0,
+                            align: style.align,
+                            row,
+                            step: row * f32::from(style.spacing.max(1)),
+                            advance,
+                            gaps: Vec::new(),
                         };
-                        let (left, width) = (box_left, box_width);
-                        let output = ui
-                            .horizontal_top(|ui| {
-                                ui.add_space(f32::from(left) * col);
-                                TextEdit::multiline(&mut text)
-                                    .id(id)
-                                    .frame(Frame::NONE)
-                                    .margin(Margin::ZERO)
-                                    .desired_width(f32::from(width) * advance + 1.0)
-                                    .desired_rows(1)
-                                    .lock_focus(true)
-                                    .font(box_font.clone())
-                                    .align(egui::Align2([text_align, egui::Align::TOP]))
-                                    .hint_text(
-                                        egui::RichText::new(if empty_script { crate::messages::EMPTY_SCRIPT_HINT } else { kind.label() })
-                                            .color(crate::theme::PAGE_MUTED)
-                                            .font(font.clone()),
-                                    )
-                                    .layouter(&mut layouter)
-                                    .show(ui)
-                            })
-                            .inner;
-                        let response = &output.response.response;
-                        if let Some(slot) = editor.heights.get_mut(index) {
-                            *slot = Some((key, ui.cursor().top() - box_top));
+                        let format =
+                            |_: usize, c: &ShownChar| char_format(c, (&marked, &spanned, wash), &misspelled, &revised, &font, (color, faint));
+                        let laid = Arc::new(Laid::new(ui, shown, &geometry, format));
+                        ui.advance_cursor_after_rect(laid.rect);
+                        let response = ui.interact(laid.rect, id, Sense::click_and_drag()).on_hover_cursor(egui::CursorIcon::Text);
+                        if !picking && pointer_keys(ui, &response, index, &laid, editor, now) {
+                            response.request_focus();
                         }
-                        fields.push(Field { index, rect: response.rect, galley: output.galley.clone(), origin: output.galley_pos });
-                        // The edit's own id holds focus; the outer response may carry another id.
+                        // The edit's own id holds focus.
                         let has_focus = ui.memory(|m| m.has_focus(id));
+                        let cursor = editor.cursor.filter(|c| c.index == index);
+                        let head = cursor.map(|c| laid.shown.place_of(c.head) + composing.map_or(0, |(_, t)| t.chars().count()));
+                        if has_focus {
+                            ui.memory_mut(|m| {
+                                m.set_focus_lock_filter(
+                                    id,
+                                    egui::EventFilter { tab: true, horizontal_arrows: true, vertical_arrows: true, escape: false },
+                                );
+                            });
+                            if let Some(cursor) = cursor
+                                && editor.span.is_none()
+                            {
+                                let (from, to) = cursor.ordered();
+                                let (from, to) = (laid.shown.place_of(from), laid.shown.place_of(to));
+                                paint_selection(ui, &laid, from, to, ui.visuals().selection.bg_fill, advance);
+                            }
+                        }
+                        for line in &laid.lines {
+                            ui.painter().galley(line.pos, line.galley.clone(), color);
+                        }
+                        if text.is_empty() && composing.is_none() {
+                            let hint = if empty_script { crate::messages::EMPTY_SCRIPT_HINT } else { kind.label() };
+                            let (anchor, x) = match style.align {
+                                PageAlign::Left => (egui::Align2::LEFT_TOP, laid.rect.left()),
+                                PageAlign::Right => (egui::Align2::RIGHT_TOP, laid.rect.right()),
+                                PageAlign::Center => (egui::Align2::CENTER_TOP, laid.rect.center().x),
+                            };
+                            ui.painter().text(pos2(x, laid.rect.top()), anchor, hint, font.clone(), crate::theme::PAGE_MUTED);
+                        }
+                        if let Some(head) = head
+                            && has_focus
+                            && editor.span.is_none()
+                        {
+                            let caret = laid.caret_rect(head);
+                            if ui.input(|i| i.focused) {
+                                egui::text_selection::visuals::paint_text_cursor(ui, ui.painter(), caret, now - editor.last_interaction);
+                            }
+                            if edited || editor.last_interaction == now {
+                                ui.scroll_to_rect(caret.expand(row), None);
+                            }
+                            let to_global = ui.ctx().layer_transform_to_global(ui.layer_id()).unwrap_or_default();
+                            ui.output_mut(|o| {
+                                o.ime = Some(egui::output::IMEOutput {
+                                    purpose: egui::IMEPurpose::Normal,
+                                    rect: to_global * laid.rect,
+                                    cursor_rect: to_global * caret,
+                                    should_interrupt_composition: false,
+                                });
+                            });
+                            editor.first_row = laid.on_first_line(head);
+                            editor.last_row = laid.on_last_line(head);
+                        }
+                        response.widget_info(|| egui::WidgetInfo::text_edit(true, element.text.as_str(), text.as_str(), kind.label()));
+                        if let Some(slot) = editor.heights.get_mut(index) {
+                            *slot = Some((key, laid.rect.height()));
+                        }
+                        let rect = laid.rect;
+                        fields.push(Field { index, laid: laid.clone() });
                         automation.add(
                             format!("editor.element.{index}"),
                             "textbox",
                             format!("{}: {}", kind.label(), preview(&element.text)),
-                            response,
+                            &response,
                         );
                         if element.bookmark.is_some() {
                             // A small ribbon just left of the text, on screen only.
-                            let at = response.rect.left_top() + vec2(-row * 0.75, row * 0.15);
+                            let at = rect.left_top() + vec2(-row * 0.75, row * 0.15);
                             let (w, h) = (row * 0.4, row * 0.7);
                             let points = vec![at, at + vec2(w, 0.0), at + vec2(w, h), at + vec2(w * 0.5, h * 0.72), at + vec2(0.0, h)];
                             ui.painter().add(egui::Shape::convex_polygon(points, faint, Stroke::NONE));
@@ -701,33 +769,18 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                             && let Some(number) = &element.scene_number
                         {
                             let sides = session.script.scene_number_margins();
-                            scene_numbers(
-                                ui,
-                                response.rect,
-                                number,
-                                sides,
-                                (layout.scene_number_left_end, layout.scene_number_right),
-                                col,
-                                &font,
-                                ink,
-                            );
+                            scene_numbers(ui, rect, number, sides, (layout.scene_number_left_end, layout.scene_number_right), col, &font, ink);
                         }
-                        if !shown.is_empty() {
+                        if !shown_revisions.is_empty() {
                             let mark_x = column_left + REVISION_MARK_INCHES * PX_PER_INCH * zoom;
-                            revision_marks(
-                                ui,
-                                &output.galley,
-                                output.galley_pos,
-                                &element.text,
-                                &shown,
-                                (revisions, show),
-                                (mark_x, row),
-                                (&font, paper),
-                            );
+                            revision_marks(ui, &laid, &shown_revisions, (revisions, show), mark_x, (&font, paper));
                         }
-                        if kind == ElementKind::Character && automatic.get(index).copied().unwrap_or(false) {
+                        if kind == ElementKind::Character
+                            && automatic.get(index).copied().unwrap_or(false)
+                            && let Some(first) = laid.lines.first()
+                        {
                             // The automatic (CONT'D), drawn faint: it is added at layout, not typed.
-                            let at = output.galley_pos + output.galley.rect.right_top().to_vec2() + vec2(advance, 0.0);
+                            let at = first.pos + vec2(first.galley.size().x + advance, 0.0);
                             ui.painter().text(at, egui::Align2::LEFT_TOP, &layout.contd, font.clone(), faint);
                         }
                         if editor.scroll_to == Some(index) {
@@ -738,32 +791,24 @@ pub fn show(ui: &mut Ui, session: &mut Session, editor: &mut EditorState, automa
                             response.scroll_to_me(Some(Align::Center));
                             editor.scroll_to_focus = false;
                         }
-                        let caret_char = output.cursor_range.map(|r| r.primary.index.into());
-                        if response.changed() {
-                            let caret = caret_char.map_or(text.len(), |c| char_to_byte(&text, c));
-                            actions.push(EditAction::SetText { index, text: text.clone(), caret });
-                        }
                         if has_focus {
                             editor.focused = Some(index);
-                            // Kept for Edit > Cut and Copy: opening a menu in the window takes the
-                            // focus, and the selection with it.
-                            editor.selection = output.cursor_range.map(|r| (index, r));
-                            if let Some(cursor) = output.cursor_range {
-                                let pos = output.galley.pos_from_cursor(cursor.primary);
-                                editor.first_row = pos.min.y < row * 0.5;
-                                editor.last_row = pos.max.y > output.galley.rect.height() - row * 0.5;
-                                if !response.changed() {
-                                    actions.push(EditAction::Caret { index, offset: char_to_byte(&text, cursor.primary.index.into()) });
-                                }
+                            if let Some(cursor) = cursor
+                                && !edited
+                            {
+                                actions.push(EditAction::Caret { index, offset: cursor.head });
                             }
                             if picking {
-                                picker_popup(ui, editor, automation, index, response.rect, &mut actions);
+                                picker_popup(ui, editor, automation, index, rect, &mut actions);
                             } else {
-                                completion_popup(ui, session, editor, automation, index, kind, &text, response.rect, &font, &mut actions);
+                                completion_popup(ui, session, editor, automation, index, kind, &text, rect, &font, &mut actions);
                             }
                         }
                     }
                     pointer_span(ui, session, editor, &fields, before_click);
+                    if editor.focused.is_none() {
+                        editor.composing = None;
+                    }
                     editor.fields = fields;
                     let y = ui.cursor().top() + row * 6.0;
                     let bottom = if pages { (sheet_top + page_height).max(y) } else { y };
@@ -827,7 +872,7 @@ fn paper_shapes(sheets: &[(f32, f32, u32)], papers: &[Color32], left: f32, width
 
 /// The pointer's part in a selection across paragraphs: Shift and a click in another paragraph,
 /// or a drag from one into another. Inside one paragraph the text field does it all.
-fn pointer_span(ui: &Ui, session: &Session, editor: &mut EditorState, fields: &[Field], (caret, selection): (Caret, Option<(usize, CCursorRange)>)) {
+fn pointer_span(ui: &Ui, session: &Session, editor: &mut EditorState, fields: &[Field], (caret, selection): (Caret, Option<Cursor>)) {
     let (pressed, down, shift, pos) =
         ui.input(|i| (i.pointer.primary_pressed(), i.pointer.primary_down(), i.modifiers.shift, i.pointer.interact_pos()));
     if !down && !pressed {
@@ -837,20 +882,18 @@ fn pointer_span(ui: &Ui, session: &Session, editor: &mut EditorState, fields: &[
     let Some(pos) = pos else { return };
     if pressed {
         let layer = ui.layer_id();
-        let hit = fields.iter().any(|f| ui.ctx().rect_contains_pointer(layer, f.rect));
+        let hit = fields.iter().any(|f| ui.ctx().rect_contains_pointer(layer, f.rect()));
         if !hit {
             return;
         }
-        let Some(place) = place_at(fields, session, pos, false) else { return };
+        let Some(place) = place_at(fields, pos, false) else { return };
         let anchor = if !shift {
             place
         } else if let Some(span) = editor.span {
             span.anchor
         } else {
             // The far end of the selection there was, or the caret.
-            let far = selection.filter(|(i, _)| *i == caret.element).and_then(|(_, range)| {
-                session.element(caret.element).map(|e| Caret { element: caret.element, offset: char_to_byte(&e.text, range.secondary.index.into()) })
-            });
+            let far = selection.filter(|c| c.index == caret.element).map(|c| Caret { element: caret.element, offset: c.anchor });
             far.unwrap_or(caret)
         };
         editor.drag_from = Some(anchor);
@@ -858,7 +901,7 @@ fn pointer_span(ui: &Ui, session: &Session, editor: &mut EditorState, fields: &[
         return;
     }
     let Some(anchor) = editor.drag_from else { return };
-    let Some(place) = place_at(fields, session, pos, false) else { return };
+    let Some(place) = place_at(fields, pos, false) else { return };
     editor.span = (anchor.element != place.element).then_some(Span { anchor, head: place, edits: session.edits(), column: None });
     // Near the top or bottom of the view, the script moves under the pointer.
     let clip = ui.clip_rect();
@@ -882,24 +925,26 @@ fn handle_keys(
     index: usize,
     count: usize,
     text: &str,
+    shown: &Shown,
     single_line: bool,
+    show_as: ShowAs,
     session: &Session,
     editor: &mut EditorState,
     actions: &mut Vec<EditAction>,
 ) {
-    let range = TextEditState::load(ui.ctx(), id).and_then(|s| s.cursor.char_range());
-    let caret_char = range.map_or_else(|| text.chars().count(), |r| r.primary.index.into());
-    let has_selection = range.is_some_and(|r| r.primary != r.secondary);
-    let caret = char_to_byte(text, caret_char);
+    let _ = id;
+    let cursor = editor.cursor.filter(|c| c.index == index).unwrap_or(Cursor::at(index, text.len()));
+    let (from, to) = cursor.ordered();
+    let has_selection = from != to;
+    let caret = cursor.head;
+    let at = shown.place_of(caret);
     let popup = editor.completion.visible_for(index);
     // The paragraphs the arrows move to: the nearest drawn ones.
     let above = (0..index).rfind(|&i| session.is_shown(i));
     let below = (index + 1..count).find(|&i| session.is_shown(i));
     if editor.span.is_none() {
-        let far = range.map_or(caret, |r| char_to_byte(text, r.secondary.index.into()));
-        let anchor = Caret { element: index, offset: far };
+        let anchor = Caret { element: index, offset: cursor.anchor };
         let head = Caret { element: index, offset: caret };
-        let chars = text.chars().count();
         let edits = session.edits();
         let start = |column| Span { anchor, head, edits, column };
         let mut span = None;
@@ -911,10 +956,10 @@ fn handle_keys(
             let up = editor.first_row && above.is_some() && ui.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::ArrowUp));
             let down = !up && editor.last_row && below.is_some() && ui.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::ArrowDown));
             if up || down {
-                span = row_from(&editor.fields, session, head, None, up).map(|(head, x)| Span { head, column: Some(x), ..start(None) });
-            } else if caret_char == 0 && above.is_some() && ui.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::ArrowLeft)) {
+                span = row_from(&editor.fields, head, None, up).map(|(head, x)| Span { head, column: Some(x), ..start(None) });
+            } else if at == 0 && above.is_some() && ui.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::ArrowLeft)) {
                 span = Some(Span { head: step_from(session, head, true), ..start(None) });
-            } else if caret_char == chars && below.is_some() && ui.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::ArrowRight)) {
+            } else if at == shown.len() && below.is_some() && ui.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::ArrowRight)) {
                 span = Some(Span { head: step_from(session, head, false), ..start(None) });
             }
         }
@@ -925,14 +970,10 @@ fn handle_keys(
     }
     ui.input_mut(|input| {
         // Screenplay text in several paragraphs (from Copy Scene, a Fountain file, another app)
-        // becomes elements; a paste within one paragraph stays the text field's own.
+        // becomes elements; a paste within one paragraph stays the paragraph's own.
         let screenplay = input.events.iter().position(|e| matches!(e, egui::Event::Paste(text) if session.pastes_as_elements(text)));
         if let Some(egui::Event::Paste(pasted)) = screenplay.map(|at| input.events.remove(at)) {
-            let (from, to) = range.map_or((caret_char, caret_char), |r| {
-                let (a, b): (usize, usize) = (r.primary.index.into(), r.secondary.index.into());
-                (a.min(b), a.max(b))
-            });
-            actions.push(EditAction::PasteScreenplay { index, start: char_to_byte(text, from), end: char_to_byte(text, to), text: pasted });
+            actions.push(EditAction::PasteScreenplay { index, start: from, end: to, text: pasted });
             return;
         }
         if popup {
@@ -960,12 +1001,10 @@ fn handle_keys(
         }
         if input.consume_key(Modifiers::SHIFT, Key::Enter) {
             if !single_line {
-                actions.push(EditAction::SetText {
-                    index,
-                    text: format!("{}\n{}", text.get(..caret).unwrap_or(""), text.get(caret..).unwrap_or("")),
-                    caret: caret + 1,
-                });
-                actions.push(EditAction::Focus { index, offset: caret + 1 });
+                let (a, b) = (shown.place_of(cursor.anchor), at);
+                let edit = replace(text, show_as, a, b, "\n");
+                actions.push(EditAction::SetText { index, text: edit.text, caret: edit.caret });
+                actions.push(EditAction::Focus { index, offset: edit.caret });
             }
         } else if input.consume_key(Modifiers::NONE, Key::Enter) {
             actions.push(EditAction::Enter { index, offset: caret });
@@ -973,7 +1012,7 @@ fn handle_keys(
             actions.push(EditAction::Tab { index, back: true });
         } else if input.consume_key(Modifiers::NONE, Key::Tab) {
             actions.push(EditAction::Tab { index, back: false });
-        } else if index > 0 && !has_selection && caret_char == 0 && input.consume_key(Modifiers::NONE, Key::Backspace) {
+        } else if index > 0 && !has_selection && at == 0 && input.consume_key(Modifiers::NONE, Key::Backspace) {
             actions.push(EditAction::MergePrevious { index });
         } else if !popup && above.is_some() && editor.first_row && input.consume_key(Modifiers::NONE, Key::ArrowUp) {
             actions.extend(above.map(|index| EditAction::Focus { index, offset: usize::MAX }));
@@ -981,6 +1020,201 @@ fn handle_keys(
             actions.extend(below.map(|index| EditAction::Focus { index, offset: 0 }));
         }
     });
+}
+
+/// Typing, deleting, moving and selecting inside the paragraph with the keyboard, on `text`
+/// as it stands this frame. Returns whether the text changed.
+fn field_keys(ui: &mut Ui, index: usize, text: &mut String, show: ShowAs, editor: &mut EditorState, actions: &mut Vec<EditAction>) -> bool {
+    let mac = cfg!(target_os = "macos");
+    let laid = editor.fields.iter().find(|f| f.index == index).map(|f| f.laid.clone());
+    let mut cursor = editor.cursor.filter(|c| c.index == index).unwrap_or(Cursor::at(index, text.len()));
+    let mut changed = false;
+    let mut moved = false;
+    let mut column = editor.column;
+    let events = ui.input_mut(|i| std::mem::take(&mut i.events));
+    let mut kept = Vec::with_capacity(events.len());
+    for event in events {
+        let shown = Shown::new(text, show, None);
+        let (anchor, head) = (shown.place_of(cursor.anchor), shown.place_of(cursor.head));
+        let (lo, hi) = (anchor.min(head), anchor.max(head));
+        // The same text as last frame: its lines say where Up, Down, Home and End go.
+        let lines = laid.as_ref().filter(|l| !changed && l.shown.chars == shown.chars);
+        let mut edit = |from: usize, to: usize, typed: &str, text: &mut String, cursor: &mut Cursor| {
+            let edit = replace(text, show, from, to, typed);
+            *text = edit.text;
+            *cursor = Cursor::at(index, edit.caret);
+            changed = true;
+        };
+        match event {
+            egui::Event::Text(typed) | egui::Event::Paste(typed) if !typed.is_empty() => edit(lo, hi, &typed, text, &mut cursor),
+            egui::Event::Ime(egui::ImeEvent::Commit(typed)) => {
+                editor.composing = None;
+                if !typed.is_empty() && typed != "\n" && typed != "\r" {
+                    edit(lo, hi, &typed, text, &mut cursor);
+                }
+            }
+            egui::Event::Ime(egui::ImeEvent::Preedit { text: composing, .. }) => {
+                if lo < hi && !composing.is_empty() {
+                    edit(lo, hi, "", text, &mut cursor);
+                }
+                editor.composing = (!composing.is_empty() && composing != "\n").then_some((index, composing));
+            }
+            egui::Event::Copy if lo < hi => {
+                let (from, to) = shown.stored_range(lo, hi);
+                actions.push(EditAction::CopyRange { from: Caret { element: index, offset: from }, to: Caret { element: index, offset: to } });
+            }
+            egui::Event::Cut if lo < hi => {
+                let (from, to) = shown.stored_range(lo, hi);
+                actions.push(EditAction::CopyRange { from: Caret { element: index, offset: from }, to: Caret { element: index, offset: to } });
+                edit(lo, hi, "", text, &mut cursor);
+            }
+            egui::Event::Key { key, pressed: true, modifiers, .. } if editor.composing.is_none() => {
+                let word = if mac { modifiers.alt } else { modifiers.ctrl };
+                let whole = mac && modifiers.mac_cmd;
+                let line_ends = |at: usize| lines.map_or((0, shown.len()), |l| l.line_ends(at));
+                let target = match key {
+                    Key::Backspace => {
+                        if lo < hi {
+                            edit(lo, hi, "", text, &mut cursor);
+                        } else if head > 0 {
+                            let from = if whole {
+                                line_ends(head).0.min(head - 1)
+                            } else if word {
+                                shown.word_left(head)
+                            } else {
+                                shown.prev(head)
+                            };
+                            edit(from, head, "", text, &mut cursor);
+                        }
+                        None
+                    }
+                    Key::Delete => {
+                        if lo < hi {
+                            edit(lo, hi, "", text, &mut cursor);
+                        } else if head < shown.len() {
+                            let to = if word { shown.word_right(head) } else { shown.next(head) };
+                            edit(head, to, "", text, &mut cursor);
+                        }
+                        None
+                    }
+                    Key::ArrowLeft if whole => Some(line_ends(head).0),
+                    Key::ArrowRight if whole => Some(line_ends(head).1),
+                    Key::ArrowLeft if word => Some(shown.word_left(head)),
+                    Key::ArrowRight if word => Some(shown.word_right(head)),
+                    Key::ArrowLeft if lo < hi && !modifiers.shift => Some(lo),
+                    Key::ArrowRight if lo < hi && !modifiers.shift => Some(hi),
+                    Key::ArrowLeft => Some(shown.prev(head)),
+                    Key::ArrowRight => Some(shown.next(head)),
+                    Key::Home => Some(if modifiers.command { 0 } else { line_ends(head).0 }),
+                    Key::End => Some(if modifiers.command { shown.len() } else { line_ends(head).1 }),
+                    Key::ArrowUp | Key::ArrowDown => {
+                        let up = key == Key::ArrowUp;
+                        if modifiers.command {
+                            Some(if up { 0 } else { shown.len() })
+                        } else {
+                            let target = lines.and_then(|l| {
+                                let x = column.unwrap_or_else(|| l.caret_rect(head).center().x);
+                                column = Some(x);
+                                l.line_step(head, x, up)
+                            });
+                            let target = target.unwrap_or(if up { 0 } else { shown.len() });
+                            moved = true;
+                            if !modifiers.shift {
+                                cursor = Cursor::at(index, shown.to_stored(target));
+                            } else {
+                                cursor.head = shown.to_stored(target);
+                            }
+                            continue;
+                        }
+                    }
+                    Key::A if modifiers.command => {
+                        cursor = Cursor { index, anchor: shown.to_stored(0), head: text.len() };
+                        moved = true;
+                        None
+                    }
+                    _ => {
+                        kept.push(egui::Event::Key { key, pressed: true, modifiers, physical_key: None, repeat: false });
+                        continue;
+                    }
+                };
+                if let Some(target) = target {
+                    let byte = shown.to_stored(target);
+                    if modifiers.shift {
+                        cursor.head = byte;
+                    } else {
+                        cursor = Cursor::at(index, byte);
+                    }
+                    moved = true;
+                }
+                column = None;
+            }
+            other => kept.push(other),
+        }
+    }
+    ui.input_mut(|i| i.events = kept);
+    if changed {
+        editor.composing = None;
+        column = None;
+        actions.push(EditAction::SetText { index, text: text.clone(), caret: cursor.head });
+    }
+    if changed || moved {
+        editor.cursor = Some(cursor);
+        editor.last_interaction = ui.input(|i| i.time);
+    }
+    editor.column = column;
+    changed
+}
+
+/// The pointer inside one paragraph: a press puts the caret there (Shift extends the
+/// selection), a drag selects, a double click selects a word and a triple click the paragraph.
+/// Returns whether the paragraph should take the keyboard.
+fn pointer_keys(ui: &Ui, response: &egui::Response, index: usize, laid: &Laid, editor: &mut EditorState, now: f64) -> bool {
+    let (pressed, shift, pos) = ui.input(|i| (i.pointer.primary_pressed(), i.modifiers.shift, i.pointer.interact_pos()));
+    let Some(pos) = pos else { return false };
+    let at = laid.place_at(pos);
+    let byte = laid.shown.to_stored(at);
+    let mine = editor.cursor.filter(|c| c.index == index);
+    let mut focus = false;
+    if response.triple_clicked() {
+        editor.cursor = Some(Cursor { index, anchor: laid.shown.to_stored(0), head: laid.shown.to_stored(laid.shown.len()) });
+    } else if response.double_clicked() {
+        let (from, to) = laid.shown.word_at(at);
+        editor.cursor = Some(Cursor { index, anchor: laid.shown.to_stored(from), head: laid.shown.to_stored(to) });
+    } else if pressed && response.contains_pointer() {
+        let anchor = if shift { mine.map_or(byte, |c| c.anchor) } else { byte };
+        editor.cursor = Some(Cursor { index, anchor, head: byte });
+        editor.composing = None;
+        focus = true;
+    } else if response.dragged_by(egui::PointerButton::Primary) && editor.span.is_none() && mine.is_some() {
+        editor.cursor = mine.map(|c| Cursor { head: byte, ..c });
+    } else {
+        return false;
+    }
+    editor.column = None;
+    editor.last_interaction = now;
+    focus
+}
+
+/// The selection inside one paragraph, `from..to` on screen, as a wash behind each line.
+fn paint_selection(ui: &Ui, laid: &Laid, from: usize, to: usize, wash: Color32, advance: f32) {
+    if from >= to {
+        return;
+    }
+    let last = laid.lines.len().saturating_sub(1);
+    for (n, line) in laid.lines.iter().enumerate() {
+        let start = from.max(line.start);
+        let end = to.min(line.end);
+        // A selection that runs on past a line's end takes in the space or break there.
+        let runs_on = to > line.end && n < last;
+        if start > end || (start == end && !runs_on) {
+            continue;
+        }
+        let left = laid.caret_rect(start).left();
+        let right = if runs_on { line.pos.x + line.galley.size().x + advance } else { laid.caret_rect(end).left() };
+        let top = line.pos.y;
+        let rect = Rect::from_min_max(pos2(left, top), pos2(right.max(left), top + laid.caret_rect(start).height()));
+        ui.painter().rect_filled(rect, 0.0, wash);
+    }
 }
 
 fn page_break_marker(ui: &mut Ui, page: u32, row: f32, font: &FontId, color: Color32) {
@@ -1126,36 +1360,29 @@ fn picker_popup(ui: &Ui, editor: &EditorState, automation: &mut Automation, inde
     });
 }
 
-/// Each galley row with a shown revision gets its latest set's mark at 7.75", in that set's ink.
-#[allow(clippy::too_many_arguments)]
+/// Each line with a shown revision gets its latest set's mark at 7.75", in that set's ink.
 fn revision_marks(
     ui: &Ui,
-    galley: &egui::Galley,
-    origin: egui::Pos2,
-    text: &str,
-    shown: &[Shown],
+    laid: &Laid,
+    shown: &[ShownRevision],
     (revisions, show): (&Revisions, ShowRevisions),
-    (mark_x, row): (f32, f32),
+    mark_x: f32,
     (font, paper): (&FontId, Color32),
 ) {
-    let row_of = |byte: usize| {
-        let y = galley.pos_from_cursor(CCursor::new(byte_to_char(text, byte.min(text.len())))).min.y;
-        (y / row.max(1.0)).round() as i64
-    };
-    let mut rows: Vec<(i64, Vec<u32>)> = Vec::new();
-    for r in shown {
-        // The row of the last character, not of the place after it (which may wrap).
-        let last = text.get(..r.end.min(text.len())).and_then(|t| t.char_indices().last()).map_or(r.start, |(b, _)| b.max(r.start));
-        for line in row_of(r.start)..=row_of(last) {
-            match rows.iter_mut().find(|(l, _)| *l == line) {
-                Some((_, sets)) => sets.push(r.set),
-                None => rows.push((line, vec![r.set])),
-            }
-        }
-    }
-    for (line, sets) in rows {
+    for line in &laid.lines {
+        let chars = laid.shown.chars.get(line.start..line.end).unwrap_or(&[]);
+        // An empty line, or the space a deletion mark sits beside at the end of one.
+        let edge = laid.shown.chars.get(line.end).or(chars.last());
+        let sets: Vec<u32> = shown
+            .iter()
+            .filter(|r| {
+                let on = |c: &ShownChar| c.start < c.end && r.start < c.end && c.start < r.end.max(r.start + 1);
+                chars.iter().any(on) || (r.start == r.end && edge.is_some_and(on))
+            })
+            .map(|r| r.set)
+            .collect();
         if let Some(set) = revisions.latest(&sets, show) {
-            let at = pos2(mark_x, origin.y + line as f32 * row);
+            let at = pos2(mark_x, line.pos.y);
             ui.painter().text(at, egui::Align2::LEFT_TOP, &set.mark, font.clone(), crate::theme::revised_ink(set.color.as_deref(), paper));
         }
     }
@@ -1164,73 +1391,50 @@ fn revision_marks(
 /// A range of bytes in a paragraph's text, if there is one.
 type TextRange = Option<(usize, usize)>;
 
-/// One element's text laid out: bold, italic and underlined text in Courier Prime's own faces,
-/// with the markup that says so (and notes) drawn faint; the current find match (or spelling
-/// word) on a rose wash, the selection across paragraphs on `wash`; and misspelled words with a thin red underline. Ranges are bytes; any
-/// that no longer fit the text (it changed this frame) are skipped.
-fn marked_job(
-    text: &str,
-    (marked, spanned, wash): (TextRange, TextRange, Color32),
+/// How one character on screen is drawn: bold, italic and underlined text in Courier Prime's
+/// own faces, notes (and the markup, while it shows) faint; the current find match (or spelling
+/// word) on a rose wash, the selection across paragraphs on `wash`; misspelled words with a thin
+/// red underline; revised text in its set's ink. Ranges are bytes of the stored text.
+fn char_format(
+    c: &ShownChar,
+    (marked, spanned, wash): (&TextRange, &TextRange, Color32),
     misspelled: &[(usize, usize)],
     revised: &[(usize, usize, Color32)],
     font: &FontId,
     (color, faint): (Color32, Color32),
-    wrap_width: f32,
-) -> LayoutJob {
-    let fits = |&(start, end): &(usize, usize)| start < end && end <= text.len() && text.is_char_boundary(start) && text.is_char_boundary(end);
-    let marked = marked.filter(fits);
-    let spanned = spanned.filter(fits);
-    let misspelled: Vec<(usize, usize)> = misspelled.iter().copied().filter(fits).collect();
-    let revised: Vec<(usize, usize, Color32)> = revised.iter().copied().filter(|&(s, e, _)| fits(&(s, e))).collect();
-    let spans = storyteller_core::inline::spans(text);
-    let plain = spans.iter().all(|s| s.kind == storyteller_core::inline::SpanKind::Text(Default::default()));
-    if marked.is_none() && spanned.is_none() && misspelled.is_empty() && revised.is_empty() && plain {
-        return LayoutJob::simple(text.to_owned(), font.clone(), color, wrap_width);
-    }
-    let mut cuts: Vec<usize> = vec![0, text.len()];
-    cuts.extend(spans.iter().flat_map(|s| [s.start, s.end]));
-    cuts.extend(marked.iter().flat_map(|&(s, e)| [s, e]));
-    cuts.extend(spanned.iter().flat_map(|&(s, e)| [s, e]));
-    cuts.extend(misspelled.iter().flat_map(|&(s, e)| [s, e]));
-    cuts.extend(revised.iter().flat_map(|&(s, e, _)| [s, e]));
-    cuts.sort_unstable();
-    cuts.dedup();
-    let mut job = LayoutJob { wrap: egui::text::TextWrapping { max_width: wrap_width, ..Default::default() }, ..Default::default() };
-    for pair in cuts.windows(2) {
-        let &[start, end] = pair else { continue };
-        let Some(part) = text.get(start..end) else { continue };
-        let inside = |&(s, e): &(usize, usize)| s <= start && end <= e;
-        // Revised text in its set's ink; the markup around it stays faint.
-        let color = revised.iter().find(|&&(s, e, _)| inside(&(s, e))).map_or(color, |r| r.2);
-        let mut format = egui::TextFormat { font_id: font.clone(), color, ..Default::default() };
-        match spans.iter().find(|s| s.start <= start && end <= s.end).map(|s| s.kind) {
-            Some(storyteller_core::inline::SpanKind::Text(style)) => {
-                let face = match (style.bold, style.italic) {
-                    (true, true) => Some(COURIER_BOLD_ITALIC),
-                    (true, false) => Some(COURIER_BOLD),
-                    (false, true) => Some(COURIER_ITALIC),
-                    (false, false) => None,
-                };
-                if let Some(face) = face {
-                    format.font_id = FontId::new(font.size, FontFamily::Name(face.into()));
-                }
-                if style.underline {
-                    format.underline = Stroke::new(1.0, color);
-                }
+) -> TextFormat {
+    let inside = |&(s, e): &(usize, usize)| c.start < c.end && s < c.end && c.end <= e;
+    let mut format = TextFormat { font_id: font.clone(), color, ..Default::default() };
+    match c.look {
+        Look::Text(style) => {
+            // Revised text in its set's ink; the markup around it stays faint.
+            if let Some(r) = revised.iter().find(|&&(s, e, _)| inside(&(s, e))) {
+                format.color = r.2;
             }
-            Some(_) => format.color = faint,
-            None => {}
+            let face = match (style.bold, style.italic) {
+                (true, true) => Some(COURIER_BOLD_ITALIC),
+                (true, false) => Some(COURIER_BOLD),
+                (false, true) => Some(COURIER_ITALIC),
+                (false, false) => None,
+            };
+            if let Some(face) = face {
+                format.font_id = FontId::new(font.size, FontFamily::Name(face.into()));
+            }
+            if style.underline {
+                format.underline = Stroke::new(1.0, format.color);
+            }
         }
-        if marked.as_ref().is_some_and(inside) {
-            format.background = crate::theme::FIND_MARK;
-        }
-        if spanned.as_ref().is_some_and(inside) {
-            format.background = wash;
-        }
-        if misspelled.iter().any(inside) {
-            format.underline = egui::Stroke::new(1.5, crate::theme::SPELL_MARK);
-        }
-        job.append(part, 0.0, format);
+        Look::Faint => format.color = faint,
+        Look::Composing => format.underline = Stroke::new(1.0, color),
     }
-    job
+    if marked.as_ref().is_some_and(inside) {
+        format.background = crate::theme::FIND_MARK;
+    }
+    if spanned.as_ref().is_some_and(inside) {
+        format.background = wash;
+    }
+    if misspelled.iter().any(inside) {
+        format.underline = Stroke::new(1.5, crate::theme::SPELL_MARK);
+    }
+    format
 }

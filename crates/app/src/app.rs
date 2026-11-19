@@ -42,7 +42,7 @@ const GO_TO_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Alt+G" } else { "Cmd
 const FIND_NEXT_KEY: &str = if cfg!(target_os = "macos") { "Cmd+G" } else { "F3" };
 const FIND_PREVIOUS_KEY: &str = if cfg!(target_os = "macos") { "Cmd+Shift+G" } else { "Shift+F3" };
 
-const APP_COMMANDS: [AppCommand; 50] = [
+const APP_COMMANDS: [AppCommand; 51] = [
     AppCommand { id: "app.close", label: "Close", menu: "File/Close", shortcut: Some("Cmd+W") },
     AppCommand { id: "app.title_page", label: "Title Page…", menu: "File/Title Page…", shortcut: Some("Cmd+Shift+T") },
     AppCommand {
@@ -94,6 +94,7 @@ const APP_COMMANDS: [AppCommand; 50] = [
     AppCommand { id: "app.underline", label: "Underline", menu: "Format/Underline", shortcut: Some("Cmd+U") },
     AppCommand { id: "view.navigator", label: "Scene Navigator", menu: "View/Scene Navigator", shortcut: Some("Cmd+Shift+N") },
     AppCommand { id: "view.page_view", label: "Page View", menu: "View/Page View", shortcut: Some("Cmd+Shift+P") },
+    AppCommand { id: "view.formatting_marks", label: "Show Formatting Marks", menu: "View/Show Formatting Marks", shortcut: None },
     AppCommand { id: "view.revisions_all", label: "Show All Revision Sets", menu: "View/Show All Revision Sets", shortcut: None },
     AppCommand { id: "view.revisions_active", label: "Show Active Revision Set", menu: "View/Show Active Revision Set", shortcut: None },
     AppCommand { id: "view.revisions_none", label: "Hide Revisions", menu: "View/Hide Revisions", shortcut: None },
@@ -614,6 +615,9 @@ impl StorytellerApp {
             "view.page_view" => {
                 self.prefs.update(|p| p.view.page_view = !p.view.page_view);
             }
+            "view.formatting_marks" => {
+                self.prefs.update(|p| p.view.formatting_marks = !p.view.formatting_marks);
+            }
             "prefs.smart_quotes" => {
                 self.prefs.update(|p| p.general.smart_quotes = !p.general.smart_quotes);
             }
@@ -806,10 +810,8 @@ impl StorytellerApp {
         self.session.clamp_caret();
         let index = self.session.caret.element;
         let id = egui::Id::unique(("storyteller.element", index));
-        if let Some((_, range)) = self.editor.selection.filter(|(i, _)| *i == index) {
-            let mut state = egui::text_edit::TextEditState::load(ctx, id).unwrap_or_default();
-            state.cursor.set_char_range(Some(range));
-            state.store(ctx, id);
+        if self.editor.cursor.is_none_or(|c| c.index != index) {
+            self.editor.cursor = Some(editor::Cursor::at(index, self.session.caret.offset));
         }
         ctx.memory_mut(|m| m.request_focus(id));
         id
@@ -827,10 +829,10 @@ impl StorytellerApp {
         let index = self.session.caret.element;
         let Some(text) = self.session.element(index).map(|e| e.text.clone()) else { return };
         let chars: Vec<char> = text.chars().collect();
-        let (mut from, mut to) = match self.editor.selection.filter(|(i, _)| *i == index) {
-            Some((_, range)) => {
-                let (a, b): (usize, usize) = (range.primary.index.into(), range.secondary.index.into());
-                (a.min(b), a.max(b))
+        let (mut from, mut to) = match self.editor.cursor.filter(|c| c.index == index) {
+            Some(cursor) => {
+                let (a, b) = cursor.ordered();
+                (crate::editor::byte_to_char(&text, a), crate::editor::byte_to_char(&text, b))
             }
             None => {
                 let at = crate::editor::byte_to_char(&text, self.session.caret.offset);
@@ -858,8 +860,8 @@ impl StorytellerApp {
             Ok(outcome) => {
                 let text = self.session.element(index).map(|e| e.text.clone()).unwrap_or_default();
                 let byte = |key: &str| outcome.value.get(key).and_then(Value::as_u64).and_then(|v| usize::try_from(v).ok()).unwrap_or(0);
-                let (a, b) = (crate::editor::byte_to_char(&text, byte("start")), crate::editor::byte_to_char(&text, byte("end")));
-                self.editor.selection = Some((index, egui::text::CCursorRange::two(egui::text::CCursor::new(a), egui::text::CCursor::new(b))));
+                let _ = &text;
+                self.editor.cursor = Some(editor::Cursor { index, anchor: byte("start"), head: byte("end") });
                 self.focus_caret_field(ctx);
                 ctx.request_repaint();
             }
@@ -884,10 +886,10 @@ impl StorytellerApp {
         let index = self.session.caret.element;
         let Some(text) = self.session.element(index).map(|e| e.text.clone()) else { return };
         let mut target = vec![("index", json!(index))];
-        if let Some((_, range)) = self.editor.selection.filter(|(i, r)| *i == index && r.primary != r.secondary) {
-            let (a, b): (usize, usize) = (range.primary.index.into(), range.secondary.index.into());
-            target.push(("start", json!(crate::editor::char_to_byte(&text, a.min(b)))));
-            target.push(("end", json!(crate::editor::char_to_byte(&text, a.max(b)))));
+        if let Some(cursor) = self.editor.cursor.filter(|c| c.index == index && c.anchor != c.head) {
+            let (a, b) = cursor.ordered();
+            target.push(("start", json!(a.min(text.len()))));
+            target.push(("end", json!(b.min(text.len()))));
         }
         if let Err(error) = self.registry.run(command, &mut self.session, &params(&target)) {
             self.status = match error {
@@ -901,15 +903,13 @@ impl StorytellerApp {
 
     /// Edit > Select All: the whole script, as ⌘A selects it.
     fn select_all(&mut self, ctx: &egui::Context) {
-        let id = self.focus_caret_field(ctx);
+        self.focus_caret_field(ctx);
         if self.editor.select_whole_script(&self.session) {
             return;
         }
-        let Some(text) = self.session.element(self.session.caret.element).map(|e| e.text.clone()) else { return };
-        let mut state = egui::text_edit::TextEditState::load(ctx, id).unwrap_or_default();
-        let range = egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(text.chars().count()));
-        state.cursor.set_char_range(Some(range));
-        state.store(ctx, id);
+        let index = self.session.caret.element;
+        let Some(text) = self.session.element(index).map(|e| e.text.clone()) else { return };
+        self.editor.cursor = Some(editor::Cursor { index, anchor: 0, head: text.len() });
     }
 
     fn refocus(&mut self) {
@@ -1290,7 +1290,10 @@ impl StorytellerApp {
         self.update_spelling_marks();
         let actions = egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(ui.visuals().extreme_bg_color))
-            .show(ui, |ui| editor::show(ui, &mut self.session, &mut self.editor, &mut self.automation, zoom, pages))
+            .show(ui, |ui| {
+                self.editor.show_markup = self.prefs.get().view.formatting_marks;
+                editor::show(ui, &mut self.session, &mut self.editor, &mut self.automation, zoom, pages)
+            })
             .inner;
         self.apply(ui.ctx(), actions);
         self.title_page_dialog(&ctx);
