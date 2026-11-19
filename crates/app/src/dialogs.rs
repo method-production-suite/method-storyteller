@@ -507,7 +507,7 @@ impl StorytellerApp {
             let result = self.registry.run(id, &mut self.session, &target);
             if let Some(draft) = self.revisions.as_mut() {
                 draft.error = result.err().map(|e| match e {
-                    storyteller_engine::CommandError::Invalid { reason, .. } => capitalise(&reason),
+                    storyteller_engine::CommandError::Invalid { reason, .. } => sentence(&reason),
                     other => other.to_string(),
                 });
                 if id == "revisions.delete" {
@@ -568,7 +568,7 @@ impl StorytellerApp {
             Err(error) => {
                 if let Some(draft) = &mut self.scene_number {
                     draft.error = Some(match error {
-                        storyteller_engine::CommandError::Invalid { reason, .. } => capitalise(&reason),
+                        storyteller_engine::CommandError::Invalid { reason, .. } => sentence(&reason),
                         other => other.to_string(),
                     });
                 }
@@ -729,7 +729,7 @@ impl StorytellerApp {
             Err(error) => {
                 if let Some(draft) = &mut self.rename {
                     draft.error = Some(match error {
-                        storyteller_engine::CommandError::Invalid { reason, .. } => capitalise(&reason),
+                        storyteller_engine::CommandError::Invalid { reason, .. } => sentence(&reason),
                         other => other.to_string(),
                     });
                 }
@@ -874,7 +874,7 @@ impl StorytellerApp {
             Err(error) => {
                 if let Some(draft) = &mut self.go_to {
                     draft.error = Some(match error {
-                        storyteller_engine::CommandError::Invalid { reason, .. } => capitalise(&reason),
+                        storyteller_engine::CommandError::Invalid { reason, .. } => sentence(&reason),
                         other => other.to_string(),
                     });
                 }
@@ -994,7 +994,7 @@ impl StorytellerApp {
                     // Back in the field, ready to type the name.
                     draft.focused = false;
                     draft.error = Some(match error {
-                        storyteller_engine::CommandError::Invalid { reason, .. } => capitalise(&reason),
+                        storyteller_engine::CommandError::Invalid { reason, .. } => sentence(&reason),
                         other => other.to_string(),
                     });
                 }
