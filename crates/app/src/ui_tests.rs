@@ -1243,3 +1243,35 @@ fn typing_with_the_markup_hidden_keeps_it_right() {
     harness.run_steps(2);
     assert_eq!(harness.state().session.caret.offset, "She".len());
 }
+
+/// A scene whose last speech the page breaks inside.
+fn split_speech_script() -> String {
+    let mut script = String::from("INT. HUT - DAY\n\n");
+    for n in 1..=24 {
+        script.push_str(&format!("Line {n} of the action.\n\n"));
+    }
+    script.push_str("NORA\n");
+    script.push_str(&"The wind has not stopped for a week. Nobody comes up the road. ".repeat(12));
+    script.push('\n');
+    script
+}
+
+#[test]
+fn page_view_continues_a_split_speech_on_the_next_sheet() {
+    let (mut harness, _file) = harness(&split_speech_script());
+    let speech = harness.state().session.script.elements.len() - 1;
+    let split = harness.state_mut().session.shown_pages().pages.iter().find_map(|p| p.start.filter(|(e, n)| *e == speech && *n > 0));
+    assert!(split.is_some(), "the page breaks inside the speech");
+    harness.state_mut().editor.pending_focus = Some((speech, 0));
+    harness.run_steps(4);
+    // One row at 100 %: a sixth of an inch at 96 pixels to the inch.
+    let row = 16.0;
+    let rect = harness.state().editor.field_rect(speech).expect("drawn");
+    let lines = 12 * 62 / 35 + 2;
+    assert!(rect.height() > (lines as f32 + 10.0) * row, "its lines sit on two sheets: {} high", rect.height());
+    // In draft view, a page-break mark inside it instead: two rows.
+    harness.state_mut().prefs.update(|p| p.view.page_view = false);
+    harness.run_steps(4);
+    let draft = harness.state().editor.field_rect(speech).expect("drawn");
+    assert!(draft.height() < rect.height(), "draft view is shorter");
+}

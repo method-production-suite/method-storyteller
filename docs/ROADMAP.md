@@ -126,7 +126,10 @@ says otherwise.
     multi-camera script's action) now keeps the writer's casing and is shown and printed in
     capitals; turning the setting off brings the casing back. Scene headings, cues and
     transitions are still stored in capitals. Saving to Fountain, which cannot record the
-    setting, writes that text in capitals. **Built on the recommendation.** Reversible.
+    setting, writes that text in capitals. **Built on the recommendation.** Reversible. A file
+    saved this way opens and prints the same in 0.7.0, which already printed a capitals type in
+    capitals and reads `\*` as an escaped star; only 0.7.0's editor shows that action in the
+    casing typed. No change to the file format.
 12. **Rank for `.osf` in the Finder.** **Decided by the owner, 2026-10-18: Default**, like
    `.fountain` and `.fdx`: open formats, so the app claims none of them as their owner.
 
@@ -341,9 +344,9 @@ wait for a decision above.
 signed `.app.tar.gz`), the OSF and Fountain study, and the design pass. Each is its own PR.
 
 ### Smaller items
-- **Page view** [partial] S. A speech split across pages should continue on the next sheet
-  instead of lengthening the first. Waits on the editor drawing its own text: each paragraph is one
-  text field today, and one field cannot sit on two sheets.
+- **Page view** [have] S. A paragraph or speech the page breaks inside continues on the next
+  sheet at the line the page starts with, with the page's (MORE) and continued cue drawn faint;
+  draft view shows a page-break mark between those lines.
 - **Imports** [partial] S each. `.highland` [have]. PDF waits on Method Reader's crates being
   relicensed. `.celtx` waits on a saved file to read, since there is no public description of it.
 - **Stored autocomplete lists** [have] M. Lists kept in the document, learned on save, editable;
@@ -359,7 +362,7 @@ signed `.app.tar.gz`), the OSF and Fountain study, and the design pass. Each is 
 - **Capitals by display** [have] S (decision 29). Typing into a capitals type (a multi-camera script's
   action) stores capitals today; keep the writer's casing and show capitals on screen and page
   instead. Waits on the editor drawing its own text, as Page view does (MReview's note on #82).
-- **The editor draws its own text** [have] L. Each paragraph is laid out, drawn and edited by the
+- **The editor draws its own text** [have] L. Started on the owner's word, 2026-11-19. Each paragraph is laid out, drawn and edited by the
   editor (`text_field.rs`): lines wrap where they print (the paginator's own wrapping), the markup
   is hidden (decision 28), capitals show by display (decision 29), and double-spaced dialogue is
   double-spaced on screen. Typing, deleting, the arrows with Option and Command, selecting with
