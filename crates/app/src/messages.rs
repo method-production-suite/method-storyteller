@@ -59,10 +59,10 @@ pub fn update_check_failed(detail: Option<&str>) -> String {
     }
 }
 
-/// An update that downloaded but would not install.
 /// An update whose code signature is not this app's was refused.
 pub const UPDATE_SIGNATURE_REFUSED: &str = "The update was not installed: its code signature does not match this copy of Method Storyteller, so it may not come from us. Your copy is unchanged. Download the current version from methodstoryteller.com.";
 
+/// An update that downloaded but would not install.
 pub fn update_install_failed(detail: Option<&str>) -> String {
     match detail {
         Some(detail) => format!("The update did not install ({detail}). It is still ready: Restart to Update tries again."),
