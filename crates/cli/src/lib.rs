@@ -205,8 +205,9 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 None => Session::default(),
             };
             let registry = Registry::new();
-            let requests = serve(port, || {}).map_err(|e| format!("cannot listen on 127.0.0.1:{port}: {e}"))?;
-            eprintln!("{BIN_NAME}: headless control server on 127.0.0.1:{port}");
+            let token = storyteller_engine::control::launch_token();
+            let requests = serve(port, token.clone(), || {}).map_err(|e| format!("cannot listen on 127.0.0.1:{port}: {e}"))?;
+            eprintln!("{BIN_NAME}: headless control server on 127.0.0.1:{port}, token {token}");
             while let Ok(request) = requests.recv() {
                 let reply = handle_line(&request.line, &mut session, &registry, &mut Headless);
                 let _ = request.reply.send(reply);

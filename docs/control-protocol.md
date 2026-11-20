@@ -3,7 +3,26 @@
 The desktop app (`method-storyteller-app --control <port>`) and the headless server
 (`method-storyteller serve --control <port> [file]`) speak JSON lines on `127.0.0.1:<port>`. Only loopback is
 bound, and a connection is closed at its first line that is not a JSON request (so an HTTP request sent
-to the port, with whatever its body holds, goes no further). Each request is one line, each reply one line:
+to the port, with whatever its body holds, goes no further).
+
+## The token
+
+Each launch has a token, and a connection's first request must be `auth` with it; anything else,
+or the wrong token, closes the connection. The launch prints its token on standard error:
+
+```
+method-storyteller-app: control channel on 127.0.0.1:9876, token 3f9c…
+```
+
+A program that starts the app can choose the token instead, by setting `STORYTELLER_CONTROL_TOKEN` in
+the app's environment (any non-empty text; make it long and random):
+
+```json
+{"id": 0, "method": "auth", "params": {"token": "3f9c…"}}
+{"id": 0, "result": "ok"}
+```
+
+After that, each request is one line, each reply one line:
 
 ```json
 {"id": 1, "method": "command.run", "params": {"command": "flow.enter", "params": {}}}
@@ -57,11 +76,12 @@ The Help menu's commands (`help.about`, `help.user_guide`, `help.shortcuts`, `he
 ## Example
 
 ```python
-import json, socket
+import json, os, socket
 s = socket.create_connection(("127.0.0.1", 9876)); f = s.makefile("rw")
 def call(method, **params):
     f.write(json.dumps({"id": 1, "method": method, "params": params}) + "\n"); f.flush()
     return json.loads(f.readline())
+call("auth", token=os.environ["STORYTELLER_CONTROL_TOKEN"])  # or the token the app printed
 call("ui.focus", element=0)
 call("ui.type", text="int. kitchen - night")
 call("ui.key", key="Enter")

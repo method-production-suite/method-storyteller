@@ -501,10 +501,12 @@ impl StorytellerApp {
         app.queued.extend(flags.commands().into_iter().map(String::from));
         if let Some(port) = control_port {
             let ctx = cc.egui_ctx.clone();
-            match storyteller_engine::control::serve(port, move || ctx.request_repaint()) {
+            let token = storyteller_engine::control::launch_token();
+            match storyteller_engine::control::serve(port, token.clone(), move || ctx.request_repaint()) {
                 Ok(receiver) => {
                     app.control = Some(receiver);
                     app.status = format!("Control channel on 127.0.0.1:{port}");
+                    eprintln!("method-storyteller-app: control channel on 127.0.0.1:{port}, token {token}");
                 }
                 Err(error) => app.error = Some(format!("Control channel unavailable on port {port}: {error}")),
             }

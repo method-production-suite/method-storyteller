@@ -121,7 +121,9 @@ The status bar always shows what Tab and Enter will do next.
 cargo run -p method-storyteller -- script.fountain --control 9876
 ```
 
-then send JSON lines to `127.0.0.1:9876`; see [docs/control-protocol.md](docs/control-protocol.md).
+then send JSON lines to `127.0.0.1:9876`, the first one `auth` with the token the app prints on
+standard error (or the one you gave it in `STORYTELLER_CONTROL_TOKEN`); see
+[docs/control-protocol.md](docs/control-protocol.md).
 `method-storyteller serve --control 9876` runs the same protocol headless.
 
 The app also takes `--open-sample` (open the sample script, Field Station) and
