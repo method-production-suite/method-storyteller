@@ -2,7 +2,8 @@
 //! `document.xml`, and `.mstory`, Method Storyteller's own package, holding the script as
 //! `script.osf` and the production data beside it (`production.json`). Only what that needs:
 //! reading a stored or deflated document, keeping the other members as they are, and writing
-//! an archive. Sizes are checked against the input limit before inflating.
+//! an archive. Sizes are checked against the input limit before inflating, and offsets read
+//! from the archive never wrap around.
 
 use std::io::{Read, Write};
 
@@ -16,11 +17,11 @@ pub const PACKAGE_SCRIPT: &str = "script.osf";
 pub const PACKAGE_DATA: &str = "production.json";
 
 fn u16_at(bytes: &[u8], at: usize) -> Option<u16> {
-    Some(u16::from_le_bytes(bytes.get(at..at + 2)?.try_into().ok()?))
+    Some(u16::from_le_bytes(bytes.get(at..at.checked_add(2)?)?.try_into().ok()?))
 }
 
 fn u32_at(bytes: &[u8], at: usize) -> Option<u32> {
-    Some(u32::from_le_bytes(bytes.get(at..at + 4)?.try_into().ok()?))
+    Some(u32::from_le_bytes(bytes.get(at..at.checked_add(4)?)?.try_into().ok()?))
 }
 
 /// Whether bytes start like a ZIP archive.
@@ -57,8 +58,8 @@ fn read_member(bytes: &[u8], wanted: impl Fn(&str) -> bool) -> Result<(Vec<u8>, 
     // The end-of-central-directory record sits in the last 22 bytes plus any comment.
     let search_from = bytes.len().saturating_sub(22 + 65_535);
     let end = (search_from..bytes.len().saturating_sub(21)).rev().find(|&at| u32_at(bytes, at) == Some(0x0605_4b50)).ok_or_else(damaged)?;
-    let entries = usize::from(u16_at(bytes, end + 10).ok_or_else(damaged)?);
-    let mut at = usize::try_from(u32_at(bytes, end + 16).ok_or_else(damaged)?).map_err(|_| damaged())?;
+    let entries = usize::from(u16_at(bytes, end.saturating_add(10)).ok_or_else(damaged)?);
+    let mut at = usize::try_from(u32_at(bytes, end.saturating_add(16)).ok_or_else(damaged)?).map_err(|_| damaged())?;
     let mut document = None;
     let mut found = String::new();
     let mut others = Vec::new();
@@ -67,17 +68,18 @@ fn read_member(bytes: &[u8], wanted: impl Fn(&str) -> bool) -> Result<(Vec<u8>, 
         if u32_at(bytes, at) != Some(0x0201_4b50) {
             return Err(damaged());
         }
-        let method = u16_at(bytes, at + 10).ok_or_else(damaged)?;
-        let crc32 = u32_at(bytes, at + 16).ok_or_else(damaged)?;
-        let compressed = usize::try_from(u32_at(bytes, at + 20).ok_or_else(damaged)?).map_err(|_| damaged())?;
-        let size_field = u32_at(bytes, at + 24).ok_or_else(damaged)?;
+        let method = u16_at(bytes, at.saturating_add(10)).ok_or_else(damaged)?;
+        let crc32 = u32_at(bytes, at.saturating_add(16)).ok_or_else(damaged)?;
+        let compressed = usize::try_from(u32_at(bytes, at.saturating_add(20)).ok_or_else(damaged)?).map_err(|_| damaged())?;
+        let size_field = u32_at(bytes, at.saturating_add(24)).ok_or_else(damaged)?;
         let size = usize::try_from(size_field).map_err(|_| damaged())?;
-        let name_len = usize::from(u16_at(bytes, at + 28).ok_or_else(damaged)?);
-        let extra_len = usize::from(u16_at(bytes, at + 30).ok_or_else(damaged)?);
-        let comment_len = usize::from(u16_at(bytes, at + 32).ok_or_else(damaged)?);
-        let local = usize::try_from(u32_at(bytes, at + 42).ok_or_else(damaged)?).map_err(|_| damaged())?;
-        let name = String::from_utf8_lossy(bytes.get(at + 46..at + 46 + name_len).ok_or_else(damaged)?).into_owned();
-        at += 46 + name_len + extra_len + comment_len;
+        let name_len = usize::from(u16_at(bytes, at.saturating_add(28)).ok_or_else(damaged)?);
+        let extra_len = usize::from(u16_at(bytes, at.saturating_add(30)).ok_or_else(damaged)?);
+        let comment_len = usize::from(u16_at(bytes, at.saturating_add(32)).ok_or_else(damaged)?);
+        let local = usize::try_from(u32_at(bytes, at.saturating_add(42)).ok_or_else(damaged)?).map_err(|_| damaged())?;
+        let name = String::from_utf8_lossy(bytes.get(at.saturating_add(46)..at.saturating_add(46).saturating_add(name_len)).ok_or_else(damaged)?)
+            .into_owned();
+        at = at.saturating_add(46 + name_len + extra_len + comment_len);
         total = total.saturating_add(size).saturating_add(compressed);
         if total > MAX_INPUT_BYTES {
             return Err("the script is larger than the size limit".into());
@@ -85,8 +87,10 @@ fn read_member(bytes: &[u8], wanted: impl Fn(&str) -> bool) -> Result<(Vec<u8>, 
         if u32_at(bytes, local) != Some(0x0403_4b50) {
             return Err(damaged());
         }
-        let data_start =
-            local + 30 + usize::from(u16_at(bytes, local + 26).ok_or_else(damaged)?) + usize::from(u16_at(bytes, local + 28).ok_or_else(damaged)?);
+        let data_start = local.saturating_add(
+            30 + usize::from(u16_at(bytes, local.saturating_add(26)).ok_or_else(damaged)?)
+                + usize::from(u16_at(bytes, local.saturating_add(28)).ok_or_else(damaged)?),
+        );
         let data = bytes.get(data_start..data_start.saturating_add(compressed)).ok_or_else(damaged)?;
         let is_document = document.is_none() && wanted(&name);
         if !is_document {
