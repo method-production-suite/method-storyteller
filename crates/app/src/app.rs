@@ -1269,7 +1269,7 @@ impl StorytellerApp {
         let _ = self.prefs.flush();
         match self.updates.install_and_relaunch() {
             Ok(()) => std::process::exit(0),
-            Err(error) => self.error = Some(crate::messages::update_install_failed(Some(&error.to_string()))),
+            Err(error) => self.error = Some(error),
         }
     }
 

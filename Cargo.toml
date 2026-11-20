@@ -21,7 +21,7 @@ craft-atomic = { git = "https://github.com/storytold/craft-libs", rev = "3832c47
 craft-settings = { git = "https://github.com/storytold/craft-libs", rev = "3832c47ef68a0e6214f2c1e85f3526b6adcb686e" }
 craft-quit = { git = "https://github.com/storytold/craft-libs", rev = "3832c47ef68a0e6214f2c1e85f3526b6adcb686e", features = ["egui", "menu"] }
 # method-libs: the suite's updater, pinned to one reviewed revision.
-method-update = { git = "https://github.com/method-production-suite/method-libs", rev = "25c80f8cfcc2e5222de4c5b79413a9de488196af" }
+method-update = { git = "https://github.com/method-production-suite/method-libs", rev = "bfc6441a1015793e665aa59478b6a434fb915062" }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

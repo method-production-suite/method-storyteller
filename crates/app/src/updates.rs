@@ -133,15 +133,26 @@ impl Updates {
     }
 
     /// "Restart to Update": swaps the bundle, starts the new one, and the caller exits.
+    /// Installs the waiting update and relaunches. The error is the message to show.
     pub fn install_and_relaunch(&self) -> Result<(), String> {
-        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-        let bundle = method_update::install::bundle_of_exe(&exe).ok_or("Method Storyteller is not running from an app bundle")?;
+        let failed = |detail: &str| crate::messages::update_install_failed(Some(detail));
+        let exe = std::env::current_exe().map_err(|e| failed(&e.to_string()))?;
+        let bundle = method_update::install::bundle_of_exe(&exe).ok_or_else(|| failed("Method Storyteller is not running from an app bundle"))?;
         let names = self.updater.app().bundle.clone();
         let installed = self
             .updater
             .install_ready(&bundle, &|b: &Path, new: &Path| method_update::install::admin_swap(b, new, &names))
-            .map_err(|e| e.to_string())?;
-        method_update::restart::relaunch(&installed.bundle).map_err(|e| e.to_string())
+            .map_err(|e| install_message(&e))?;
+        method_update::restart::relaunch(&installed.bundle).map_err(|e| failed(&e.to_string()))
+    }
+}
+
+/// What the writer is told when an update does not install. A refused code signature is not
+/// tried again: the download may not be ours.
+pub fn install_message(error: &method_update::InstallError) -> String {
+    match error {
+        method_update::InstallError::Signature(_) => crate::messages::UPDATE_SIGNATURE_REFUSED.to_string(),
+        other => crate::messages::update_install_failed(Some(&other.to_string())),
     }
 }
 
@@ -164,6 +175,30 @@ pub fn status_line(status: &Status) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_refused_signature_says_so_plainly_and_other_failures_offer_a_retry() {
+        let refused = method_update::InstallError::Signature(method_update::codesign::SignatureError::TeamMismatch {
+            expected: "TEAM".into(),
+            found: Some("OTHER".into()),
+        });
+        assert_eq!(install_message(&refused), crate::messages::UPDATE_SIGNATURE_REFUSED);
+        assert!(install_message(&method_update::InstallError::NothingReady).contains("Restart to Update tries again"));
+    }
+
+    #[test]
+    fn a_version_lower_than_one_already_accepted_is_refused() {
+        use method_update::highwater::HighWater;
+        let dir = tempfile::tempdir().expect("temp dir");
+        // The mark sits beside the settings file the app hands the updater.
+        let settings = dir.path().join("updates.json");
+        let version = |v: &str| method_update::manifest::parse_version(v).expect("semver");
+        HighWater::at(HighWater::beside(&settings)).record(&version("0.8.0")).expect("recorded");
+        let after_restart = HighWater::at(HighWater::beside(&settings));
+        assert!(after_restart.admit(&version("0.7.5")).is_err(), "a lower offer is refused");
+        assert!(after_restart.admit(&version("0.8.0")).is_ok(), "the same one again passes");
+        assert!(after_restart.admit(&version("0.9.0")).is_ok(), "and a newer one");
+    }
 
     fn status(phase: &'static str, said: Option<Said>) -> Status {
         Status { phase, version: Some("0.3.0".into()), manual: true, message: Some("offline".into()), said, automatic: true, available: true }
