@@ -21,6 +21,8 @@ use crate::session::Session;
 
 /// Longest accepted request line (1 MiB).
 pub const MAX_LINE_BYTES: u64 = 1024 * 1024;
+/// Most connections served at once; more are closed as they arrive.
+pub const MAX_CONNECTIONS: usize = 8;
 /// How long a connection waits for the session owner to answer.
 pub const REPLY_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -129,13 +131,24 @@ pub struct ControlRequest {
 pub fn serve(port: u16, wake: impl Fn() + Send + Sync + Clone + 'static) -> std::io::Result<Receiver<ControlRequest>> {
     let listener = TcpListener::bind(("127.0.0.1", port))?;
     let (sender, receiver) = mpsc::channel();
+    let open = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     thread::Builder::new().name("control-accept".into()).spawn(move || {
-        for stream in listener.incoming().flatten() {
+        for mut stream in listener.incoming().flatten() {
+            if open.fetch_add(1, std::sync::atomic::Ordering::SeqCst) >= MAX_CONNECTIONS {
+                open.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                let _ = writeln!(stream, "{}", json!({ "id": Value::Null, "error": "too many connections" }));
+                continue;
+            }
             let sender = sender.clone();
             let wake = wake.clone();
-            let _ = thread::Builder::new().name("control-conn".into()).spawn(move || {
+            let slot = open.clone();
+            let spawned = thread::Builder::new().name("control-conn".into()).spawn(move || {
                 let _ = catch_unwind(AssertUnwindSafe(|| connection(stream, &sender, &wake)));
+                slot.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
             });
+            if spawned.is_err() {
+                open.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+            }
         }
     })?;
     Ok(receiver)

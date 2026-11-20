@@ -182,6 +182,21 @@ fn control_server_over_tcp() {
 }
 
 #[test]
+fn the_control_server_serves_a_few_connections_at_once() {
+    use std::io::{BufRead, BufReader};
+    let port = 49_000 + (std::process::id() % 1000) as u16;
+    let Ok(_receiver) = storyteller_engine::control::serve(port, || {}) else { return };
+    let held: Vec<_> =
+        (0..storyteller_engine::control::MAX_CONNECTIONS).map(|_| std::net::TcpStream::connect(("127.0.0.1", port)).unwrap()).collect();
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let extra = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+    let mut line = String::new();
+    BufReader::new(extra).read_line(&mut line).unwrap();
+    assert!(line.contains("too many connections"), "{line}");
+    drop(held);
+}
+
+#[test]
 fn the_control_server_closes_a_connection_that_does_not_speak_its_protocol() {
     use std::io::{BufRead, BufReader, Write};
     let port = 48_000 + (std::process::id() % 1000) as u16;
