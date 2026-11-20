@@ -182,6 +182,23 @@ fn control_server_over_tcp() {
 }
 
 #[test]
+fn the_control_server_closes_a_connection_that_does_not_speak_its_protocol() {
+    use std::io::{BufRead, BufReader, Write};
+    let port = 48_000 + (std::process::id() % 1000) as u16;
+    let Ok(receiver) = storyteller_engine::control::serve(port, || {}) else { return };
+    let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+    // An HTTP request whose body is a request of this protocol.
+    write!(stream, "POST / HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: text/plain\r\n\r\n{{\"id\":1,\"method\":\"app.ping\"}}\n").unwrap();
+    let mut reader = BufReader::new(stream);
+    let mut line = String::new();
+    reader.read_line(&mut line).unwrap();
+    assert!(line.contains("closing"), "{line}");
+    line.clear();
+    assert_eq!(reader.read_line(&mut line).unwrap(), 0, "and the connection is closed");
+    assert!(receiver.recv_timeout(std::time::Duration::from_millis(200)).is_err(), "the body never reached the app");
+}
+
+#[test]
 fn tab_starts_the_next_element_and_shortcuts_insert() {
     let registry = Registry::new();
     let mut s = Session::default();

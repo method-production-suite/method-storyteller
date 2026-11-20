@@ -2,8 +2,9 @@
 //!
 //! Each request is one line: `{"id": 1, "method": "command.run", "params": {...}}`; each reply
 //! is one line: `{"id": 1, "result": ...}` or `{"id": 1, "error": "..."}`. The server listens on
-//! 127.0.0.1 only. Connection threads forward requests to the owner of the session (the UI
-//! thread or the headless loop) over a channel, so all document access stays on one thread.
+//! 127.0.0.1 only, and a connection ends at its first line that is not a JSON request.
+//! Connection threads forward requests to the owner of the session (the UI thread or the
+//! headless loop) over a channel, so all document access stays on one thread.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -156,6 +157,13 @@ fn connection(stream: TcpStream, sender: &Sender<ControlRequest>, wake: &dyn Fn(
         let line = line.trim();
         if line.is_empty() {
             continue;
+        }
+        // Only requests of this protocol, one JSON object a line: anything else (a web page's
+        // HTTP request, say, whose body could otherwise carry a request) ends the connection
+        // before a later line is read.
+        if !serde_json::from_str::<Value>(line).is_ok_and(|v| v.is_object()) {
+            let _ = writeln!(writer, "{}", json!({ "id": Value::Null, "error": "not a request of this protocol; closing" }));
+            return;
         }
         let (reply_sender, reply_receiver) = mpsc::channel();
         if sender.send(ControlRequest { line: line.to_string(), reply: reply_sender }).is_err() {
