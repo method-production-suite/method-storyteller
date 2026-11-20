@@ -208,6 +208,13 @@ says otherwise.
   bookmarks, Show Outline, autocomplete lists, `.highland` import and the faster editor. The
   release workflow runs no tests, so its Windows tests came from the full build on the same
   commit (all three systems green). Nothing waiting.
+- **The next release (0.8.0):** on main since 0.7.0: the editor draws its own text (markup
+  hidden, capitals by display, lines wrap where they print), Page view continuing a split speech,
+  the control channel token, the hardened updater (code signature check before a Mac update is
+  swapped in, and no offer below the newest accepted), and signing from the protected `release`
+  environment (rehearsal green, 2026-11-20). **Held until the updater's administrator step has
+  been run once by hand against a real signed bundle** (MReview's condition; it needs the owner's
+  password and screen, and MOrg is arranging it). Then a go-ahead to tag.
 
 ### Deferred (the owner, 2026-10-20)
 
