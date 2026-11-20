@@ -165,7 +165,7 @@ fn control_protocol() {
 fn control_server_over_tcp() {
     use std::io::{BufRead, BufReader, Write};
     let port = 47_000 + (std::process::id() % 1000) as u16;
-    let Ok(receiver) = storyteller_engine::control::serve(port, || {}) else { return };
+    let Ok(receiver) = storyteller_engine::control::serve(port, TOKEN.into(), || {}) else { return };
     let owner = std::thread::spawn(move || {
         let registry = Registry::new();
         let mut session = Session::default();
@@ -174,18 +174,50 @@ fn control_server_over_tcp() {
         }
     });
     let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+    writeln!(stream, r#"{{"id":0,"method":"auth","params":{{"token":"{TOKEN}"}}}}"#).unwrap();
     writeln!(stream, r#"{{"id":"x","method":"app.ping"}}"#).unwrap();
+    let mut reader = BufReader::new(stream);
     let mut line = String::new();
-    BufReader::new(stream).read_line(&mut line).unwrap();
+    reader.read_line(&mut line).unwrap();
+    assert_eq!(serde_json::from_str::<Value>(&line).unwrap()["result"], "ok", "the token is accepted");
+    line.clear();
+    reader.read_line(&mut line).unwrap();
     assert_eq!(serde_json::from_str::<Value>(&line).unwrap()["result"], "pong");
     owner.join().unwrap();
+}
+
+/// The control token the tests start their servers with.
+const TOKEN: &str = "0123456789abcdef0123456789abcdef";
+
+#[test]
+fn the_control_server_wants_this_launchs_token_first() {
+    use std::io::{BufRead, BufReader, Write};
+    let port = 46_000 + (std::process::id() % 1000) as u16;
+    let Ok(receiver) = storyteller_engine::control::serve(port, TOKEN.into(), || {}) else { return };
+    for first in [
+        r#"{"id":1,"method":"app.ping"}"#.to_string(),
+        r#"{"id":1,"method":"auth","params":{"token":"0123456789abcdef0123456789abcdee"}}"#.to_string(),
+        r#"{"id":1,"method":"auth","params":{}}"#.to_string(),
+    ] {
+        let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+        writeln!(stream, "{first}").unwrap();
+        writeln!(stream, r#"{{"id":2,"method":"app.ping"}}"#).unwrap();
+        let mut reader = BufReader::new(stream);
+        let mut line = String::new();
+        reader.read_line(&mut line).unwrap();
+        assert!(line.contains("token") && line.contains("closing"), "{first}: {line}");
+        line.clear();
+        assert_eq!(reader.read_line(&mut line).unwrap(), 0, "{first}: and the connection is closed");
+    }
+    assert!(receiver.recv_timeout(std::time::Duration::from_millis(200)).is_err(), "nothing reached the app");
+    assert_eq!(storyteller_engine::control::launch_token().len(), 32, "a launch's own token is 32 hex digits");
 }
 
 #[test]
 fn the_control_server_serves_a_few_connections_at_once() {
     use std::io::{BufRead, BufReader};
     let port = 49_000 + (std::process::id() % 1000) as u16;
-    let Ok(_receiver) = storyteller_engine::control::serve(port, || {}) else { return };
+    let Ok(_receiver) = storyteller_engine::control::serve(port, TOKEN.into(), || {}) else { return };
     let held: Vec<_> =
         (0..storyteller_engine::control::MAX_CONNECTIONS).map(|_| std::net::TcpStream::connect(("127.0.0.1", port)).unwrap()).collect();
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -200,7 +232,7 @@ fn the_control_server_serves_a_few_connections_at_once() {
 fn the_control_server_closes_a_connection_that_does_not_speak_its_protocol() {
     use std::io::{BufRead, BufReader, Write};
     let port = 48_000 + (std::process::id() % 1000) as u16;
-    let Ok(receiver) = storyteller_engine::control::serve(port, || {}) else { return };
+    let Ok(receiver) = storyteller_engine::control::serve(port, TOKEN.into(), || {}) else { return };
     let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
     // An HTTP request whose body is a request of this protocol.
     write!(stream, "POST / HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: text/plain\r\n\r\n{{\"id\":1,\"method\":\"app.ping\"}}\n").unwrap();

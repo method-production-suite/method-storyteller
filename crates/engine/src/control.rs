@@ -2,7 +2,9 @@
 //!
 //! Each request is one line: `{"id": 1, "method": "command.run", "params": {...}}`; each reply
 //! is one line: `{"id": 1, "result": ...}` or `{"id": 1, "error": "..."}`. The server listens on
-//! 127.0.0.1 only, and a connection ends at its first line that is not a JSON request.
+//! 127.0.0.1 only. A connection's first request must be `auth` with the token this launch
+//! printed (or was given in `STORYTELLER_CONTROL_TOKEN`), and a connection ends at its first
+//! line that is not a JSON request.
 //! Connection threads forward requests to the owner of the session (the UI thread or the
 //! headless loop) over a channel, so all document access stays on one thread.
 
@@ -126,9 +128,44 @@ pub struct ControlRequest {
     pub reply: Sender<String>,
 }
 
-/// Start the server on `127.0.0.1:port`. Requests arrive on the returned channel; a `wake`
-/// callback (for example, a repaint request) runs after each one is queued.
-pub fn serve(port: u16, wake: impl Fn() + Send + Sync + Clone + 'static) -> std::io::Result<Receiver<ControlRequest>> {
+/// The environment variable a launcher sets to choose this launch's token (a test harness that
+/// starts the app, say). Unset, each launch makes its own.
+pub const TOKEN_VAR: &str = "STORYTELLER_CONTROL_TOKEN";
+
+/// This launch's control token: the launcher's from [`TOKEN_VAR`], or 32 random hex digits.
+pub fn launch_token() -> String {
+    std::env::var(TOKEN_VAR).ok().filter(|t| !t.trim().is_empty()).map(|t| t.trim().to_string()).unwrap_or_else(random_token)
+}
+
+/// 128 random bits as hex, from the operating system's random source.
+fn random_token() -> String {
+    let mut bytes = [0u8; 16];
+    let from_os = std::fs::File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut bytes)).is_ok();
+    if !from_os {
+        // Where there is no /dev/urandom (Windows), the standard library's hasher keys, which
+        // it seeds from the system's random source.
+        use std::hash::{BuildHasher, Hasher};
+        for (n, chunk) in bytes.chunks_mut(8).enumerate() {
+            let mut hasher = std::collections::hash_map::RandomState::new().build_hasher();
+            hasher.write_usize(n);
+            chunk.copy_from_slice(&hasher.finish().to_le_bytes());
+        }
+    }
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Whether a connection's first request is `auth` with this launch's token, compared in time
+/// that does not depend on where they differ.
+fn authorised(request: &Value, token: &str) -> bool {
+    let given = request.get("params").and_then(|p| p.get("token")).and_then(Value::as_str).unwrap_or_default();
+    let same = given.len() == token.len() && given.bytes().zip(token.bytes()).fold(0u8, |acc, (a, b)| acc | (a ^ b)) == 0;
+    request.get("method").and_then(Value::as_str) == Some("auth") && same
+}
+
+/// Start the server on `127.0.0.1:port`. A connection's first request must be `auth` with
+/// `token`; after that, requests arrive on the returned channel, and a `wake` callback (for
+/// example, a repaint request) runs after each one is queued.
+pub fn serve(port: u16, token: String, wake: impl Fn() + Send + Sync + Clone + 'static) -> std::io::Result<Receiver<ControlRequest>> {
     let listener = TcpListener::bind(("127.0.0.1", port))?;
     let (sender, receiver) = mpsc::channel();
     let open = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -142,8 +179,9 @@ pub fn serve(port: u16, wake: impl Fn() + Send + Sync + Clone + 'static) -> std:
             let sender = sender.clone();
             let wake = wake.clone();
             let slot = open.clone();
+            let token = token.clone();
             let spawned = thread::Builder::new().name("control-conn".into()).spawn(move || {
-                let _ = catch_unwind(AssertUnwindSafe(|| connection(stream, &sender, &wake)));
+                let _ = catch_unwind(AssertUnwindSafe(|| connection(stream, &token, &sender, &wake)));
                 slot.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
             });
             if spawned.is_err() {
@@ -154,9 +192,10 @@ pub fn serve(port: u16, wake: impl Fn() + Send + Sync + Clone + 'static) -> std:
     Ok(receiver)
 }
 
-fn connection(stream: TcpStream, sender: &Sender<ControlRequest>, wake: &dyn Fn()) {
+fn connection(stream: TcpStream, token: &str, sender: &Sender<ControlRequest>, wake: &dyn Fn()) {
     let Ok(mut writer) = stream.try_clone() else { return };
     let mut reader = BufReader::new(stream);
+    let mut authorised_yet = false;
     loop {
         let mut line = String::new();
         match (&mut reader).take(MAX_LINE_BYTES).read_line(&mut line) {
@@ -174,9 +213,23 @@ fn connection(stream: TcpStream, sender: &Sender<ControlRequest>, wake: &dyn Fn(
         // Only requests of this protocol, one JSON object a line: anything else (a web page's
         // HTTP request, say, whose body could otherwise carry a request) ends the connection
         // before a later line is read.
-        if !serde_json::from_str::<Value>(line).is_ok_and(|v| v.is_object()) {
+        let Some(request) = serde_json::from_str::<Value>(line).ok().filter(Value::is_object) else {
             let _ = writeln!(writer, "{}", json!({ "id": Value::Null, "error": "not a request of this protocol; closing" }));
             return;
+        };
+        // The first request proves the caller was given this launch's token.
+        if !authorised_yet {
+            let id = request.get("id").cloned().unwrap_or(Value::Null);
+            if !authorised(&request, token) {
+                let error = "the first request must be `auth` with this launch's token; closing";
+                let _ = writeln!(writer, "{}", json!({ "id": id, "error": error }));
+                return;
+            }
+            authorised_yet = true;
+            if writeln!(writer, "{}", json!({ "id": id, "result": "ok" })).is_err() {
+                return;
+            }
+            continue;
         }
         let (reply_sender, reply_receiver) = mpsc::channel();
         if sender.send(ControlRequest { line: line.to_string(), reply: reply_sender }).is_err() {
