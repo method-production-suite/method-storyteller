@@ -103,6 +103,8 @@ jobs:
   build:
     name: build (${{ matrix.name }})
     needs: check
+    # The signing secrets live in the "release" environment, which only main and v* tags may use.
+    environment: release
     strategy:
       fail-fast: false
       matrix:
@@ -459,6 +461,8 @@ jobs:
     # tool is built before the key reaches the job, then run directly. Method Launcher requires
     # this signature, so a missing key fails the job rather than releasing without it.
     needs: [check, assemble]
+    # The signing secrets live in the "release" environment, which only main and v* tags may use.
+    environment: release
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
