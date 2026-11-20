@@ -130,6 +130,11 @@ says otherwise.
     saved this way opens and prints the same in 0.7.0, which already printed a capitals type in
     capitals and reads `\*` as an escaped star; only 0.7.0's editor shows that action in the
     casing typed. No change to the file format.
+30. **A token for the control channel** (new, 2026-11-20, from the security review). The control
+    channel (`--control`, a developer flag, loopback only) answers any program on the same
+    computer. **Recommend: a token made at each launch, printed at startup, sent as the first
+    line**; the suite's sessions that drive the app would pass it on. Not built yet, because it
+    changes how those sessions work. Reversible.
 12. **Rank for `.osf` in the Finder.** **Decided by the owner, 2026-10-18: Default**, like
    `.fountain` and `.fdx`: open formats, so the app claims none of them as their owner.
 
