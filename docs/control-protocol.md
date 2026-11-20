@@ -2,7 +2,8 @@
 
 The desktop app (`method-storyteller-app --control <port>`) and the headless server
 (`method-storyteller serve --control <port> [file]`) speak JSON lines on `127.0.0.1:<port>`. Only loopback is
-bound. Each request is one line, each reply one line:
+bound, and a connection is closed at its first line that is not a JSON request (so an HTTP request sent
+to the port, with whatever its body holds, goes no further). Each request is one line, each reply one line:
 
 ```json
 {"id": 1, "method": "command.run", "params": {"command": "flow.enter", "params": {}}}

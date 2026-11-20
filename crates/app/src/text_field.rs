@@ -63,8 +63,10 @@ impl Shown {
             let Some(part) = text.get(span.start..span.end) else { continue };
             match span.kind {
                 SpanKind::Markup if show.hide_markup => {
-                    if part == "\\" {
-                        escape = Some(span.start);
+                    // A backslash in markup always escapes what follows (it may share the span
+                    // with a marker before it).
+                    if part.ends_with('\\') {
+                        escape = Some(span.end - 1);
                     }
                 }
                 SpanKind::Markup | SpanKind::Note => {
@@ -245,11 +247,42 @@ pub fn replace(text: &str, show: ShowAs, from: usize, to: usize, typed: &str) ->
         }
         typed_as.push(c);
     }
-    let mut out = String::with_capacity(removed.len() + typed_as.len());
-    out.push_str(removed.get(..at).unwrap_or(""));
+    // Printed `*`, `_` and `\` characters beside the place (ones that pair with nothing) are
+    // written escaped, the whole run of them on each side, so what is typed cannot split one
+    // into markers that pair with others elsewhere.
+    let spans = inline::spans(&removed);
+    let literal = |b: usize| {
+        let printed = matches!(removed.as_bytes().get(b), Some(b'*' | b'_' | b'\\'))
+            && spans.iter().any(|s| matches!(s.kind, SpanKind::Text(_)) && s.start <= b && b < s.end);
+        let escaped = b
+            .checked_sub(1)
+            .filter(|&e| removed.as_bytes().get(e) == Some(&b'\\'))
+            .is_some_and(|e| spans.iter().any(|s| s.kind == SpanKind::Markup && s.start <= e && e < s.end));
+        printed && !escaped
+    };
+    let guard = show.hide_markup && !in_note && !typed.is_empty();
+    let mut first = at;
+    while guard && first > 0 && literal(first - 1) {
+        first -= 1;
+    }
+    let mut last = at;
+    while guard && literal(last) {
+        last += 1;
+    }
+    let escape_run = |run: &str, out: &mut String| {
+        for c in run.chars() {
+            out.push('\\');
+            out.push(c);
+        }
+    };
+    let mut out = String::with_capacity(removed.len() + typed_as.len() + 8);
+    out.push_str(removed.get(..first).unwrap_or(""));
+    escape_run(removed.get(first..at).unwrap_or(""), &mut out);
     out.push_str(&typed_as);
-    out.push_str(removed.get(at..).unwrap_or(""));
-    Edit { text: out, caret: at + typed_as.len() }
+    let caret = out.len();
+    escape_run(removed.get(at..last).unwrap_or(""), &mut out);
+    out.push_str(removed.get(last..).unwrap_or(""));
+    Edit { text: out, caret }
 }
 
 /// One line of a paragraph on screen.
@@ -428,6 +461,37 @@ mod tests {
         let composing = Shown::new("ab", HIDDEN, Some((1, "xy")));
         assert_eq!(text(&composing), "axyb");
         assert_eq!(composing.place_of(1), 3, "the caret after the composing text");
+    }
+
+    #[test]
+    fn random_markup_and_random_edits_never_break_the_text() {
+        let alphabet: Vec<char> = "ab *_\\[]\nßé日".chars().collect();
+        let mut seed = 0x1234_5678_u64;
+        let mut next = |n: usize| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            (seed % n.max(1) as u64) as usize
+        };
+        for _ in 0..10000 {
+            let len = next(24);
+            let mut text: String = (0..len).map(|_| alphabet[next(alphabet.len())]).collect();
+            let show = ShowAs { hide_markup: next(2) == 0, caps: next(3) == 0 };
+            for _ in 0..4 {
+                let shown = Shown::new(&text, show, None);
+                let (a, b) = (next(shown.len() + 2), next(shown.len() + 2));
+                let typed: String = (0..next(3)).map(|_| alphabet[next(alphabet.len())]).collect();
+                let printed_before = inline::plain(&text).chars().count();
+                let edit = replace(&text, show, a, b, &typed);
+                assert!(edit.caret <= edit.text.len() && edit.text.is_char_boundary(edit.caret), "{text:?} -> {edit:?}");
+                if show.hide_markup && a == b && !typed.contains(['[', ']']) {
+                    // Typing with the markup hidden adds exactly what was typed to the print.
+                    let added = inline::plain(&edit.text).chars().count() as i64 - printed_before as i64;
+                    assert!(added == typed.chars().count() as i64 || text.contains("[["), "{text:?} + {typed:?} -> {:?}", edit.text);
+                }
+                text = edit.text;
+            }
+        }
     }
 
     #[test]
