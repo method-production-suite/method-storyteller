@@ -5,10 +5,31 @@ for its own version in Help > What's New, once after an update.
 
 ## Unreleased
 
+## 0.8.0
+
+### Changed
+
+- The editor lays out and draws the script itself. Lines on screen break where they break on
+  the printed page, and double-spaced dialogue is double-spaced on screen too.
+- Bold, italic and underline show as styles, without the asterisks and underscores around them.
+  View > Show Formatting Marks shows the marks again, faint. A `*` or `_` you type is kept as
+  that character.
+- In a script whose settings print a type in capitals (a multi-camera script's action), the text
+  keeps the casing you type and is shown and printed in capitals. Saving it as Fountain, which
+  cannot record that setting, writes it in capitals.
+- Page view: a paragraph or speech that the page breaks inside now carries on at the top of the
+  next sheet, with (MORE) and the continued name shown faint where they print. Draft view marks
+  the page break between its lines.
+- Updates on a Mac are checked more strictly: an update is installed only if its code signature
+  matches this copy of the app, a version older than one already accepted is refused, and an
+  update installed with an administrator's password leaves the app owned by the system as before.
+
 ### Fixed
 
 - A note on the title page (`[[like this]]`) is saved to `.fdx` as a note, so it no longer
   prints in other apps, and it comes back when the file is opened again.
+- A damaged `.mstory`, `.fadein` or `.highland` file is refused cleanly on every system.
+- For developers: the control channel (`--control`) asks for the token each launch prints.
 
 ## 0.7.0
 

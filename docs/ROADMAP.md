@@ -208,13 +208,13 @@ says otherwise.
   bookmarks, Show Outline, autocomplete lists, `.highland` import and the faster editor. The
   release workflow runs no tests, so its Windows tests came from the full build on the same
   commit (all three systems green). Nothing waiting.
-- **The next release (0.8.0):** on main since 0.7.0: the editor draws its own text (markup
-  hidden, capitals by display, lines wrap where they print), Page view continuing a split speech,
-  the control channel token, the hardened updater (code signature check before a Mac update is
-  swapped in, and no offer below the newest accepted), and signing from the protected `release`
-  environment (rehearsal green, 2026-11-20). **Held until the updater's administrator step has
-  been run once by hand against a real signed bundle** (MReview's condition; it needs the owner's
-  password and screen, and MOrg is arranging it). Then a go-ahead to tag.
+- **The next release, 0.8.0: being prepared** (MOrg, 2026-11-21, after the owner's hand test
+  passed and MReview lifted the hold on method-update fa7d430). Called 0.8.0, not 0.7.1, because
+  it adds features: the editor draws its own text (lines break where they print, styles without
+  their marks, capitals by display), Page view carries a split speech on, and stricter updates
+  (code signature, no going backwards, a system-owned app after an administrator install). Notes
+  in `docs/releases/0.8.0.md`. Next: the release-prep PR (it changes `Cargo.lock`, so MReview
+  merges it), the rehearsal on that commit, then the tag question to the owner through MOrg.
 
 ### Deferred (the owner, 2026-10-20)
 
